@@ -1,0 +1,49 @@
+{
+  "description": "Core agentic coding hooks - security and testing",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "description": "Prevents execution of potentially dangerous commands",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/dangerous_command_blocker.py",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "description": "Auto-approves safe read-only operations for subagents",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/subagent_permission_router.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/lint-on-stop.sh"
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/rule-capture-on-stop.sh"
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/ralph-mode-on-stop.sh"
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/toast-notify.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

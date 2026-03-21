@@ -1,0 +1,69 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# uv
+.uv/
+uv.lock
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+.ports.env
+
+# IDEs
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ADW Generated files (when plugin is used in projects)
+# Note: Our plugin's agents/ directory should NOT be ignored
+# Only ignore these in projects that USE the plugin
+# agents/
+# app_docs/
+# *.jsonl
+
+# Git worktrees (when ADW creates isolated branches)
+# Note: Commented to avoid ignoring plugin directories
+# */
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Git worktrees (parallel branch work)
+.claude/worktrees/
+
+# Runtime artifacts (plans, specs, checkpoints)
+.claude/specs/
+.claude/plans/
+
+# Local settings (contains user-specific paths and permissions)
+.claude/settings.local.json
