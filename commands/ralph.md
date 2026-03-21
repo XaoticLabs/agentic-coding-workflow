@@ -18,6 +18,10 @@ $ARGUMENTS - One of:
 - `<spec-slug>` — start autonomous build loop for the named spec
 - `<spec-slug> --parallel N` — run N parallel worktrees
 - `<spec-slug> --plan` — planning mode only (gap analysis, generate plan)
+- `<spec-slug> --once` — single iteration, watched (HITL mode for prompt tuning)
+- `<spec-slug> --clean-room` — greenfield mode, skip codebase search
+- `<spec-slug> --harvest` — extract patterns and conventions after a completed run
+- `<spec-slug> --pr` — auto-create/update a draft PR (requires --push)
 - `<spec-slug> --status` — show completion dashboard
 - `<spec-slug> --stop` — create stop sentinel to halt the loop gracefully
 
@@ -29,6 +33,10 @@ Extract from `$ARGUMENTS`:
 - **spec-slug** (required): matches a directory at `.claude/specs/<slug>/`
 - **--parallel N**: optional, number of parallel workers (2-6)
 - **--plan**: optional, planning-only mode
+- **--once**: optional, single iteration then stop (HITL mode)
+- **--clean-room**: optional, skip codebase search for greenfield work
+- **--harvest**: optional, extract patterns after completed run
+- **--pr**: optional, auto-create draft PR (requires --push)
 - **--status**: optional, show dashboard and exit
 - **--stop**: optional, create stop sentinel and exit
 - **--push**: optional, push after each commit
@@ -43,7 +51,9 @@ touch .claude/ralph-stop
 Report that the loop will stop after the current iteration and exit.
 
 **If `--status`:**
-Read `.claude/specs/<slug>/IMPLEMENTATION_PLAN.md` and display:
+First check if `.claude/ralph-status.md` exists — if so, display it (this is the live dashboard updated each iteration with progress, timing, success rate, and recent iterations).
+
+Also read `.claude/specs/<slug>/IMPLEMENTATION_PLAN.md` and display:
 - Overall status (IN_PROGRESS / COMPLETE)
 - Task completion count (e.g., "7/12 tasks complete")
 - Table of all tasks with status
@@ -52,6 +62,20 @@ Read `.claude/specs/<slug>/IMPLEMENTATION_PLAN.md` and display:
 - Check ralph-logs for recent activity
 
 Exit after displaying.
+
+**If `--harvest`:**
+Run the loop in harvest mode (single iteration):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/loop.sh" "$SPEC_DIR" harvest 1
+```
+
+This analyzes the completed ralph run, extracts reusable patterns, updates AGENTS.md with discovered conventions, and writes a harvest report to `.claude/ralph-harvest-<slug>.md`.
+
+Exit after harvesting.
+
+**If `--once`:**
+Launch a single iteration in the foreground (not in tmux) for HITL prompt tuning. This lets you watch Ralph work on one task, validate the approach, then decide whether to go AFK.
 
 ### Phase 3: Validate Spec Directory
 
@@ -106,7 +130,15 @@ Use AskUserQuestion:
 >
 > Proceed? (yes/no)
 
-**If confirmed, launch in tmux:**
+**If `--once` mode**, run in foreground:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/loop.sh" "$SPEC_DIR" build 1 --once $CLEAN_ROOM_FLAG
+```
+
+Report what happened and suggest next steps: run another `--once`, or drop the flag to go AFK.
+
+**Otherwise, launch in tmux:**
 
 ```bash
 SESSION_NAME="ralph-${SLUG}"
@@ -119,9 +151,15 @@ if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
   exit 0
 fi
 
+# Build flag string
+FLAGS=""
+[ -n "$PUSH_FLAG" ] && FLAGS="$FLAGS --push"
+[ -n "$CLEAN_ROOM_FLAG" ] && FLAGS="$FLAGS --clean-room"
+[ -n "$PR_FLAG" ] && FLAGS="$FLAGS --pr"
+
 # Launch in new tmux session
 tmux new-session -d -s "$SESSION_NAME" \
-  "bash '${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/loop.sh' '$SPEC_DIR' build $MAX_ITERATIONS $PUSH_FLAG; echo 'Ralph loop finished. Press enter to close.'; read"
+  "bash '${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/loop.sh' '$SPEC_DIR' build $MAX_ITERATIONS $FLAGS; echo 'Ralph loop finished. Press enter to close.'; read"
 ```
 
 Report:
@@ -132,7 +170,9 @@ Session:  ralph-<slug>
 Attach:   tmux attach -t ralph-<slug>
 Status:   /ralph <slug> --status
 Stop:     /ralph <slug> --stop
+Steer:    echo 'instructions' > .claude/ralph-inject.md
 Logs:     .claude/ralph-logs/
+Dashboard: .claude/ralph-status.md
 ```
 
 ### Phase 7: Parallel Mode
@@ -141,48 +181,55 @@ Logs:     .claude/ralph-logs/
 
 1. Verify IMPLEMENTATION_PLAN.md exists (run planning mode if not)
 
-2. Partition tasks:
+2. Verify N is between 2 and 6
+
+3. Check tmux is available: `command -v tmux >/dev/null 2>&1`
+
+4. Launch the full parallel lifecycle via the orchestrator script. This handles everything automatically: partitioning tasks with file affinity, creating worktrees, launching workers, polling for completion, merging branches, running reconciliation, and cleaning up.
+
 ```bash
-PARTITION=$(bash "${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/partition-tasks.sh" "$SPEC_DIR/IMPLEMENTATION_PLAN.md" $N)
+# Build flag string
+FLAGS=""
+[ -n "$PUSH_FLAG" ] && FLAGS="$FLAGS --push"
+[ -n "$CLEAN_ROOM_FLAG" ] && FLAGS="$FLAGS --clean-room"
+[ -n "$PR_FLAG" ] && FLAGS="$FLAGS --pr"
+
+SESSION_NAME="ralph-${SLUG}-orchestrator"
+
+# Check if already running
+if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+  echo "Parallel orchestrator already running!"
+  echo "Attach: tmux attach -t $SESSION_NAME"
+  echo "Status: /ralph $SLUG --status"
+  echo "Stop: /ralph $SLUG --stop"
+  exit 0
+fi
+
+# Launch orchestrator in tmux (it manages worker tmux sessions internally)
+tmux new-session -d -s "$SESSION_NAME" \
+  "bash '${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/orchestrate-parallel.sh' '$SPEC_DIR' '$SLUG' $N $MAX_ITERATIONS $FLAGS; echo 'Orchestrator finished. Press enter to close.'; read"
 ```
 
-3. For each worker (0 to N-1), create a worktree and launch a loop:
+5. Report:
+```
+Ralph parallel orchestrator launched!
 
-```bash
-REPO_ROOT=$(git rev-parse --show-toplevel)
-WORKTREE_BASE="${REPO_ROOT}/.claude/worktrees"
-BRANCH_PREFIX="ralph/${SLUG}"
+Session:   ralph-<slug>-orchestrator
+Workers:   N
+Lifecycle: partition → work → merge → reconcile → cleanup (all automatic)
 
-mkdir -p "$WORKTREE_BASE"
-
-for i in $(seq 0 $((N-1))); do
-  BRANCH="${BRANCH_PREFIX}/worker-${i}"
-  WORKTREE_PATH="${WORKTREE_BASE}/ralph-${SLUG}-worker-${i}"
-
-  if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
-    git worktree add "$WORKTREE_PATH" "$BRANCH"
-  else
-    git worktree add -b "$BRANCH" "$WORKTREE_PATH"
-  fi
-
-  # Copy spec directory to worktree
-  cp -r "$SPEC_DIR" "${WORKTREE_PATH}/.claude/specs/${SLUG}/"
-
-  # Launch loop in tmux pane
-  SESSION_NAME="ralph-${SLUG}"
-  if [ "$i" -eq 0 ]; then
-    tmux new-session -d -s "$SESSION_NAME" -c "$WORKTREE_PATH" \
-      "CLAUDE_PROJECT_DIR='$WORKTREE_PATH' bash '${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/loop.sh' '.claude/specs/${SLUG}' build $MAX_ITERATIONS"
-  else
-    tmux split-window -t "$SESSION_NAME" -c "$WORKTREE_PATH" \
-      "CLAUDE_PROJECT_DIR='$WORKTREE_PATH' bash '${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/loop.sh' '.claude/specs/${SLUG}' build $MAX_ITERATIONS"
-  fi
-done
-
-tmux select-layout -t "$SESSION_NAME" tiled
+Attach:    tmux attach -t ralph-<slug>-orchestrator
+Status:    /ralph <slug> --status
+Stop:      /ralph <slug> --stop
+Steer:     echo 'instructions' > .claude/ralph-inject.md
 ```
 
-4. Report the parallel launch with worker assignments and worktree paths.
+The orchestrator runs the full lifecycle automatically:
+- **Partition**: Tasks assigned to workers by file affinity (each file owned by one worker)
+- **Work**: N workers run in parallel, each in its own worktree and branch
+- **Merge**: Worker branches merged sequentially into the target branch (conflicts resolved by Claude)
+- **Reconcile**: Post-merge verification loop (max 3 iterations) ensures tests pass on combined code
+- **Cleanup**: Worktrees, branches, and temporary files removed
 
 ## Error Handling
 
@@ -192,6 +239,11 @@ tmux select-layout -t "$SESSION_NAME" tiled
 - If loop.sh exits with errors on multiple consecutive iterations, suggest checking logs
 
 ## Example Usage
+
+```
+/ralph auth-feature --once
+```
+Single watched iteration (HITL mode) — validate your spec and plan before going AFK.
 
 ```
 /ralph auth-feature
@@ -204,16 +256,39 @@ Launches autonomous loop for `.claude/specs/auth-feature/`.
 Runs planning mode only — generates/refreshes IMPLEMENTATION_PLAN.md.
 
 ```
+/ralph auth-feature --clean-room
+```
+Greenfield mode — implements from spec only, skips codebase search.
+
+```
+/ralph auth-feature --push --pr
+```
+Launches loop that pushes after each commit and creates a draft PR.
+
+```
 /ralph auth-feature --parallel 3
 ```
-Launches 3 parallel workers in separate worktrees.
+Launches 3 parallel workers with file affinity. Automatically merges and reconciles when all workers finish.
 
 ```
 /ralph auth-feature --status
 ```
-Shows completion dashboard.
+Shows completion dashboard (live progress, timing, success rate).
 
 ```
 /ralph auth-feature --stop
 ```
 Creates stop sentinel — loop exits after current iteration.
+
+```
+/ralph auth-feature --harvest
+```
+After completion — extracts reusable patterns and updates AGENTS.md.
+
+### Mid-loop steering
+
+While Ralph is running, write instructions to steer the next iteration:
+```bash
+echo "Use the existing UserRepository instead of raw SQL queries" > .claude/ralph-inject.md
+```
+The file is consumed and deleted after the next iteration reads it.

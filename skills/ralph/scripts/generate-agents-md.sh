@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Auto-generates .claude/AGENTS.md — a project operational guide
 # Detects project type, build/test/lint commands, and writes them out
 # so Ralph iterations (and humans) know how to operate this project.

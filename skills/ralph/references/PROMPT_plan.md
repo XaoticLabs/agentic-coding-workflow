@@ -32,11 +32,11 @@ Write `IMPLEMENTATION_PLAN.md` in the spec directory:
 
 ## Tasks
 
-- [ ] **Task 1: <name>** — Priority: HIGH, Deps: none, Spec: 01-topic.md
+- [ ] **Task 1: <name>** — Priority: HIGH, Deps: none, Spec: 01-topic.md, Files: src/auth/login.ts src/auth/types.ts
   - <1-2 line description of what to implement>
-- [ ] **Task 2: <name>** — Priority: HIGH, Deps: Task 1, Spec: 02-topic.md
+- [ ] **Task 2: <name>** — Priority: HIGH, Deps: Task 1, Spec: 02-topic.md, Files: src/auth/session.ts src/middleware/auth.ts
   - <1-2 line description>
-- [ ] **Task 3: <name>** — Priority: MEDIUM, Deps: none, Spec: 03-topic.md
+- [ ] **Task 3: <name>** — Priority: MEDIUM, Deps: none, Spec: 03-topic.md, Files: src/api/routes.ts src/api/handlers.ts
   - <1-2 line description>
 
 ## Learnings
@@ -54,15 +54,18 @@ Write `IMPLEMENTATION_PLAN.md` in the spec directory:
 
 ## Prioritization Rules
 
-1. **Dependencies first** — if Task B depends on Task A, A gets higher priority
-2. **Foundation before features** — data models, types, configs before business logic
-3. **Within a tier** — smaller tasks before larger ones (faster iteration, earlier feedback)
-4. **Already-partial work** — completing something half-done is higher priority than starting fresh
+1. **Risk first** — architectural decisions, integration points, and unknown unknowns get highest priority. These decisions cascade through everything — get them right early. Mark these as HIGH priority with a `[RISK]` tag.
+2. **Dependencies first** — if Task B depends on Task A, A gets higher priority
+3. **Foundation before features** — data models, types, configs before business logic
+4. **Within a tier** — smaller tasks before larger ones (faster iteration, earlier feedback)
+5. **Already-partial work** — completing something half-done is higher priority than starting fresh
+6. **Quick wins last** — polish, cleanup, and trivial tasks go LOW priority. They're easy to slot in anytime.
 
 ## Rules
 
 - **No implementation.** Planning only — do not write any application code.
 - **No commits.** Only write `IMPLEMENTATION_PLAN.md`.
 - **Be specific.** Each task must reference a spec file and list concrete deliverables.
+- **List files.** Every task MUST include a `Files:` field listing the files it will create or modify (space-separated paths relative to project root). This enables parallel workers to avoid conflicts. During gap analysis, identify which files each task will touch based on existing code structure and spec requirements. If a file would be touched by multiple tasks, either consolidate those tasks or assign the shared file to the task that owns the primary logic.
 - **Be honest about gaps.** If a spec is vague, note it. If code already exists, credit it.
 - **Exit when done.** Write the plan and exit.

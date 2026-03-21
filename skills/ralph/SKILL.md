@@ -21,7 +21,9 @@ Manages autonomous Claude coding loops. Not user-invocable directly — invoked 
 |--------|---------|
 | `scripts/loop.sh` | Outer bash loop driving iterations |
 | `scripts/generate-agents-md.sh` | Auto-generates `.claude/AGENTS.md` project guide |
-| `scripts/partition-tasks.sh` | Partitions tasks into dependency waves for parallel mode |
+| `scripts/partition-tasks.sh` | Partitions tasks with file-affinity assignment for parallel mode |
+| `scripts/orchestrate-parallel.sh` | Full parallel lifecycle: launch, poll, merge, reconcile, cleanup |
+| `scripts/merge-workers.sh` | Sequential merge of worker branches with conflict resolution |
 
 ## Prompt Templates
 
@@ -29,40 +31,82 @@ Manages autonomous Claude coding loops. Not user-invocable directly — invoked 
 |----------|------|---------|
 | `references/PROMPT_build.md` | build | Per-iteration build prompt — pick task, implement, test, commit |
 | `references/PROMPT_plan.md` | plan | Planning-only prompt — gap analysis, generate implementation plan |
+| `references/PROMPT_harvest.md` | harvest | Post-run pattern extraction — analyze diffs, extract conventions |
+| `references/PROMPT_resolve.md` | resolve | Merge conflict resolution — resolve markers, test, commit |
+| `references/PROMPT_reconcile.md` | reconcile | Post-merge verification — run tests, fix integration issues |
 
 ## Workflow
 
-### Single-Track Mode
+### HITL Mode (--once)
 
 1. Generate project guide: `scripts/generate-agents-md.sh`
-2. Run loop: `scripts/loop.sh <spec-dir> build [max-iter] [--push]`
+2. Run single iteration: `scripts/loop.sh <spec-dir> build 1 --once`
+3. Watch Ralph work on one task, validate approach
+4. Graduate to AFK mode once prompts are tuned
+
+### Single-Track Mode (AFK)
+
+1. Generate project guide: `scripts/generate-agents-md.sh`
+2. Run loop: `scripts/loop.sh <spec-dir> build [max-iter] [flags...]`
 3. Each iteration gets a fresh Claude instance with the build prompt
-4. Loop exits when plan is complete or stop sentinel is touched
+4. Loop exits when plan is complete, stop sentinel is touched, or safety triggers fire
 
 ### Planning Mode
 
 1. Run loop: `scripts/loop.sh <spec-dir> plan 1`
 2. Single iteration: reads specs, analyzes codebase, generates `IMPLEMENTATION_PLAN.md`
 
-### Parallel Mode
+### Harvest Mode
+
+1. Run after completion: `scripts/loop.sh <spec-dir> harvest 1`
+2. Analyzes git history, learnings, and diffs to extract reusable patterns
+3. Updates AGENTS.md with discovered conventions
+
+### Parallel Mode (fully automatic lifecycle)
 
 1. Generate project guide: `scripts/generate-agents-md.sh`
-2. Partition tasks: `scripts/partition-tasks.sh <plan-file> <N>`
-3. Create N worktrees (via `/parallel` skill infrastructure)
-4. Run independent `loop.sh` in each worktree with task affinity
-5. Monitor with `/ralph <slug> --status`
-6. Stop all with `/ralph <slug> --stop`
+2. Launch orchestrator: `scripts/orchestrate-parallel.sh <spec-dir> <slug> <N> <max-iter>`
+3. Orchestrator handles the full lifecycle automatically:
+   - **Partition**: `partition-tasks.sh` assigns tasks by file affinity (each file owned by one worker)
+   - **Work**: N workers run `loop.sh` in separate worktrees/branches via tmux
+   - **Poll**: Orchestrator checks for worker completion markers every 30s
+   - **Merge**: `merge-workers.sh` merges branches sequentially (conflicts resolved by Claude via `PROMPT_resolve.md`)
+   - **Reconcile**: `loop.sh reconcile` runs post-merge verification (max 3 iterations, uses `PROMPT_reconcile.md`)
+   - **Cleanup**: Worktrees, branches, and temp files removed
+4. Monitor with `/ralph <slug> --status` (shows current phase: working/merging/reconciling/done)
+5. Stop with `/ralph <slug> --stop`
+
+## Flags
+
+| Flag | Purpose |
+|------|---------|
+| `--once` | Single iteration, foreground (HITL mode) |
+| `--push` | Push to remote after each commit |
+| `--pr` | Auto-create/update draft PR (requires --push) |
+| `--clean-room` | Skip codebase search — greenfield mode |
 
 ## Stop Mechanisms
 
 - **Sentinel file:** `touch .claude/ralph-stop` — loop exits after current iteration
 - **Plan complete:** When all tasks marked `[x]` and status is COMPLETE
 - **Max iterations:** Configurable safety limit (default 50)
+- **Struggle detection:** Auto-stops after 3 failed attempts on the same task
+- **Circuit breaker:** Auto-stops if commit/iteration ratio drops below 30%
+
+## Mid-Loop Steering
+
+Write instructions to `.claude/ralph-inject.md` — consumed by the next iteration and deleted. Lets you course-correct without stopping the loop.
 
 ## Artifacts
 
 All Ralph artifacts live under `.claude/`:
 - `specs/<slug>/IMPLEMENTATION_PLAN.md` — shared state between iterations
 - `AGENTS.md` — project operational guide
-- `ralph-logs/` — per-iteration output logs
+- `ralph-logs/` — per-iteration output logs + `ralph-iterations.log` summary
+- `ralph-status.md` — live progress dashboard (updated each iteration)
+- `ralph-progress.md` — ephemeral session scratchpad (cleaned up on completion)
+- `ralph-inject.md` — mid-loop steering file (consumed and deleted)
+- `ralph-harvest-<slug>.md` — pattern extraction report (from harvest mode)
 - `ralph-stop` — stop sentinel (touch to stop)
+- `ralph-parallel-meta.json` — parallel run metadata (slug, workers, target branch)
+- `ralph-worker-done-*` — per-worker completion markers (in each worktree)

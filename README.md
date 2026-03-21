@@ -57,7 +57,7 @@ Then type any of these:
 | `/debug-bug` | Bug hunter. |
 | `/review-elixir` | Code review for Elixir PRs |
 | `/review-python` | Code review for Python PRs |
-| `/ralph` | Autonomous coding loop. Takes a spec, works through every task unattended — implements, tests, commits, updates the plan, repeats. Supports parallel mode with multiple worktrees. |
+| `/ralph` | Autonomous coding loop. Takes a spec, works through every task unattended — implements, tests, commits, updates the plan, repeats. Supports `--once` (HITL mode), `--clean-room` (greenfield), `--harvest` (extract patterns after a run), `--pr` (draft PR), and `--parallel` (multiple worktrees). |
 | `/update-rules` | Updates CLAUDE.md or `.claude/rules/` after corrections or pattern discoveries. |
 
 ## Skills
@@ -84,6 +84,7 @@ Then type any of these:
 | `lint-on-stop.sh` | Runs linting and tests when Claude tries to stop - if there are errors, it blocks and asks Claude to fix them |
 | `rules-prompt.md` | After implementation tasks, gently prompts about capturing learned patterns as rules |
 | `toast-notify.sh` | Pops up a macOS notification when Claude needs your attention |
+| `ralph-quality-judge.sh` | Scores each Ralph iteration on quality — flags regressions and struggle patterns |
 | `ralph-plan-update` | In Ralph mode, verifies the implementation plan was updated before allowing Claude to exit |
 
 ## CLAUDE.md & Rules System
@@ -118,11 +119,13 @@ Best when the spec is solid and you'd rather review a finished branch than babys
 2. `/plan AI-1234` — Plan the feature
 3. `/review-plan` — Critique the plan (don't skip this — it's your last chance to steer directly without stopping Ralph)
 4. `/write-spec feature-name --ralph` — Generate atomic specs + implementation plan
-5. `/ralph feature-name` — Launch the autonomous loop
-6. Go do something else. Check back with `/ralph feature-name --status`
-7. Review the git log and merged result
+5. `/ralph feature-name --once` — Run a single watched iteration to validate your spec and plan (HITL mode)
+6. `/ralph feature-name` — Launch the autonomous loop (add `--push --pr` to auto-create a draft PR)
+7. Go do something else. Check back with `/ralph feature-name --status` or read `.claude/ralph-status.md`
+8. Steer mid-loop by writing instructions to `.claude/ralph-inject.md`
+9. `/ralph feature-name --harvest` — After completion, extract reusable patterns and conventions
 
-For large features, `/ralph feature-name --parallel 3` splits work across worktrees — three independent Claude instances working through dependency-ordered tasks simultaneously.
+For greenfield work, add `--clean-room` to skip codebase search. For large features, `/ralph feature-name --parallel 3` splits work across worktrees — three independent Claude instances working through dependency-ordered tasks simultaneously.
 
 **"Where do I start?"**
 Run `claude` in a project. Try a few of the commands, read over the plugins a bit. Once you feel comfortable, try a few `/implement` tasks, and then try `/ralph` on a small spec.

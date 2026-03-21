@@ -1,13 +1,14 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Partition tasks from IMPLEMENTATION_PLAN.md into dependency waves for parallel execution
 #
 # Usage: partition-tasks.sh <plan-file> <num-workers>
 # Output: JSON mapping worker IDs to task numbers
 #
 # Algorithm:
-#   1. Parse all tasks and their dependencies
+#   1. Parse all tasks, their dependencies, and file lists
 #   2. Group into waves (wave 0 = no deps, wave 1 = depends on wave 0, etc.)
-#   3. Round-robin assign tasks within each wave to workers
+#   3. Assign tasks to workers using file-affinity: each file is owned by one worker,
+#      tasks go to the worker that already owns the most of their files
 
 set -euo pipefail
 
@@ -21,13 +22,14 @@ fi
 
 # ── Parse tasks ─────────────────────────────────────────────────────────
 # Expected format:
-#   - [ ] **Task 1: Name** — Priority: HIGH, Deps: none, Spec: 01-topic.md
-#   - [ ] **Task 2: Name** — Priority: HIGH, Deps: Task 1, Spec: 02-topic.md
+#   - [ ] **Task 1: Name** — Priority: HIGH, Deps: none, Spec: 01-topic.md, Files: src/a.ts src/b.ts
+#   - [ ] **Task 2: Name** — Priority: HIGH, Deps: Task 1, Spec: 02-topic.md, Files: src/c.ts
 #   - [x] **Task 3: Name** — (already done, skip)
 
 declare -A task_deps
 declare -A task_priority
-declare -a incomplete_tasks
+declare -A task_files
+declare -a incomplete_tasks=()
 
 while IFS= read -r line; do
   # Skip completed tasks
@@ -36,34 +38,37 @@ while IFS= read -r line; do
   fi
 
   # Parse incomplete tasks
-  if echo "$line" | grep -qP '^\- \[ \] \*\*Task (\d+)'; then
-    task_num=$(echo "$line" | grep -oP 'Task \K\d+')
-    deps=$(echo "$line" | grep -oP 'Deps: \K[^,]+(?=,)' || echo "none")
-    priority=$(echo "$line" | grep -oP 'Priority: \K\w+' || echo "MEDIUM")
+  if echo "$line" | grep -q '^\- \[ \] \*\*Task [0-9]'; then
+    task_num=$(echo "$line" | sed -n 's/.*Task \([0-9]*\).*/\1/p')
+    deps=$(echo "$line" | sed -n 's/.*Deps: \([^,]*\),.*/\1/p')
+    [ -z "$deps" ] && deps="none"
+    priority=$(echo "$line" | sed -n 's/.*Priority: \([A-Z]*\).*/\1/p')
+    [ -z "$priority" ] && priority="MEDIUM"
+    files=$(echo "$line" | sed -n 's/.*Files: \(.*\)/\1/p')
 
     incomplete_tasks+=("$task_num")
     task_priority[$task_num]="$priority"
+    task_files[$task_num]="$files"
 
     # Parse dependency list
     if [ "$deps" = "none" ] || [ "$deps" = "None" ] || [ -z "$deps" ]; then
       task_deps[$task_num]=""
     else
       # Extract task numbers from deps like "Task 1, Task 3"
-      dep_nums=$(echo "$deps" | grep -oP '\d+' | tr '\n' ' ')
+      dep_nums=$(echo "$deps" | grep -o '[0-9]*' | tr '\n' ' ')
       task_deps[$task_num]="$dep_nums"
     fi
   fi
 done < "$PLAN_FILE"
 
 if [ ${#incomplete_tasks[@]} -eq 0 ]; then
-  echo '{"workers": {}, "waves": [], "note": "All tasks complete"}'
+  echo '{"workers": {}, "waves": [], "file_owners": {}, "note": "All tasks complete"}'
   exit 0
 fi
 
 # ── Build dependency waves ──────────────────────────────────────────────
 
 declare -A task_wave
-declare -a waves
 max_wave=0
 
 # Assign waves: wave 0 = no deps, wave N = max(dep waves) + 1
@@ -100,26 +105,115 @@ for task in "${incomplete_tasks[@]}"; do
   assign_wave "$task"
 done
 
-# ── Round-robin assign to workers ───────────────────────────────────────
+# ── File-affinity assignment ────────────────────────────────────────────
+# For each task (processed wave-by-wave):
+#   - Count how many of the task's files are already owned by each worker
+#   - Assign to worker with most overlap; ties broken by lowest task count
+#   - If no overlap, assign to worker with fewest tasks (load balance)
+#   - Register all task files under the assigned worker
 
-# Build JSON output
+declare -A file_owner=()     # file path -> worker index
+file_owner_count=0           # track count separately to avoid bash unbound issues
+declare -A worker_task_count # worker index -> number of tasks assigned
+declare -A task_assignment   # task num -> worker index
+
+# Initialize worker task counts
+for ((w=0; w<NUM_WORKERS; w++)); do
+  worker_task_count[$w]=0
+done
+
+# Process tasks wave by wave (respects dependencies)
+for ((wave=0; wave<=max_wave; wave++)); do
+  for task in "${incomplete_tasks[@]}"; do
+    if [ "${task_wave[$task]}" -ne "$wave" ]; then
+      continue
+    fi
+
+    files="${task_files[$task]}"
+
+    # If no files listed, fall back to load-balanced assignment
+    if [ -z "$files" ]; then
+      # Assign to worker with fewest tasks
+      min_count=999999
+      best_worker=0
+      for ((w=0; w<NUM_WORKERS; w++)); do
+        if [ "${worker_task_count[$w]}" -lt "$min_count" ]; then
+          min_count=${worker_task_count[$w]}
+          best_worker=$w
+        fi
+      done
+      task_assignment[$task]=$best_worker
+      worker_task_count[$best_worker]=$((worker_task_count[$best_worker] + 1))
+      continue
+    fi
+
+    # Count file overlap per worker
+    declare -A overlap_count
+    for ((w=0; w<NUM_WORKERS; w++)); do
+      overlap_count[$w]=0
+    done
+
+    has_any_overlap=0
+    for f in $files; do
+      if [ -n "${file_owner[$f]+x}" ]; then
+        owner=${file_owner[$f]}
+        overlap_count[$owner]=$((overlap_count[$owner] + 1))
+        has_any_overlap=1
+      fi
+    done
+
+    if [ "$has_any_overlap" -eq 1 ]; then
+      # Assign to worker with most file overlap; ties broken by fewest tasks
+      best_worker=0
+      best_overlap=0
+      best_count=999999
+      for ((w=0; w<NUM_WORKERS; w++)); do
+        ov=${overlap_count[$w]}
+        tc=${worker_task_count[$w]}
+        if [ "$ov" -gt "$best_overlap" ] || { [ "$ov" -eq "$best_overlap" ] && [ "$tc" -lt "$best_count" ]; }; then
+          best_overlap=$ov
+          best_worker=$w
+          best_count=$tc
+        fi
+      done
+    else
+      # No overlap — assign to worker with fewest tasks
+      best_worker=0
+      min_count=999999
+      for ((w=0; w<NUM_WORKERS; w++)); do
+        if [ "${worker_task_count[$w]}" -lt "$min_count" ]; then
+          min_count=${worker_task_count[$w]}
+          best_worker=$w
+        fi
+      done
+    fi
+
+    # Assign task and register file ownership
+    task_assignment[$task]=$best_worker
+    worker_task_count[$best_worker]=$((worker_task_count[$best_worker] + 1))
+    for f in $files; do
+      if [ -z "${file_owner[$f]+x}" ]; then
+        file_owner[$f]=$best_worker
+        file_owner_count=$((file_owner_count + 1))
+      fi
+    done
+
+    unset overlap_count
+  done
+done
+
+# ── Build JSON output ───────────────────────────────────────────────────
+
 echo "{"
 echo "  \"workers\": {"
 
 for ((w=0; w<NUM_WORKERS; w++)); do
   worker_tasks=""
-  # Collect tasks assigned to this worker
-  worker_idx=0
-  for ((wave=0; wave<=max_wave; wave++)); do
-    for task in "${incomplete_tasks[@]}"; do
-      if [ "${task_wave[$task]}" -eq "$wave" ]; then
-        if [ $((worker_idx % NUM_WORKERS)) -eq "$w" ]; then
-          [ -n "$worker_tasks" ] && worker_tasks+=", "
-          worker_tasks+="$task"
-        fi
-        worker_idx=$((worker_idx + 1))
-      fi
-    done
+  for task in "${incomplete_tasks[@]}"; do
+    if [ "${task_assignment[$task]}" -eq "$w" ]; then
+      [ -n "$worker_tasks" ] && worker_tasks+=", "
+      worker_tasks+="$task"
+    fi
   done
 
   comma=""
@@ -144,6 +238,18 @@ for ((wave=0; wave<=max_wave; wave++)); do
   echo "    {\"wave\": ${wave}, \"tasks\": [${wave_tasks}]}${comma}"
 done
 echo "  ],"
+
+# Output file ownership for debugging
+echo "  \"file_owners\": {"
+file_idx=0
+file_count=$file_owner_count
+for f in "${!file_owner[@]}"; do
+  file_idx=$((file_idx + 1))
+  comma=","
+  [ "$file_idx" -eq "$file_count" ] && comma=""
+  echo "    \"${f}\": \"worker-${file_owner[$f]}\"${comma}"
+done
+echo "  },"
 
 echo "  \"total_incomplete\": ${#incomplete_tasks[@]},"
 echo "  \"num_workers\": ${NUM_WORKERS}"
