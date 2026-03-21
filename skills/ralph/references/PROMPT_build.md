@@ -12,6 +12,21 @@ Read `IMPLEMENTATION_PLAN.md` from the spec directory provided. Also read the `#
 
 If `.claude/ralph-progress.md` exists, read it for session-level context (recent decisions, blockers, discoveries from prior iterations).
 
+### Check Project Overrides and Iteration Briefing
+
+Your prompt may include two auto-injected sections at the end:
+
+**"## Project Overrides"** — persistent rules from previous Ralph runs or human tuning. These are high-signal, project-specific instructions that override general guidance when they conflict. Read them before doing anything else — they exist because a previous iteration learned the hard way.
+
+**"## Iteration Briefing"** — auto-generated from the failure journal. It contains:
+- Remaining tasks (compact list)
+- Recent outcomes — including **reverted iterations and why they failed**
+- Active learnings from prior iterations
+- Recently modified files (for conflict awareness)
+- Success rate stats
+
+**Before picking a task, read the briefing's "Recent Outcomes" section.** If a task was recently REVERTED, do NOT retry the same approach. The external gate (tests/lint run outside your session) already rejected it. You must try a fundamentally different implementation strategy, or skip the task and pick a different one.
+
 Parse the task list. Identify:
 - Tasks marked `[x]` — already done, skip
 - Tasks marked `[ ]` with all dependencies met (deps are done or "none") — candidates
@@ -23,6 +38,8 @@ Parse the task list. Identify:
 4. **Within a tier** — smaller tasks first for faster feedback
 
 Pick the single best candidate.
+
+**Simplicity tiebreaker:** When two candidates are close in priority, prefer the one that requires fewer files and fewer lines of change. A task you can solve by deleting code is always preferred over one that adds code.
 
 If ALL tasks are `[x]`, set `## Status: COMPLETE` at the top of the plan and exit immediately.
 
@@ -60,6 +77,17 @@ If either fails:
 - Fix the issue
 - Re-run until both pass
 - Do NOT skip this step — it is the quality gate
+
+## Step 5b: Simplicity Check
+
+Before committing, review your own diff:
+
+- **>100 lines added for a single task?** Consider whether a simpler approach exists. If you can achieve the same result with less code, do it now — don't leave it for a future cleanup task.
+- **>5 files modified?** The task may be doing too much, or you may be making unnecessary changes to surrounding code. Strip back to the minimum.
+- **A solution that deletes code while passing tests is always preferred** over one that adds code. Removing complexity is a feature.
+- **If it feels like it needs "one more iteration to clean up"**, it's too complex. Simplify now or the next iteration will inherit your mess.
+
+This check is about preventing complexity creep across many autonomous iterations. Each individual commit looks reasonable, but 30 iterations of "reasonable" additions creates an over-engineered codebase.
 
 ## Step 6: Commit
 
@@ -101,8 +129,10 @@ You are done. Exit cleanly. Do NOT pick up another task — the outer loop will 
 ## Rules
 
 - **One task per iteration.** Never do more than one.
-- **No questions.** You are autonomous. Make reasonable decisions.
+- **No questions.** You are autonomous. Make reasonable decisions. The human may be asleep — do not pause, ask, or hedge. If you are unsure, make the best call you can and document your reasoning in the Learnings section.
+- **Never give up.** If your first approach doesn't work, try a different one. If you run out of ideas, think harder. A failed iteration that produces no commit wastes tokens and time. The only acceptable no-commit outcome is discovering the task is already done.
 - **Must test.** Never commit untested code.
 - **Must commit.** Every iteration produces a commit (or marks a task as already done).
 - **Must update plan.** The plan is the shared state between iterations.
 - **Must exit.** Don't loop internally — the bash loop handles iteration.
+- **External gate.** After you exit, an external gate runs tests and lint independently. If they fail, your entire iteration is reverted — your commits, your plan updates, everything. The branch tip always represents validated progress. Do not try to game this by modifying test or lint configuration.

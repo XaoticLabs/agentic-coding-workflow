@@ -65,5 +65,16 @@ logs/
 .claude/specs/
 .claude/plans/
 
+# Ralph runtime artifacts (journal is untracked — like autoresearch's results.tsv)
+.claude/ralph-journal.tsv
+.claude/ralph-status.md
+.claude/ralph-progress.md
+.claude/ralph-logs/
+.claude/ralph-stop
+.claude/ralph-inject.md
+.claude/ralph-harvest-*.md
+.claude/ralph-worker-done-*
+.claude/ralph-parallel-meta.json
+
 # Local settings (contains user-specific paths and permissions)
 .claude/settings.local.json

@@ -22,6 +22,7 @@ $ARGUMENTS - One of:
 - `<spec-slug> --clean-room` — greenfield mode, skip codebase search
 - `<spec-slug> --harvest` — extract patterns and conventions after a completed run
 - `<spec-slug> --pr` — auto-create/update a draft PR (requires --push)
+- `<spec-slug> --time-budget=N` — max seconds per iteration (default: 600, 0 = no limit)
 - `<spec-slug> --status` — show completion dashboard
 - `<spec-slug> --stop` — create stop sentinel to halt the loop gracefully
 
@@ -41,6 +42,7 @@ Extract from `$ARGUMENTS`:
 - **--stop**: optional, create stop sentinel and exit
 - **--push**: optional, push after each commit
 - **--max N**: optional, max iterations (default 50)
+- **--time-budget=N**: optional, max seconds per iteration (default 600, 0 = unlimited)
 
 ### Phase 2: Handle Quick Actions
 

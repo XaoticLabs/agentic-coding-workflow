@@ -10,6 +10,7 @@
 #   --once:         Run a single iteration then stop (HITL mode)
 #   --clean-room:   Skip codebase search (greenfield mode)
 #   --pr:           Create/update a draft PR after first commit
+#   --time-budget:  Max seconds per iteration (default: 600, 0 = no limit)
 
 set -euo pipefail
 
@@ -20,6 +21,7 @@ PUSH_FLAG=""
 ONCE_FLAG=""
 CLEAN_ROOM_FLAG=""
 PR_FLAG=""
+TIME_BUDGET="600"  # 10 minutes default, 0 = no limit
 
 # Check for flags in any position
 for arg in "$@"; do
@@ -28,6 +30,7 @@ for arg in "$@"; do
     --once)       ONCE_FLAG="1" ;;
     --clean-room) CLEAN_ROOM_FLAG="1" ;;
     --pr)         PR_FLAG="1" ;;
+    --time-budget=*) TIME_BUDGET="${arg#--time-budget=}" ;;
   esac
 done
 
@@ -38,10 +41,18 @@ STOP_SENTINEL="${PROJECT_DIR}/.claude/ralph-stop"
 STATUS_FILE="${PROJECT_DIR}/.claude/ralph-status.md"
 INJECT_FILE="${PROJECT_DIR}/.claude/ralph-inject.md"
 PROGRESS_FILE="${PROJECT_DIR}/.claude/ralph-progress.md"
+JOURNAL_FILE="${PROJECT_DIR}/.claude/ralph-journal.tsv"
+READONLY_FILE="${SPEC_DIR}/RALPH_READONLY"
+OVERRIDES_FILE="${SPEC_DIR}/RALPH_OVERRIDES.md"
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 PROMPT_DIR="${SCRIPT_DIR}/../references"
 
 mkdir -p "$LOG_DIR"
+
+# ── Initialize failure journal ────────────────────────────────────────
+if [ ! -f "$JOURNAL_FILE" ]; then
+  printf "timestamp\toutcome\ttask\tmetric\tnotes\n" > "$JOURNAL_FILE"
+fi
 
 # ── Resolve prompt template ─────────────────────────────────────────────
 
@@ -66,10 +77,13 @@ echo "║                                                     ║"
 echo "║  Mode:       ${MODE}                                "
 echo "║  Spec dir:   ${SPEC_DIR}                            "
 echo "║  Max iters:  ${MAX_ITERATIONS}                      "
+echo "║  Time budget: $( [ "$TIME_BUDGET" = "0" ] && echo "unlimited" || echo "${TIME_BUDGET}s" )"
 echo "║  Push:       ${PUSH_FLAG:-no}                       "
 echo "║  Once:       ${ONCE_FLAG:-no}                       "
 echo "║  Clean-room: ${CLEAN_ROOM_FLAG:-no}                 "
 echo "║  PR:         ${PR_FLAG:-no}                         "
+echo "║  Protected:  $( [ -f "$READONLY_FILE" ] && echo "yes ($(wc -l < "$READONLY_FILE") patterns)" || echo "no" )"
+echo "║  Overrides:  $( [ -f "$OVERRIDES_FILE" ] && echo "yes ($(wc -l < "$OVERRIDES_FILE") lines)" || echo "no" )"
 echo "║                                                     ║"
 echo "║  Stop gracefully: touch .claude/ralph-stop          ║"
 echo "║  Steer mid-loop:  write .claude/ralph-inject.md     ║"
@@ -250,7 +264,20 @@ while :; do
 **Clean-room mode:** Do NOT search the existing codebase. Implement from spec only — this is greenfield work."
   fi
 
-  # Mid-loop injection: append user steering if present
+  # Persistent overrides: project-local prompt tuning (survives across runs)
+  if [ -f "$OVERRIDES_FILE" ]; then
+    PROMPT="${PROMPT}
+
+---
+## Project Overrides (persistent — from previous runs or human tuning)
+
+The following rules were learned from previous Ralph runs on this project, or set by the human. Follow them as if they were part of the base prompt. They take precedence over general instructions when they conflict.
+
+$(cat "$OVERRIDES_FILE")
+"
+  fi
+
+  # Mid-loop injection: append user steering if present (one-shot, consumed)
   if [ -f "$INJECT_FILE" ]; then
     echo "📋 Injecting mid-loop instructions from .claude/ralph-inject.md"
     PROMPT="${PROMPT}
@@ -278,17 +305,156 @@ $(cat "$INJECT_FILE")
 $( [ -n "$TASK_SPEC" ] && echo "**Current task spec file:** ${SPEC_DIR}/${TASK_SPEC}" || true )
 "
 
-  # Run Claude
-  echo "Launching Claude (${MODE} mode)..."
+  # ── Snapshot pre-iteration state ──────────────────────────────────
+  PRE_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "none")
+
+  # ── Generate structured briefing for context ─────────────────────
+  BRIEFING=""
+  if [ "$MODE" = "build" ] && [ -x "${SCRIPT_DIR}/generate-briefing.sh" ]; then
+    BRIEFING=$("${SCRIPT_DIR}/generate-briefing.sh" "$PLAN_FILE" "$JOURNAL_FILE" "$ITERATION" 2>/dev/null || true)
+  fi
+
+  if [ -n "$BRIEFING" ]; then
+    PROMPT="${PROMPT}
+
+---
+## Iteration Briefing (auto-generated)
+
+${BRIEFING}
+"
+  fi
+
+  # ── Run Claude (with optional time budget) ───────────────────────
+  echo "Launching Claude (${MODE} mode, budget: $( [ "$TIME_BUDGET" = "0" ] && echo "unlimited" || echo "${TIME_BUDGET}s" ))..."
   ITER_RESULT="success"
-  if echo "$PROMPT" | claude -p \
-    --dangerously-skip-permissions \
-    --model sonnet \
-    > "$LOG_FILE" 2>&1; then
-    echo "Iteration ${ITERATION} completed successfully."
+  CLAUDE_CMD="claude -p --dangerously-skip-permissions --model sonnet"
+
+  if [ "$TIME_BUDGET" != "0" ] && command -v timeout >/dev/null 2>&1; then
+    # Use timeout (coreutils) — available on Linux, brew install coreutils on macOS
+    if echo "$PROMPT" | timeout "$TIME_BUDGET" $CLAUDE_CMD > "$LOG_FILE" 2>&1; then
+      echo "Iteration ${ITERATION} completed successfully."
+    else
+      EXIT_CODE=$?
+      if [ "$EXIT_CODE" -eq 124 ]; then
+        ITER_RESULT="timeout"
+        echo "Iteration ${ITERATION} timed out after ${TIME_BUDGET}s."
+      else
+        ITER_RESULT="error (code ${EXIT_CODE})"
+        echo "Iteration ${ITERATION} exited with error (code ${EXIT_CODE}). Check ${LOG_FILE}"
+      fi
+    fi
+  elif [ "$TIME_BUDGET" != "0" ] && command -v gtimeout >/dev/null 2>&1; then
+    # macOS with coreutils installed via brew
+    if echo "$PROMPT" | gtimeout "$TIME_BUDGET" $CLAUDE_CMD > "$LOG_FILE" 2>&1; then
+      echo "Iteration ${ITERATION} completed successfully."
+    else
+      EXIT_CODE=$?
+      if [ "$EXIT_CODE" -eq 124 ]; then
+        ITER_RESULT="timeout"
+        echo "Iteration ${ITERATION} timed out after ${TIME_BUDGET}s."
+      else
+        ITER_RESULT="error (code ${EXIT_CODE})"
+        echo "Iteration ${ITERATION} exited with error (code ${EXIT_CODE}). Check ${LOG_FILE}"
+      fi
+    fi
   else
-    ITER_RESULT="error (code $?)"
-    echo "Iteration ${ITERATION} exited with error (code $?). Check ${LOG_FILE}"
+    # No timeout available or budget=0 — run unbounded
+    if echo "$PROMPT" | $CLAUDE_CMD > "$LOG_FILE" 2>&1; then
+      echo "Iteration ${ITERATION} completed successfully."
+    else
+      ITER_RESULT="error (code $?)"
+      echo "Iteration ${ITERATION} exited with error (code $?). Check ${LOG_FILE}"
+    fi
+  fi
+
+  # ── Post-iteration gate: mechanical accept/reject ────────────────
+  POST_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "none")
+  TASK_LABEL="${CURRENT_TASK:-plan}"
+  JOURNAL_TS=$(date +"%Y-%m-%dT%H:%M:%S")
+
+  if [ "$PRE_COMMIT" != "$POST_COMMIT" ] && [ "$MODE" = "build" ]; then
+    GATE_PASSED=true
+
+    # Gate 1: Protected files check
+    if [ -f "$READONLY_FILE" ] && [ "$GATE_PASSED" = true ]; then
+      CHANGED_FILES=$(git diff --name-only "$PRE_COMMIT" HEAD)
+      VIOLATED=""
+      while IFS= read -r pattern; do
+        # Skip empty lines and comments
+        [[ -z "$pattern" || "$pattern" == \#* ]] && continue
+        MATCH=$(echo "$CHANGED_FILES" | grep -E "$pattern" || true)
+        if [ -n "$MATCH" ]; then
+          VIOLATED="${VIOLATED}${MATCH}\n"
+        fi
+      done < "$READONLY_FILE"
+
+      if [ -n "$VIOLATED" ]; then
+        GATE_PASSED=false
+        echo "REVERT: Modified protected files: $(echo -e "$VIOLATED" | head -5)"
+        printf "%s\tREVERT_PROTECTED\t%s\t-\tModified protected: %s\n" "$JOURNAL_TS" "$TASK_LABEL" "$(echo -e "$VIOLATED" | tr '\n' ' ')" >> "$JOURNAL_FILE"
+      fi
+    fi
+
+    # Gate 2: External test + lint verification (tamper-proof)
+    if [ "$GATE_PASSED" = true ]; then
+      echo "Running external verification gate..."
+
+      # Detect test/lint commands from AGENTS.md
+      AGENTS_FILE="${PROJECT_DIR}/.claude/AGENTS.md"
+      TEST_CMD=""
+      LINT_CMD=""
+      if [ -f "$AGENTS_FILE" ]; then
+        TEST_CMD=$(grep -A1 '| Test' "$AGENTS_FILE" 2>/dev/null | tail -1 | sed 's/.*| `\(.*\)`.*/\1/' | sed 's/|//g' | xargs || true)
+        LINT_CMD=$(grep -A1 '| Lint' "$AGENTS_FILE" 2>/dev/null | tail -1 | sed 's/.*| `\(.*\)`.*/\1/' | sed 's/|//g' | xargs || true)
+      fi
+
+      if [ -n "$TEST_CMD" ]; then
+        echo "  Gate: running tests ($TEST_CMD)..."
+        if ! eval "$TEST_CMD" > "${LOG_DIR}/gate-test-${ITERATION}.log" 2>&1; then
+          GATE_PASSED=false
+          FAIL_TAIL=$(tail -5 "${LOG_DIR}/gate-test-${ITERATION}.log" | tr '\n' ' ')
+          echo "  GATE FAILED: Tests did not pass."
+          printf "%s\tREVERT_TESTS\t%s\t-\t%s\n" "$JOURNAL_TS" "$TASK_LABEL" "$FAIL_TAIL" >> "$JOURNAL_FILE"
+        fi
+      fi
+
+      if [ "$GATE_PASSED" = true ] && [ -n "$LINT_CMD" ]; then
+        echo "  Gate: running lint ($LINT_CMD)..."
+        if ! eval "$LINT_CMD" > "${LOG_DIR}/gate-lint-${ITERATION}.log" 2>&1; then
+          GATE_PASSED=false
+          FAIL_TAIL=$(tail -5 "${LOG_DIR}/gate-lint-${ITERATION}.log" | tr '\n' ' ')
+          echo "  GATE FAILED: Lint did not pass."
+          printf "%s\tREVERT_LINT\t%s\t-\t%s\n" "$JOURNAL_TS" "$TASK_LABEL" "$FAIL_TAIL" >> "$JOURNAL_FILE"
+        fi
+      fi
+    fi
+
+    # Verdict: keep or revert
+    if [ "$GATE_PASSED" = true ]; then
+      echo "KEEP: Iteration ${ITERATION} passed all gates."
+      COMMITS_ADDED=$(git rev-list --count "$PRE_COMMIT"..HEAD)
+      printf "%s\tKEEP\t%s\tcommits=%s\t%s\n" "$JOURNAL_TS" "$TASK_LABEL" "$COMMITS_ADDED" "$POST_COMMIT" >> "$JOURNAL_FILE"
+    else
+      echo "REVERT: Rolling back to ${PRE_COMMIT:0:8}..."
+      git reset --hard "$PRE_COMMIT"
+      ITER_RESULT="reverted"
+      # Re-mark task as incomplete if plan was updated during the iteration
+      # (The reset already handles this since plan changes are reverted too)
+    fi
+
+  elif [ "$ITER_RESULT" = "timeout" ]; then
+    # Timeout — revert any partial work
+    POST_COMMIT_AFTER_TIMEOUT=$(git rev-parse HEAD 2>/dev/null || echo "none")
+    if [ "$PRE_COMMIT" != "$POST_COMMIT_AFTER_TIMEOUT" ]; then
+      echo "REVERT: Timed out with uncommitted state, rolling back..."
+      git reset --hard "$PRE_COMMIT"
+    fi
+    printf "%s\tTIMEOUT\t%s\t%ss\tKilled after time budget exceeded\n" "$JOURNAL_TS" "$TASK_LABEL" "$TIME_BUDGET" >> "$JOURNAL_FILE"
+    ITER_RESULT="timeout"
+
+  elif [ "$PRE_COMMIT" = "$POST_COMMIT" ]; then
+    # No commit produced — log as no-op
+    printf "%s\tNO_COMMIT\t%s\t-\t%s\n" "$JOURNAL_TS" "$TASK_LABEL" "$ITER_RESULT" >> "$JOURNAL_FILE"
   fi
 
   # Log iteration
@@ -297,8 +463,8 @@ $( [ -n "$TASK_SPEC" ] && echo "**Current task spec file:** ${SPEC_DIR}/${TASK_S
   # Update status dashboard
   write_status "$ITERATION" "${CURRENT_TASK:-plan}" "$ITER_RESULT"
 
-  # Push if requested
-  if [ -n "$PUSH_FLAG" ]; then
+  # Push if requested (only on successful iterations)
+  if [ -n "$PUSH_FLAG" ] && [ "$ITER_RESULT" = "success" ]; then
     git push 2>/dev/null || echo "Push failed (non-fatal)"
   fi
 
