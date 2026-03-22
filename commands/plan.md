@@ -9,7 +9,7 @@ allowed-tools:
   - Task
   - WebFetch
   - Agent
-  - ExitPlanMode
+
   - mcp__claude_ai_Linear__*
 ---
 
@@ -31,7 +31,7 @@ $ARGUMENTS - Either:
 > **CRITICAL — DO NOT SKIP THIS PHASE.**
 > Phase A is the entire point of this command. You are a thinking partner, not a document generator. If you rush through questioning to get to writing, you have failed. The minimum bar is **3 rounds of back-and-forth** with the user before you may proceed to Phase B.
 
-**How plan mode works:** Phase A uses Claude Code's plan mode — you can only use read-only tools (Read, Glob, Grep, Agent for research). You cannot write files, edit code, or run destructive commands. This is enforced by the permission system. The user can toggle plan mode with Shift+Tab if needed.
+**Phase A is read-only.** Use only Read, Glob, Grep, and Agent (for research) during this phase. Do NOT write files or run destructive commands. Focus entirely on asking questions and exploring the codebase.
 
 #### Step 1: Load Context
 
@@ -148,11 +148,7 @@ When all items pass, tell the user: "The plan is ready to write. Shall I generat
 
 ### Phase B: Document Generation
 
-**Present the plan for approval using `ExitPlanMode`.**
-
-When calling `ExitPlanMode`, pass a concise summary of the plan as the `plan` parameter — this is what the user sees in the approval UI. Keep it to 3-5 bullet points covering: the problem, proposed solution, key decisions, and scope boundaries.
-
-Once approved, you'll have write access. Proceed to generate the full document.
+**Confirm with the user before writing.** Present a concise summary (3-5 bullet points covering: the problem, proposed solution, key decisions, and scope boundaries) and ask if they're ready to generate the document using `AskUserQuestion`. Once confirmed, proceed to write the full document.
 
 **Create the output directory** in the TARGET PROJECT (not the plugin repo):
 ```bash
@@ -287,7 +283,7 @@ mkdir -p <target-project-path>/.claude/plans
 - **Ground in reality** — read relevant codebase files to validate technical assumptions
 - **This is NOT an implementation spec** — no file paths, no code snippets, no per-file change lists. If your document has those, rewrite it at a higher level. Leave detailed specs for `/write-spec`
 - **Save to the target project** — the plan goes in `<target-project>/.claude/plans/`, NOT in this plugin's directory and NOT in `~/.claude/plans/`
-- **Use `ExitPlanMode` correctly** — pass a short summary as the `plan` parameter for the approval UI, then write the full document to disk after approval
+- **Confirm before writing** — summarize the plan and get user confirmation via `AskUserQuestion` before generating the document
 
 ## Example Session Flow
 
@@ -303,8 +299,7 @@ mkdir -p <target-project-path>/.claude/plans
 10. Claude explores implementation approach: uses Explore agents to research codebase, suggests patterns
 11. More back and forth until the synthesis checklist passes...
 12. Claude says "The plan is ready to write. Shall I generate the document?"
-13. User confirms → Claude calls `ExitPlanMode` with a short summary
-14. User approves → Claude writes document to `<target-project>/.claude/plans/feature-name.md`
+13. User confirms → Claude writes document to `<target-project>/.claude/plans/feature-name.md`
 
 ## Example Usage
 
