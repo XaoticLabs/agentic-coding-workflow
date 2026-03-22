@@ -102,6 +102,43 @@ fi
 # Clean up any previous stop sentinel
 rm -f "$STOP_SENTINEL"
 
+# ── Plan integrity check ─────────────────────────────────────────────
+# Verify that [x] tasks with "Completed in <hash>" reference commits
+# reachable from HEAD. If a previous run was interrupted after reverts,
+# the plan file on disk may claim tasks are done when their commits are
+# orphaned (reverted via git reset --hard). Re-mark these as incomplete.
+
+if [ "$MODE" = "build" ] && [ -f "$PLAN_FILE" ]; then
+  INTEGRITY_FIXES=0
+  while IFS= read -r line; do
+    # Extract commit hash from "Completed in <hash>"
+    hash=$(echo "$line" | grep -o 'Completed in [a-f0-9]*' | awk '{print $3}')
+    if [ -z "$hash" ]; then
+      continue
+    fi
+    # Check if commit is reachable from HEAD
+    if ! git merge-base --is-ancestor "$hash" HEAD 2>/dev/null; then
+      # Extract task number for logging
+      task_num=$(echo "$line" | grep -o 'Task [0-9]*' | head -1)
+      echo "⚠ INTEGRITY: ${task_num} references orphaned commit ${hash:0:8} — re-marking incomplete"
+      # Re-mark as incomplete: replace "- [x]" with "- [ ]" and strip "Completed in <hash>"
+      escaped_hash=$(echo "$hash" | sed 's/[.[\*^$()+?{}|]/\\&/g')
+      sed -i.bak "s/^\(- \)\[x\]\(.*\) — Completed in ${escaped_hash}.*/\1[ ]\2/" "$PLAN_FILE"
+      # Also ensure status is not COMPLETE if we just un-did a task
+      sed -i.bak 's/^## Status: COMPLETE/## Status: IN_PROGRESS/' "$PLAN_FILE"
+      INTEGRITY_FIXES=$((INTEGRITY_FIXES + 1))
+      printf "%s\tINTEGRITY_FIX\t%s\t-\tOrphaned commit %s re-marked incomplete\n" \
+        "$(date +"%Y-%m-%dT%H:%M:%S")" "${task_num:-unknown}" "$hash" >> "$JOURNAL_FILE"
+    fi
+  done < <(grep '^\- \[x\]' "$PLAN_FILE" 2>/dev/null || true)
+  rm -f "${PLAN_FILE}.bak"
+
+  if [ "$INTEGRITY_FIXES" -gt 0 ]; then
+    echo "  Fixed ${INTEGRITY_FIXES} orphaned task(s). Plan integrity restored."
+    echo ""
+  fi
+fi
+
 # ── Struggle detection helpers ──────────────────────────────────────────
 
 LAST_TASK=""
@@ -194,8 +231,9 @@ EOF
 ITERATION=0
 START_TIME=$(date +%s)
 
-# Initialize iteration log
-echo "# Ralph Iteration Log — $(date)" > "${LOG_DIR}/ralph-iterations.log"
+# Append to iteration log (preserve history across restarts)
+echo "" >> "${LOG_DIR}/ralph-iterations.log" 2>/dev/null || true
+echo "# Ralph Run — $(date)" >> "${LOG_DIR}/ralph-iterations.log"
 
 while :; do
   ITERATION=$((ITERATION + 1))

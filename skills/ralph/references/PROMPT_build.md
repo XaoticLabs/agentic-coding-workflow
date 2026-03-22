@@ -28,7 +28,7 @@ Your prompt may include two auto-injected sections at the end:
 **Before picking a task, read the briefing's "Recent Outcomes" section.** If a task was recently REVERTED, do NOT retry the same approach. The external gate (tests/lint run outside your session) already rejected it. You must try a fundamentally different implementation strategy, or skip the task and pick a different one.
 
 Parse the task list. Identify:
-- Tasks marked `[x]` — already done, skip
+- Tasks marked `[x]` — already done, skip. **But verify:** if a task says "Completed in <hash>", run `git log --oneline -1 <hash>` to confirm the commit exists on the current branch. If the commit is missing/orphaned, the task was reverted by a previous run — re-mark it `[ ]` and treat it as a candidate.
 - Tasks marked `[ ]` with all dependencies met (deps are done or "none") — candidates
 
 **Ultrathink about task selection.** This is the highest-leverage decision in the iteration. Evaluate candidates by:
