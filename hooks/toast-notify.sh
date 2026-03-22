@@ -13,13 +13,18 @@ if [[ -n "$transcript_path" && -f "$transcript_path" ]]; then
         [.[] | select(.type == "assistant")] | last |
         if .message.content then
             .message.content | if type == "array" then
-                # Check for tool_use first
-                (map(select(.type == "tool_use")) | first) as $tool |
-                if $tool then
-                    "TOOL:" + $tool.name
+                # Prefer text content over tool_use
+                (map(select(.type == "text") | .text) | join(" ")) as $text |
+                if ($text | length) > 0 then
+                    $text
                 else
-                    # Get text content
-                    (map(select(.type == "text") | .text) | join(" "))
+                    # No text — check for a pending tool_use
+                    (map(select(.type == "tool_use")) | last) as $tool |
+                    if $tool then
+                        "TOOL:" + $tool.name
+                    else
+                        empty
+                    end
                 end
             else
                 .

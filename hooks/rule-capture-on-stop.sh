@@ -1,5 +1,5 @@
 #!/bin/bash
-# Stop hook: Suggest /update-rules if the session had user corrections
+# Stop hook: Suggest /agentic-coding-workflow:update-rules if the session had user corrections
 # Replaces the prompt-based hook to avoid "No assistant message found" errors
 
 input=$(cat)
@@ -39,7 +39,7 @@ correction_count=$(jq -rs '
 ' "$transcript_path" 2>/dev/null)
 
 if [ -n "$correction_count" ] && [ "$correction_count" -gt 0 ]; then
-    echo "Note: This session had ~${correction_count} user correction(s). Consider running /update-rules to capture any patterns worth remembering."
+    echo "Note: This session had ~${correction_count} user correction(s). Consider running /agentic-coding-workflow:update-rules to capture any patterns worth remembering."
 fi
 
 exit 0

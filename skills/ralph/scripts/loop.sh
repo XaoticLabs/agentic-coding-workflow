@@ -95,7 +95,7 @@ echo ""
 
 if [ "$MODE" = "build" ] && [ ! -f "$PLAN_FILE" ]; then
   echo "Error: No IMPLEMENTATION_PLAN.md found at ${PLAN_FILE}"
-  echo "Run with mode=plan first, or create the plan via /write-spec --ralph"
+  echo "Run with mode=plan first, or create the plan via /agentic-coding-workflow:write-spec --ralph"
   exit 1
 fi
 

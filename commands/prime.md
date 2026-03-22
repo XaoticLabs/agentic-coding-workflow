@@ -115,11 +115,11 @@ When working with Elixir/Phoenix projects, specifically highlight:
 
 ## Example Invocations
 
-- `/prime` - Quick context, no ticket
-- `/prime AI-3364` - Quick context with Linear ticket AI-3364
-- `/prime --deep` - Deep context analysis, no ticket
-- `/prime AI-3364 --deep` - Deep context with ticket AI-3364
-- `/prime --deep AI-3364` - Same as above (order doesn't matter)
+- `/agentic-coding-workflow:prime` - Quick context, no ticket
+- `/agentic-coding-workflow:prime AI-3364` - Quick context with Linear ticket AI-3364
+- `/agentic-coding-workflow:prime --deep` - Deep context analysis, no ticket
+- `/agentic-coding-workflow:prime AI-3364 --deep` - Deep context with ticket AI-3364
+- `/agentic-coding-workflow:prime --deep AI-3364` - Same as above (order doesn't matter)
 
 ## Error Handling
 

@@ -121,14 +121,14 @@ Read the plan document, then spawn a subagent for review. This is ideal subagent
 > - [Nit 2]
 >
 > ## Verdict
-> [ ] Ready for `/write-spec`
+> [ ] Ready for `/agentic-coding-workflow:write-spec`
 > [ ] Needs minor revisions — update plan and proceed
-> [ ] Needs significant rework — revisit with `/plan`
+> [ ] Needs significant rework — revisit with `/agentic-coding-workflow:plan`
 > ```
 
 ### Phase 3: Present Review
 
-Display the subagent's review to the user. If the review identifies critical issues, suggest running `/plan` again to address them. If the plan is ready, suggest proceeding with `/write-spec`.
+Display the subagent's review to the user. If the review identifies critical issues, suggest running `/agentic-coding-workflow:plan` again to address them. If the plan is ready, suggest proceeding with `/agentic-coding-workflow:write-spec`.
 
 ## Important Constraints
 
@@ -140,12 +140,12 @@ Display the subagent's review to the user. If the review identifies critical iss
 ## Example Usage
 
 ```
-/review-plan feature-name
-/review-plan .claude/plans/batch-analysis.md
-/review-plan
+/agentic-coding-workflow:review-plan feature-name
+/agentic-coding-workflow:review-plan .claude/plans/batch-analysis.md
+/agentic-coding-workflow:review-plan
 ```
 
 ## Error Handling
 
-- If no plans found in `.claude/plans/` or `brainstorming/`, inform user and suggest running `/plan` first
+- If no plans found in `.claude/plans/` or `brainstorming/`, inform user and suggest running `/agentic-coding-workflow:plan` first
 - If the plan document is empty or malformed, flag it and suggest regenerating

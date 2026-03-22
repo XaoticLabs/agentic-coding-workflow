@@ -250,7 +250,7 @@ If HTML was generated, note the file path and open it.
 Offer follow-ups:
 - "Want me to diagram a specific area in more detail?"
 - "Should I add this diagram to your project docs?"
-- "Want an `/explain` walkthrough of any component shown here?"
+- "Want an `/agentic-coding-workflow:explain` walkthrough of any component shown here?"
 
 ## Error Handling
 
@@ -275,26 +275,26 @@ Use AskUserQuestion: "This area has complex dependencies. Want me to focus on [o
 ## Example Usage
 
 ```
-/visualize
+/agentic-coding-workflow:visualize
 ```
 Generates a top-level architecture diagram of the entire project.
 
 ```
-/visualize lib/messaging/
+/agentic-coding-workflow:visualize lib/messaging/
 ```
 Maps the messaging module — structure, data flow, and dependencies.
 
 ```
-/visualize "how do messages flow from API to delivery?"
+/agentic-coding-workflow:visualize "how do messages flow from API to delivery?"
 ```
 Traces and diagrams the complete message lifecycle.
 
 ```
-/visualize lib/accounts/ --mermaid
+/agentic-coding-workflow:visualize lib/accounts/ --mermaid
 ```
 Generates Mermaid-only diagrams for the accounts module (good for pasting into docs).
 
 ```
-/visualize --html "full system architecture"
+/agentic-coding-workflow:visualize --html "full system architecture"
 ```
 Creates an interactive HTML presentation of the system architecture.

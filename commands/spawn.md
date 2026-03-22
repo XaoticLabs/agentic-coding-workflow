@@ -148,21 +148,21 @@ Switch to pane: Ctrl+B then arrow keys
 ## Example Usage
 
 ```
-/spawn researcher
+/agentic-coding-workflow:spawn researcher
 ```
 Opens a new tmux pane with an interactive Claude session loaded with the researcher role.
 
 ```
-/spawn code-reviewer --context pr-diff.patch
+/agentic-coding-workflow:spawn code-reviewer --context pr-diff.patch
 ```
 Opens a reviewer instance with both the code-reviewer role and PR diff as context.
 
 ```
-/spawn test-writer "Write integration tests for the accounts API"
+/agentic-coding-workflow:spawn test-writer "Write integration tests for the accounts API"
 ```
 Launches a test writer with a specific task — runs non-interactively.
 
 ```
-/spawn explorer --worktree explore/auth-system
+/agentic-coding-workflow:spawn explorer --worktree explore/auth-system
 ```
 Creates a worktree on a new branch and launches an explorer instance there.

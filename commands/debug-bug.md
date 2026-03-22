@@ -105,7 +105,7 @@ The subagent prompt should include the bug summary from Step 3 and ask it to ret
 
 Read the subagent's findings, then continue investigation in the main session with targeted reads.
 
-**When to escalate to a primary instance:** If the bug requires implementation work (writing a fix, running tests, iterating), and you want the user to have visibility, suggest `/spawn test-writer` or continue in the current session. Subagents should only handle the research phase.
+**When to escalate to a primary instance:** If the bug requires implementation work (writing a fix, running tests, iterating), and you want the user to have visibility, suggest `/agentic-coding-workflow:spawn test-writer` or continue in the current session. Subagents should only handle the research phase.
 
 ### Step 5: Investigate
 
@@ -195,21 +195,21 @@ Provide a summary:
 ## Example Usage
 
 ```
-/debug-bug "users see stale data after updating their profile"
+/agentic-coding-workflow:debug-bug "users see stale data after updating their profile"
 ```
 Code-only debugging — searches codebase, identifies root cause, implements fix.
 
 ```
-/debug-bug --env staging api "webhook deliveries stuck in pending"
+/agentic-coding-workflow:debug-bug --env staging api "webhook deliveries stuck in pending"
 ```
 Gathers staging k8s logs/events for the api service, then investigates the code with that context.
 
 ```
-/debug-bug --env local "tests fail with postgres connection timeout"
+/agentic-coding-workflow:debug-bug --env local "tests fail with postgres connection timeout"
 ```
 Checks local Docker Compose health, then investigates the test configuration and code.
 
 ```
-/debug-bug ENG-4521
+/agentic-coding-workflow:debug-bug ENG-4521
 ```
 Fetches the Linear ticket, extracts the bug details, and runs the full debugging flow.

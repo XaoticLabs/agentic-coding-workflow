@@ -15,7 +15,7 @@ allowed-tools:
 
 # Feature Planning Partner
 
-A unified planning command that combines brainstorming and plan formation into a single interactive session. Produces a comprehensive plan document that feeds directly into `/write-spec`.
+A unified planning command that combines brainstorming and plan formation into a single interactive session. Produces a comprehensive plan document that feeds directly into `/agentic-coding-workflow:write-spec`.
 
 ## Input
 
@@ -159,7 +159,7 @@ mkdir -p <target-project-path>/.claude/plans
 
 **Write the document** to `<target-project-path>/.claude/plans/<feature-slug>.md` using the template below.
 
-> **LEVEL OF DETAIL CHECK:** Before writing, review your draft mentally. If it contains specific file paths with line-level changes, code snippets, class/function definitions, or per-file modification tables — **STOP**. You are writing an implementation spec, not a plan. Strip it back to conceptual descriptions. The plan captures "what" and "why" and high-level "how". The `/write-spec` command produces the detailed implementation specification.
+> **LEVEL OF DETAIL CHECK:** Before writing, review your draft mentally. If it contains specific file paths with line-level changes, code snippets, class/function definitions, or per-file modification tables — **STOP**. You are writing an implementation spec, not a plan. Strip it back to conceptual descriptions. The plan captures "what" and "why" and high-level "how". The `/agentic-coding-workflow:write-spec` command produces the detailed implementation specification.
 
 #### Document Template
 
@@ -272,7 +272,7 @@ mkdir -p <target-project-path>/.claude/plans
 
 ---
 
-*This plan captures the "what", "why", and high-level "how" of the feature. It is intended as input for `/write-spec`, which will produce the detailed implementation specification.*
+*This plan captures the "what", "why", and high-level "how" of the feature. It is intended as input for `/agentic-coding-workflow:write-spec`, which will produce the detailed implementation specification.*
 ```
 
 ## Important Constraints
@@ -281,13 +281,13 @@ mkdir -p <target-project-path>/.claude/plans
 - **Phase B is write-only** — just document generation, no more questions
 - **Be a skeptic** — your job is to poke holes, not be a yes-man
 - **Ground in reality** — read relevant codebase files to validate technical assumptions
-- **This is NOT an implementation spec** — no file paths, no code snippets, no per-file change lists. If your document has those, rewrite it at a higher level. Leave detailed specs for `/write-spec`
+- **This is NOT an implementation spec** — no file paths, no code snippets, no per-file change lists. If your document has those, rewrite it at a higher level. Leave detailed specs for `/agentic-coding-workflow:write-spec`
 - **Save to the target project** — the plan goes in `<target-project>/.claude/plans/`, NOT in this plugin's directory and NOT in `~/.claude/plans/`
 - **Confirm before writing** — summarize the plan and get user confirmation via `AskUserQuestion` before generating the document
 
 ## Example Session Flow
 
-1. User runs `/plan AI-1234`
+1. User runs `/agentic-coding-workflow:plan AI-1234`
 2. Claude loads context (ticket, prime-context if available)
 3. Claude summarizes starting point, asks first round of clarifying questions (problem space)
 4. User answers → Claude asks follow-up questions probing deeper
@@ -304,9 +304,9 @@ mkdir -p <target-project-path>/.claude/plans
 ## Example Usage
 
 ```
-/plan AI-1234
-/plan "batch conversation analysis for admin dashboard"
-/plan ../other-repo/docs/research-spec.md
+/agentic-coding-workflow:plan AI-1234
+/agentic-coding-workflow:plan "batch conversation analysis for admin dashboard"
+/agentic-coding-workflow:plan ../other-repo/docs/research-spec.md
 ```
 
 ## Error Handling

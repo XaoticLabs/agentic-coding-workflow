@@ -13,7 +13,7 @@ user-invocable: false
 
 # Ralph Loop Orchestrator
 
-Manages autonomous Claude coding loops. Not user-invocable directly — invoked by the `/ralph` command.
+Manages autonomous Claude coding loops. Not user-invocable directly — invoked by the `/agentic-coding-workflow:ralph` command.
 
 ## Scripts
 
@@ -73,8 +73,8 @@ Manages autonomous Claude coding loops. Not user-invocable directly — invoked 
    - **Merge**: `merge-workers.sh` merges branches sequentially (conflicts resolved by Claude via `PROMPT_resolve.md`)
    - **Reconcile**: `loop.sh reconcile` runs post-merge verification (max 3 iterations, uses `PROMPT_reconcile.md`)
    - **Cleanup**: Worktrees, branches, and temp files removed
-4. Monitor with `/ralph <slug> --status` (shows current phase: working/merging/reconciling/done)
-5. Stop with `/ralph <slug> --stop`
+4. Monitor with `/agentic-coding-workflow:ralph <slug> --status` (shows current phase: working/merging/reconciling/done)
+5. Stop with `/agentic-coding-workflow:ralph <slug> --stop`
 
 ## Flags
 

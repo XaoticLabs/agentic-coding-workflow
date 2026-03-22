@@ -106,16 +106,16 @@ After writing, show the user:
 ## Example Usage
 
 ```
-/update-rules "always run mix format before committing Elixir code"
+/agentic-coding-workflow:update-rules "always run mix format before committing Elixir code"
 ```
 → Adds to `.claude/rules/elixir.md` scoped to `**/*.ex` files
 
 ```
-/update-rules "don't mock the database in integration tests"
+/agentic-coding-workflow:update-rules "don't mock the database in integration tests"
 ```
 → Adds to `CLAUDE.md` under testing conventions (project-wide rule)
 
 ```
-/update-rules
+/agentic-coding-workflow:update-rules
 ```
 → Scans conversation for corrections and patterns, proposes rules to capture

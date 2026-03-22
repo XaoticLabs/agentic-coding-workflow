@@ -34,9 +34,6 @@ detect_project() {
       framework="Phoenix"
       run_cmd="mix phx.server"
     fi
-    if grep -q "dialyxir" "${PROJECT_DIR}/mix.exs" 2>/dev/null; then
-      lint_cmd="mix credo && mix dialyzer"
-    fi
   # Python
   elif [ -f "${PROJECT_DIR}/pyproject.toml" ] || [ -f "${PROJECT_DIR}/setup.py" ]; then
     type="python"

@@ -53,7 +53,7 @@ pr_number: $2 (optional - the GitHub PR number for additional context)
    - Run tests: `mix test`
    - Check code formatting: `mix format --check-formatted`
    - Run static analysis: `mix credo` (if configured)
-   - Run dialyzer: `mix dialyzer` (if configured)
+
    - Check test coverage if configured: `mix test --cover`
 
 ## Output Structure
@@ -75,7 +75,7 @@ Return a well-formatted markdown report with the following structure:
 - **Tests:** {✅ PASS or ❌ FAIL or ⚠️ SKIPPED}
 - **Format Check:** {✅ PASS or ❌ FAIL or ⚠️ SKIPPED}
 - **Credo:** {✅ PASS or ❌ FAIL or ⚠️ SKIPPED}
-- **Dialyzer:** {✅ PASS or ❌ FAIL or ⚠️ SKIPPED}
+
 - **Coverage:** {percentage}%
 
 ## Strengths

@@ -163,7 +163,6 @@ npm test             # JavaScript/TypeScript
 # If available
 mix credo            # Elixir
 mix format --check-formatted  # Elixir
-mix dialyzer         # Elixir
 ```
 
 Note test results and any failures.
@@ -179,7 +178,7 @@ Note test results and any failures.
 
 **Run the appropriate review using a subagent (Agent tool):**
 
-- **Elixir:** Spawn an agent that performs the `/review-elixir` review process against the current branch. The agent should: read the changed `.ex`/`.exs` files, check Elixir/OTP best practices, Phoenix/Ecto patterns, run `mix test`, `mix format --check-formatted`, `mix credo` (if available), and produce findings with exact file paths, line numbers, and code examples.
+- **Elixir:** Spawn an agent that performs the `/agentic-coding-workflow:review-elixir` review process against the current branch. The agent should: read the changed `.ex`/`.exs` files, check Elixir/OTP best practices, Phoenix/Ecto patterns, run `mix test`, `mix format --check-formatted`, `mix credo` (if available), and produce findings with exact file paths, line numbers, and code examples.
 
 - **Python:** Spawn an agent that performs the `/review-python` review process against the current branch. The agent should: read the changed `.py` files, check modern Python 3.10+ idioms, security issues, pattern consistency, run `pytest`, `ruff check`, type checking (if available), and produce findings with exact file paths, line numbers, and code examples.
 
@@ -349,26 +348,26 @@ Use these severity levels for issues:
 ## Example Usage
 
 ```
-/review-implementation
+/agentic-coding-workflow:review-implementation
 ```
 Reviews changes against the most recent or only spec in `.claude/specs/`.
 
 ```
-/review-implementation batch-analysis
+/agentic-coding-workflow:review-implementation batch-analysis
 ```
 Reviews changes against `.claude/specs/batch-analysis-spec.md`.
 
 ```
-/review-implementation .claude/specs/auth-feature-spec.md
+/agentic-coding-workflow:review-implementation .claude/specs/auth-feature-spec.md
 ```
 Reviews changes against the specified spec file.
 
 ```
-/review-implementation AI-1234
+/agentic-coding-workflow:review-implementation AI-1234
 ```
 Fetches acceptance criteria from Linear ticket AI-1234 and reviews changes against them.
 
 ```
-/review-implementation "users can reset their password via email, receives a 6-digit code, code expires after 15 minutes"
+/agentic-coding-workflow:review-implementation "users can reset their password via email, receives a 6-digit code, code expires after 15 minutes"
 ```
 Reviews changes against the provided ad-hoc acceptance criteria.

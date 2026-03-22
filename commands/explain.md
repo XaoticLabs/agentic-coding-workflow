@@ -152,7 +152,7 @@ After the explanation, offer:
 
 - "Want me to explain any part in more depth?"
 - "Should I generate flashcards from this explanation?" (connects to `/flashcards`)
-- "Want me to create a visual diagram?" (connects to `/visualize`)
+- "Want me to create a visual diagram?" (connects to `/agentic-coding-workflow:visualize`)
 
 ## Error Handling
 
@@ -167,7 +167,7 @@ Use AskUserQuestion to clarify: "I found several things related to '[concept]' �
 
 ## Important Constraints
 
-- **Explain, don't judge** — this is educational, not a code review. Save opinions for `/grill-me` or `/review-implementation`
+- **Explain, don't judge** — this is educational, not a code review. Save opinions for `/grill-me` or `/agentic-coding-workflow:review-implementation`
 - **Use the codebase's own terminology** — match naming conventions and domain language
 - **Assume intelligence, not knowledge** — the reader is smart but may be new to this specific codebase/pattern
 - **Concrete over abstract** — use actual values, real examples from the code, specific line references
@@ -177,26 +177,26 @@ Use AskUserQuestion to clarify: "I found several things related to '[concept]' �
 ## Example Usage
 
 ```
-/explain
+/agentic-coding-workflow:explain
 ```
 Explains all current changes as a teaching-oriented walkthrough.
 
 ```
-/explain lib/accounts/auth.ex
+/agentic-coding-workflow:explain lib/accounts/auth.ex
 ```
 Deep dive into the auth module — how it works, why it's designed this way, and what to know before modifying it.
 
 ```
-/explain "how does the message pipeline work?"
+/agentic-coding-workflow:explain "how does the message pipeline work?"
 ```
 Traces the message pipeline through the codebase, explaining each stage.
 
 ```
-/explain HEAD~5..HEAD
+/agentic-coding-workflow:explain HEAD~5..HEAD
 ```
 Explains what the last 5 commits did and why, as a cohesive narrative.
 
 ```
-/explain #142
+/agentic-coding-workflow:explain #142
 ```
 Explains PR #142 — what changed, why, and what trade-offs were made.

@@ -28,7 +28,7 @@ scripts/        → Standalone utility scripts
 - The `description` field is critical — it controls when the skill triggers. Include exact trigger phrases, synonyms, and keywords. Be exhaustive
 - Scripts handle deterministic work (file operations, git commands, parsing); SKILL.md orchestrates
 - References hold domain knowledge loaded conditionally — challenge every paragraph for token cost
-- Use `/skill-forge` when building or optimizing skills
+- Use `/agentic-coding-workflow:skill-forge` when building or optimizing skills
 
 ### Hooks
 - Hook scripts are registered in `hooks/hooks.json` using `${CLAUDE_PLUGIN_ROOT}` paths
@@ -53,7 +53,7 @@ There are two ways to throw more compute at a problem. Pick the right one:
 - Keeping the main context window clean from noisy intermediate work
 - Quick turnaround, no setup overhead
 
-**Primary instances** (full Claude sessions via tmux / `/spawn`) — independent sessions with their own context:
+**Primary instances** (full Claude sessions via tmux / `/agentic-coding-workflow:spawn`) — independent sessions with their own context:
 - Implementation work where you want visibility and course-correction
 - Tasks needing the full permission model and human-in-the-loop approval
 - Long-running work where mid-flight steering is likely
@@ -71,11 +71,11 @@ There are two ways to throw more compute at a problem. Pick the right one:
 | Summarize recent commits | Subagent | Read-only, bounded |
 | Refactor a major system | Primary instance | High-stakes, needs oversight |
 
-**Agent definitions are shared context** — the same `agents/researcher.md` works as a subagent prompt (`Agent` tool) or a full instance context (`claude --context agents/researcher.md` or `/spawn researcher`).
+**Agent definitions are shared context** — the same `agents/researcher.md` works as a subagent prompt (`Agent` tool) or a full instance context (`claude --context agents/researcher.md` or `/agentic-coding-workflow:spawn researcher`).
 
 ## Workflow
 
-The plugin's core workflow is: `/prime` → `/plan` → `/review-plan` → `/write-spec` → `/implement` → `/review-implementation`. All intermediate artifacts go in `.claude/plans/` and `.claude/specs/`.
+The plugin's core workflow is: `/agentic-coding-workflow:prime` → `/agentic-coding-workflow:plan` → `/agentic-coding-workflow:review-plan` → `/agentic-coding-workflow:write-spec` → `/agentic-coding-workflow:implement` → `/agentic-coding-workflow:review-implementation`. All intermediate artifacts go in `.claude/plans/` and `.claude/specs/`.
 
 ## File Organization
 
@@ -101,15 +101,15 @@ The plugin's core workflow is: `/prime` → `/plan` → `/review-plan` → `/wri
 
 ## Learning & Output Styles
 
-For learning-oriented workflows, use `/config` to set output style to "Explanatory" — Claude will provide more context and reasoning behind suggestions. Useful when onboarding to a new codebase or exploring unfamiliar patterns.
+For learning-oriented workflows, use `/agentic-coding-workflow:config` to set output style to "Explanatory" — Claude will provide more context and reasoning behind suggestions. Useful when onboarding to a new codebase or exploring unfamiliar patterns.
 
 **Learning commands:**
-- `/explain` — educational breakdown of code, changes, or systems (the "why" behind the code)
-- `/visualize` — ASCII, Mermaid, and HTML architecture diagrams
+- `/agentic-coding-workflow:explain` — educational breakdown of code, changes, or systems (the "why" behind the code)
+- `/agentic-coding-workflow:visualize` — ASCII, Mermaid, and HTML architecture diagrams
 
 ## Rule Maintenance
 
 After making corrections or discovering patterns, update rules:
 - Plugin-wide conventions → this file
 - Component-specific rules → `.claude/rules/<topic>.md` (path-scoped via frontmatter)
-- Use `/update-rules` to be guided through the right placement
+- Use `/agentic-coding-workflow:update-rules` to be guided through the right placement

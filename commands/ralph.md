@@ -87,7 +87,7 @@ SPEC_DIR=".claude/specs/${SLUG}"
 
 Verify the spec directory exists. If not:
 - Check if a monolithic spec exists at `.claude/specs/${SLUG}-spec.md`
-- If monolithic exists but no directory, suggest: "Run `/write-spec ${SLUG} --ralph` to generate Ralph-compatible specs"
+- If monolithic exists but no directory, suggest: "Run `/agentic-coding-workflow:write-spec ${SLUG} --ralph` to generate Ralph-compatible specs"
 - If nothing exists, list available specs and exit
 
 ### Phase 4: Generate Project Guide
@@ -128,7 +128,7 @@ Use AskUserQuestion:
 > This will run Claude autonomously with `--dangerously-skip-permissions`.
 > Each iteration picks one task, implements it, tests it, and commits.
 >
-> Stop anytime with: `/ralph <slug> --stop`
+> Stop anytime with: `/agentic-coding-workflow:ralph <slug> --stop`
 >
 > Proceed? (yes/no)
 
@@ -149,7 +149,7 @@ SESSION_NAME="ralph-${SLUG}"
 if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
   echo "Ralph session '$SESSION_NAME' already running!"
   echo "Attach: tmux attach -t $SESSION_NAME"
-  echo "Stop: /ralph $SLUG --stop"
+  echo "Stop: /agentic-coding-workflow:ralph $SLUG --stop"
   exit 0
 fi
 
@@ -170,8 +170,8 @@ Ralph loop launched!
 
 Session:  ralph-<slug>
 Attach:   tmux attach -t ralph-<slug>
-Status:   /ralph <slug> --status
-Stop:     /ralph <slug> --stop
+Status:   /agentic-coding-workflow:ralph <slug> --status
+Stop:     /agentic-coding-workflow:ralph <slug> --stop
 Steer:    echo 'instructions' > .claude/ralph-inject.md
 Logs:     .claude/ralph-logs/
 Dashboard: .claude/ralph-status.md
@@ -202,8 +202,8 @@ SESSION_NAME="ralph-${SLUG}-orchestrator"
 if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
   echo "Parallel orchestrator already running!"
   echo "Attach: tmux attach -t $SESSION_NAME"
-  echo "Status: /ralph $SLUG --status"
-  echo "Stop: /ralph $SLUG --stop"
+  echo "Status: /agentic-coding-workflow:ralph $SLUG --status"
+  echo "Stop: /agentic-coding-workflow:ralph $SLUG --stop"
   exit 0
 fi
 
@@ -221,8 +221,8 @@ Workers:   N
 Lifecycle: partition → work → merge → reconcile → cleanup (all automatic)
 
 Attach:    tmux attach -t ralph-<slug>-orchestrator
-Status:    /ralph <slug> --status
-Stop:      /ralph <slug> --stop
+Status:    /agentic-coding-workflow:ralph <slug> --status
+Stop:      /agentic-coding-workflow:ralph <slug> --stop
 Steer:     echo 'instructions' > .claude/ralph-inject.md
 ```
 
@@ -237,53 +237,53 @@ The orchestrator runs the full lifecycle automatically:
 
 - If tmux is not available, fall back to running loop.sh in the foreground (warn user)
 - If Claude CLI is not available, exit with a clear error
-- If spec directory is empty, suggest running `/write-spec`
+- If spec directory is empty, suggest running `/agentic-coding-workflow:write-spec`
 - If loop.sh exits with errors on multiple consecutive iterations, suggest checking logs
 
 ## Example Usage
 
 ```
-/ralph auth-feature --once
+/agentic-coding-workflow:ralph auth-feature --once
 ```
 Single watched iteration (HITL mode) — validate your spec and plan before going AFK.
 
 ```
-/ralph auth-feature
+/agentic-coding-workflow:ralph auth-feature
 ```
 Launches autonomous loop for `.claude/specs/auth-feature/`.
 
 ```
-/ralph auth-feature --plan
+/agentic-coding-workflow:ralph auth-feature --plan
 ```
 Runs planning mode only — generates/refreshes IMPLEMENTATION_PLAN.md.
 
 ```
-/ralph auth-feature --clean-room
+/agentic-coding-workflow:ralph auth-feature --clean-room
 ```
 Greenfield mode — implements from spec only, skips codebase search.
 
 ```
-/ralph auth-feature --push --pr
+/agentic-coding-workflow:ralph auth-feature --push --pr
 ```
 Launches loop that pushes after each commit and creates a draft PR.
 
 ```
-/ralph auth-feature --parallel 3
+/agentic-coding-workflow:ralph auth-feature --parallel 3
 ```
 Launches 3 parallel workers with file affinity. Automatically merges and reconciles when all workers finish.
 
 ```
-/ralph auth-feature --status
+/agentic-coding-workflow:ralph auth-feature --status
 ```
 Shows completion dashboard (live progress, timing, success rate).
 
 ```
-/ralph auth-feature --stop
+/agentic-coding-workflow:ralph auth-feature --stop
 ```
 Creates stop sentinel — loop exits after current iteration.
 
 ```
-/ralph auth-feature --harvest
+/agentic-coding-workflow:ralph auth-feature --harvest
 ```
 After completion — extracts reusable patterns and updates AGENTS.md.
 

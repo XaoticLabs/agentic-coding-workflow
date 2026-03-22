@@ -327,7 +327,7 @@ Write `.claude/specs/<slug>/IMPLEMENTATION_PLAN.md`:
 2. Foundation before features — data models, types, configs before business logic
 3. Within a tier — smaller tasks first (faster iteration, earlier feedback)
 
-**Both formats coexist:** The monolithic `.claude/specs/<slug>-spec.md` (for interactive `/implement`) and the directory `.claude/specs/<slug>/` (for `/ralph`) are generated together. No conflict.
+**Both formats coexist:** The monolithic `.claude/specs/<slug>-spec.md` (for interactive `/agentic-coding-workflow:implement`) and the directory `.claude/specs/<slug>/` (for `/agentic-coding-workflow:ralph`) are generated together. No conflict.
 
 **Report:** After generating, show the directory structure and task summary:
 ```
@@ -340,7 +340,7 @@ Ralph-compatible specs generated:
     IMPLEMENTATION_PLAN.md
 
   Tasks: N total (X HIGH, Y MEDIUM, Z LOW priority)
-  Ready for: /ralph <slug>
+  Ready for: /agentic-coding-workflow:ralph <slug>
 ```
 
 ## Quality Checklist
@@ -369,7 +369,7 @@ Before finalizing the spec, verify:
 ## Example Usage
 
 ```
-/write-spec batch-conversation-analysis
+/agentic-coding-workflow:write-spec batch-conversation-analysis
 ```
 
 This would:
@@ -381,13 +381,13 @@ This would:
 6. Output to `.claude/specs/batch-conversation-analysis-spec.md`
 
 ```
-/write-spec .claude/plans/batch-analysis.md
+/agentic-coding-workflow:write-spec .claude/plans/batch-analysis.md
 ```
 
 This would read the plan doc directly and generate a spec from it.
 
 ```
-/write-spec "add rate limiting to the API"
+/agentic-coding-workflow:write-spec "add rate limiting to the API"
 ```
 
 This would treat the inline prompt as a lightweight plan, analyze the codebase, and generate a spec.
