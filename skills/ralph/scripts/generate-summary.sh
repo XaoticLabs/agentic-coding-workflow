@@ -40,8 +40,11 @@ REVERTS=${REVERTS:-0}
 TIMEOUTS=${TIMEOUTS:-0}
 NO_COMMITS=${NO_COMMITS:-0}
 
+# Success rate = kept / (kept + reverted + timed out)
+# Excludes NO_COMMIT and INTEGRITY_FIX entries which aren't real attempts
 SUCCESS_RATE="N/A"
-[ "$ITERATIONS" -gt 0 ] && SUCCESS_RATE="$((KEEPS * 100 / ITERATIONS))%"
+REAL_ATTEMPTS=$((KEEPS + REVERTS + TIMEOUTS))
+[ "$REAL_ATTEMPTS" -gt 0 ] && SUCCESS_RATE="$((KEEPS * 100 / REAL_ATTEMPTS))%"
 
 # ── Task status ────────────────────────────────────────────────────────
 

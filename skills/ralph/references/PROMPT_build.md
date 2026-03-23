@@ -56,6 +56,10 @@ Look for:
 
 If already implemented, mark the task done in the plan, add a learning note, and move to the next task. If partially implemented, only implement what's missing.
 
+## Step 3b: Inventory Existing Tests (for test tasks)
+
+If this task involves writing or updating tests, **read the target test files first** before writing anything. Prior implementation tasks often write integration tests alongside their feature code. Check what already exists to avoid duplicating tests that a previous iteration already committed. Only write tests for cases that are genuinely missing.
+
 ## Step 4: Implement
 
 Read **only the specific spec file** referenced by this task (e.g., `Spec: 03-topic.md` → read only `03-topic.md`). Do not read other spec files — keep your context focused.

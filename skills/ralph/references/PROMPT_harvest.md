@@ -74,6 +74,7 @@ This is the most important step. Write (or update) `RALPH_OVERRIDES.md` in the s
 - Failure patterns from the journal that should be avoided (e.g., "Do not use `Date.now()` in tests — use the injected clock from `test/helpers`")
 - Architecture constraints discovered during implementation (e.g., "All API routes must go through the `router/v2.ts` module, not `router/index.ts`")
 - Time budget recommendations (e.g., "Database migration tasks need --time-budget=900, default 600 is too tight")
+- **Gate ignore patterns** for warnings that cause false reverts. If the journal shows REVERT_TESTS or REVERT_LINT entries where the failure was a known, pre-existing warning (not caused by the iteration's changes), add a `RALPH_GATE_IGNORE: <regex>` line. The loop's gate will treat output matching ALL ignore patterns as a pass. Example: `RALPH_GATE_IGNORE: otel_baggage_processor.*unknown_type` for a third-party OTP warning that triggers `--warnings-as-errors`.
 
 **What does NOT go in overrides:**
 - Vague advice ("write clean code", "follow best practices")
@@ -96,6 +97,9 @@ This is the most important step. Write (or update) `RALPH_OVERRIDES.md` in the s
 
 ## Project-Specific Commands
 - <command or workflow that differs from AGENTS.md defaults> <!-- verified: YYYY-MM-DD -->
+
+## Gate Ignore Patterns
+- RALPH_GATE_IGNORE: <regex matching warning output that should not trigger reverts> <!-- verified: YYYY-MM-DD -->
 
 ## Time Budget Notes
 - <observations about which task types need more/less time> <!-- verified: YYYY-MM-DD -->

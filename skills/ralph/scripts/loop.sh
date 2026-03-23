@@ -246,7 +246,7 @@ write_status() {
 - **Tasks:** ${done_tasks} / ${total_tasks} complete
 - **Commits:** ${new_commits} in this run
 - **Elapsed:** ${minutes} minutes
-- **Success rate:** $( [ "$iteration" -gt 0 ] && echo "$((new_commits * 100 / iteration))%" || echo "N/A" )
+- **Success rate:** $( KEPT=$(tail -n +2 "$JOURNAL_FILE" 2>/dev/null | grep -c 'KEEP' || echo 0); REAL=$(tail -n +2 "$JOURNAL_FILE" 2>/dev/null | grep -cE 'KEEP|REVERT|TIMEOUT' || echo 0); [ "$REAL" -gt 0 ] && echo "$((KEPT * 100 / REAL))%" || echo "N/A" )
 - **Last task:** ${task_name}
 - **Last result:** ${result}
 
@@ -502,9 +502,57 @@ ${BRIEFING}
         LINT_CMD=$(grep -A1 '| Lint' "$AGENTS_FILE" 2>/dev/null | tail -1 | sed 's/.*| `\(.*\)`.*/\1/' | sed 's/|//g' | xargs || true)
       fi
 
+      # Load gate ignore patterns from RALPH_OVERRIDES.md
+      # Lines matching "RALPH_GATE_IGNORE: <regex>" define patterns that, when they
+      # are the ONLY source of failure in gate output, should not trigger a revert.
+      # This solves the mismatch where Claude's judgment says "ignore this warning"
+      # but the mechanical gate reverts anyway on non-zero exit.
+      GATE_IGNORE_PATTERNS=()
+      if [ -f "$OVERRIDES_FILE" ]; then
+        while IFS= read -r line; do
+          pattern=$(echo "$line" | sed -n 's/.*RALPH_GATE_IGNORE: *//p' | xargs)
+          [ -n "$pattern" ] && GATE_IGNORE_PATTERNS+=("$pattern")
+        done < "$OVERRIDES_FILE"
+      fi
+
+      # gate_check: run a gate command, filtering known-ignorable failures.
+      # Returns 0 if the command passes or all failures match ignore patterns.
+      gate_check() {
+        local cmd="$1" log_file="$2"
+        if eval "$cmd" > "$log_file" 2>&1; then
+          return 0
+        fi
+        # Command failed — check if ALL error lines match ignore patterns
+        if [ "${#GATE_IGNORE_PATTERNS[@]}" -gt 0 ]; then
+          local unmatched=0
+          # Check the last 30 lines of output for non-ignorable errors
+          while IFS= read -r err_line; do
+            local matched=false
+            for pat in "${GATE_IGNORE_PATTERNS[@]}"; do
+              if echo "$err_line" | grep -qE "$pat"; then
+                matched=true
+                break
+              fi
+            done
+            if [ "$matched" = false ] && [ -n "$err_line" ]; then
+              # Skip blank lines and common noise (exit status lines, dividers)
+              if echo "$err_line" | grep -qE '^(done|Halting|_+$|\s*$)'; then
+                continue
+              fi
+              unmatched=$((unmatched + 1))
+            fi
+          done < <(tail -30 "$log_file")
+          if [ "$unmatched" -eq 0 ]; then
+            echo "  Gate: all failures matched RALPH_GATE_IGNORE patterns — treating as pass."
+            return 0
+          fi
+        fi
+        return 1
+      }
+
       if [ -n "$TEST_CMD" ]; then
         echo "  Gate: running tests ($TEST_CMD)..."
-        if ! eval "$TEST_CMD" > "${LOG_DIR}/gate-test-${ITERATION}.log" 2>&1; then
+        if ! gate_check "$TEST_CMD" "${LOG_DIR}/gate-test-${ITERATION}.log"; then
           GATE_PASSED=false
           FAIL_TAIL=$(tail -5 "${LOG_DIR}/gate-test-${ITERATION}.log" | tr '\n' ' ')
           echo "  GATE FAILED: Tests did not pass."
@@ -523,7 +571,7 @@ ${BRIEFING}
 
       if [ "$GATE_PASSED" = true ] && [ -n "$LINT_CMD" ]; then
         echo "  Gate: running lint ($LINT_CMD)..."
-        if ! eval "$LINT_CMD" > "${LOG_DIR}/gate-lint-${ITERATION}.log" 2>&1; then
+        if ! gate_check "$LINT_CMD" "${LOG_DIR}/gate-lint-${ITERATION}.log"; then
           GATE_PASSED=false
           FAIL_TAIL=$(tail -5 "${LOG_DIR}/gate-lint-${ITERATION}.log" | tr '\n' ' ')
           echo "  GATE FAILED: Lint did not pass."
