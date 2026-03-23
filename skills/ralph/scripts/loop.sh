@@ -95,7 +95,7 @@ echo ""
 
 if [ "$MODE" = "build" ] && [ ! -f "$PLAN_FILE" ]; then
   echo "Error: No IMPLEMENTATION_PLAN.md found at ${PLAN_FILE}"
-  echo "Run with mode=plan first, or create the plan via /agentic-coding-workflow:write-spec --ralph"
+  echo "Run with mode=plan first, or create the plan via /write-spec --ralph"
   exit 1
 fi
 
@@ -112,7 +112,7 @@ if [ "$MODE" = "build" ] && [ -f "$PLAN_FILE" ]; then
   INTEGRITY_FIXES=0
   while IFS= read -r line; do
     # Extract commit hash from "Completed in <hash>"
-    hash=$(echo "$line" | grep -o 'Completed in [a-f0-9]*' | awk '{print $3}')
+    hash=$(echo "$line" | grep -o 'Completed in [a-f0-9]*' | awk '{print $3}' || true)
     if [ -z "$hash" ]; then
       continue
     fi
@@ -157,6 +157,9 @@ get_current_task() {
 COMMITS_AT_START=$(git rev-list --count HEAD 2>/dev/null || echo "0")
 CIRCUIT_BREAKER_WINDOW=5     # Check every N iterations
 CIRCUIT_BREAKER_MIN_RATIO=30 # Minimum commit% (commits/iterations * 100)
+CONSECUTIVE_REVERTS=0        # Track consecutive reverts across different tasks
+CONSECUTIVE_REVERT_TASKS=""  # Track which tasks were reverted consecutively
+CIRCUIT_BREAKER_SOFT_WARNED=false  # Only warn once per soft break
 
 check_circuit_breaker() {
   local iteration=$1
@@ -175,13 +178,40 @@ check_circuit_breaker() {
   local ratio=$((new_commits * 100 / iteration))
 
   if [ "$ratio" -lt "$CIRCUIT_BREAKER_MIN_RATIO" ]; then
-    echo ""
-    echo "⚡ CIRCUIT BREAKER: Only ${new_commits} commits in ${iteration} iterations (${ratio}% success rate)."
-    echo "   Threshold is ${CIRCUIT_BREAKER_MIN_RATIO}%. Ralph may be spinning."
-    echo "   Stopping to prevent token waste. Check logs and plan for issues."
-    return 1
+    # Hard break: low ratio AND 3+ consecutive reverts on different tasks (systemic failure)
+    if [ "$CONSECUTIVE_REVERTS" -ge 3 ]; then
+      echo ""
+      echo "⚡ HARD CIRCUIT BREAK: ${ratio}% success rate AND ${CONSECUTIVE_REVERTS} consecutive reverts on different tasks."
+      echo "   This indicates a systemic issue, not just a hard task."
+      echo "   Recent revert tasks: ${CONSECUTIVE_REVERT_TASKS}"
+      echo "   Stopping immediately. Review test infrastructure, project setup, or plan quality."
+      return 1
+    fi
+
+    # Soft break: low ratio but might recover — warn in briefing but continue
+    if [ "$CIRCUIT_BREAKER_SOFT_WARNED" = false ]; then
+      echo ""
+      echo "⚠ SOFT CIRCUIT BREAK: Only ${new_commits} commits in ${iteration} iterations (${ratio}% success rate)."
+      echo "   Threshold is ${CIRCUIT_BREAKER_MIN_RATIO}%. Ralph may be struggling."
+      echo "   Continuing — will hard-stop if 3+ consecutive reverts on different tasks occur."
+      CIRCUIT_BREAKER_SOFT_WARNED=true
+      printf "%s\tSOFT_CIRCUIT_BREAK\t-\tratio=%s%%\tLow commit ratio but continuing\n" \
+        "$(date +"%Y-%m-%dT%H:%M:%S")" "$ratio" >> "$JOURNAL_FILE"
+    fi
   fi
   return 0
+}
+
+# Track consecutive reverts for hard circuit breaker
+track_revert() {
+  local task="$1"
+  CONSECUTIVE_REVERTS=$((CONSECUTIVE_REVERTS + 1))
+  CONSECUTIVE_REVERT_TASKS="${CONSECUTIVE_REVERT_TASKS:+${CONSECUTIVE_REVERT_TASKS}, }${task}"
+}
+
+track_success() {
+  CONSECUTIVE_REVERTS=0
+  CONSECUTIVE_REVERT_TASKS=""
 }
 
 # ── Progress dashboard writer ───────────────────────────────────────────
@@ -286,8 +316,10 @@ while :; do
 
   # ── Circuit breaker ─────────────────────────────────────────────────
   if ! check_circuit_breaker "$ITERATION"; then
-    echo "${ITERATION} | $(date +%H:%M:%S) | CIRCUIT_BREAK | low commit ratio" >> "${LOG_DIR}/ralph-iterations.log"
-    write_status "$ITERATION" "${CURRENT_TASK:-unknown}" "CIRCUIT_BREAK"
+    echo "${ITERATION} | $(date +%H:%M:%S) | HARD_CIRCUIT_BREAK | low commit ratio + consecutive reverts" >> "${LOG_DIR}/ralph-iterations.log"
+    printf "%s\tHARD_CIRCUIT_BREAK\t-\treverts=%s\tConsecutive reverts on: %s\n" \
+      "$(date +"%Y-%m-%dT%H:%M:%S")" "$CONSECUTIVE_REVERTS" "$CONSECUTIVE_REVERT_TASKS" >> "$JOURNAL_FILE"
+    write_status "$ITERATION" "${CURRENT_TASK:-unknown}" "HARD_CIRCUIT_BREAK"
     break
   fi
 
@@ -318,6 +350,13 @@ $(cat "$OVERRIDES_FILE")
   # Mid-loop injection: append user steering if present (one-shot, consumed)
   if [ -f "$INJECT_FILE" ]; then
     echo "📋 Injecting mid-loop instructions from .claude/ralph-inject.md"
+    # Audit trail: log injection before consuming
+    INJECTION_LOG="${LOG_DIR}/injections.log"
+    {
+      echo "━━━ Injection at $(date) (iteration ${ITERATION}) ━━━"
+      cat "$INJECT_FILE"
+      echo ""
+    } >> "$INJECTION_LOG"
     PROMPT="${PROMPT}
 
 ---
@@ -433,7 +472,24 @@ ${BRIEFING}
       fi
     fi
 
-    # Gate 2: External test + lint verification (tamper-proof)
+    # Gate 2: Diff size check (prevent sprawling iterations)
+    if [ "$GATE_PASSED" = true ]; then
+      # Default max files, can be overridden via RALPH_MAX_DIFF_FILES in RALPH_OVERRIDES.md
+      MAX_DIFF_FILES="${RALPH_MAX_DIFF_FILES:-20}"
+      if [ -f "$OVERRIDES_FILE" ]; then
+        OVERRIDE_MAX=$(grep 'RALPH_MAX_DIFF_FILES' "$OVERRIDES_FILE" 2>/dev/null | grep -o '[0-9]*' | head -1 || true)
+        [ -n "$OVERRIDE_MAX" ] && MAX_DIFF_FILES="$OVERRIDE_MAX"
+      fi
+      DIFF_FILE_COUNT=$(git diff --name-only "$PRE_COMMIT" HEAD | wc -l | tr -d ' ')
+      if [ "$DIFF_FILE_COUNT" -gt "$MAX_DIFF_FILES" ]; then
+        GATE_PASSED=false
+        echo "REVERT: Diff touches ${DIFF_FILE_COUNT} files (max ${MAX_DIFF_FILES}). Iteration scope too large."
+        printf "%s\tREVERT_SCOPE\t%s\tfiles=%s\tDiff touched %s files (max %s)\n" \
+          "$JOURNAL_TS" "$TASK_LABEL" "$DIFF_FILE_COUNT" "$DIFF_FILE_COUNT" "$MAX_DIFF_FILES" >> "$JOURNAL_FILE"
+      fi
+    fi
+
+    # Gate 3: External test + lint verification (tamper-proof)
     if [ "$GATE_PASSED" = true ]; then
       echo "Running external verification gate..."
 
@@ -452,6 +508,15 @@ ${BRIEFING}
           GATE_PASSED=false
           FAIL_TAIL=$(tail -5 "${LOG_DIR}/gate-test-${ITERATION}.log" | tr '\n' ' ')
           echo "  GATE FAILED: Tests did not pass."
+          # Capture revert reason with actionable error details
+          REVERT_REASON_FILE="${LOG_DIR}/revert-${ITERATION}-reason.txt"
+          {
+            echo "REVERT_TESTS — Iteration ${ITERATION} — $(date)"
+            echo "Task: ${TASK_LABEL}"
+            echo "Command: ${TEST_CMD}"
+            echo "---"
+            tail -30 "${LOG_DIR}/gate-test-${ITERATION}.log"
+          } > "$REVERT_REASON_FILE"
           printf "%s\tREVERT_TESTS\t%s\t-\t%s\n" "$JOURNAL_TS" "$TASK_LABEL" "$FAIL_TAIL" >> "$JOURNAL_FILE"
         fi
       fi
@@ -462,6 +527,15 @@ ${BRIEFING}
           GATE_PASSED=false
           FAIL_TAIL=$(tail -5 "${LOG_DIR}/gate-lint-${ITERATION}.log" | tr '\n' ' ')
           echo "  GATE FAILED: Lint did not pass."
+          # Capture revert reason with actionable error details
+          REVERT_REASON_FILE="${LOG_DIR}/revert-${ITERATION}-reason.txt"
+          {
+            echo "REVERT_LINT — Iteration ${ITERATION} — $(date)"
+            echo "Task: ${TASK_LABEL}"
+            echo "Command: ${LINT_CMD}"
+            echo "---"
+            tail -30 "${LOG_DIR}/gate-lint-${ITERATION}.log"
+          } > "$REVERT_REASON_FILE"
           printf "%s\tREVERT_LINT\t%s\t-\t%s\n" "$JOURNAL_TS" "$TASK_LABEL" "$FAIL_TAIL" >> "$JOURNAL_FILE"
         fi
       fi
@@ -472,10 +546,12 @@ ${BRIEFING}
       echo "KEEP: Iteration ${ITERATION} passed all gates."
       COMMITS_ADDED=$(git rev-list --count "$PRE_COMMIT"..HEAD)
       printf "%s\tKEEP\t%s\tcommits=%s\t%s\n" "$JOURNAL_TS" "$TASK_LABEL" "$COMMITS_ADDED" "$POST_COMMIT" >> "$JOURNAL_FILE"
+      track_success
     else
       echo "REVERT: Rolling back to ${PRE_COMMIT:0:8}..."
       git reset --hard "$PRE_COMMIT"
       ITER_RESULT="reverted"
+      track_revert "$TASK_LABEL"
       # Re-mark task as incomplete if plan was updated during the iteration
       # (The reset already handles this since plan changes are reverted too)
     fi
@@ -554,6 +630,37 @@ if [ -f "$PLAN_FILE" ]; then
   echo ""
   echo "Plan status:"
   grep -E "^## Status:|^\- \[[ x]\]" "$PLAN_FILE" | head -20
+fi
+
+# ── Auto-harvest on completion ──────────────────────────────────────────
+# Run harvest automatically when plan is complete or circuit breaker fired.
+# Disable with AUTO_HARVEST=false environment variable.
+
+AUTO_HARVEST="${AUTO_HARVEST:-true}"
+if [ "$AUTO_HARVEST" = "true" ] && [ "$MODE" = "build" ] && [ -z "$ONCE_FLAG" ] && [ -z "$WORKER_ID" ]; then
+  SHOULD_HARVEST=false
+  if [ -f "$PLAN_FILE" ] && grep -q "## Status: COMPLETE" "$PLAN_FILE"; then
+    SHOULD_HARVEST=true
+    echo ""
+    echo "━━━ Auto-harvesting (plan complete) ━━━"
+  elif [ "$CONSECUTIVE_REVERTS" -ge 3 ] || grep -q 'CIRCUIT_BREAK\|STRUGGLE_STOP' "${LOG_DIR}/ralph-iterations.log" 2>/dev/null; then
+    SHOULD_HARVEST=true
+    echo ""
+    echo "━━━ Auto-harvesting (loop stopped early — capturing failure patterns) ━━━"
+  fi
+
+  if [ "$SHOULD_HARVEST" = true ]; then
+    "$0" "$SPEC_DIR" harvest 1 || echo "Warning: auto-harvest failed (non-fatal)"
+    echo "Harvest complete. Check .claude/ralph-harvest-*.md and RALPH_OVERRIDES.md"
+  fi
+fi
+
+# ── Generate completion summary ─────────────────────────────────────────
+
+if [ "$MODE" = "build" ] && [ -z "$ONCE_FLAG" ] && [ -z "$WORKER_ID" ]; then
+  if [ -x "${SCRIPT_DIR}/generate-summary.sh" ]; then
+    "${SCRIPT_DIR}/generate-summary.sh" "$SPEC_DIR" "$JOURNAL_FILE" "$ITERATION" "$COMMITS_AT_START" "$START_TIME" 2>/dev/null || true
+  fi
 fi
 
 # Clean up ephemeral progress file

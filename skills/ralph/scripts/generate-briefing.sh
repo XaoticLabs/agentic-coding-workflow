@@ -44,6 +44,21 @@ if [ -f "$JOURNAL_FILE" ] && [ "$(wc -l < "$JOURNAL_FILE")" -gt 1 ]; then
   if [ -n "$RECENT_FAILURES" ]; then
     echo ""
     echo "**Warning:** Recent failures detected. Review the notes above before retrying the same approach."
+
+    # Include actual error output from revert reason files
+    LOG_DIR=$(dirname "$JOURNAL_FILE")/ralph-logs
+    if [ -d "$LOG_DIR" ]; then
+      REASON_FILES=$(find "$LOG_DIR" -name 'revert-*-reason.txt' -type f 2>/dev/null | sort -r | head -3)
+      if [ -n "$REASON_FILES" ]; then
+        echo ""
+        echo "**Recent revert details (actual errors):**"
+        for rf in $REASON_FILES; do
+          echo '```'
+          head -15 "$rf"
+          echo '```'
+        done
+      fi
+    fi
   fi
 else
   echo "(no journal entries yet)"
@@ -78,6 +93,17 @@ else
   echo "(no recent commits)"
 fi
 echo ""
+
+# ── Trend metrics (if enough data) ─────────────────────────────────
+
+SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+TOTAL_JOURNAL_LINES=$(($(wc -l < "$JOURNAL_FILE") - 1))
+if [ "$TOTAL_JOURNAL_LINES" -ge 6 ] && [ -x "${SCRIPT_DIR}/generate-metrics.sh" ]; then
+  echo "### Trend Analysis"
+  # Only include failure patterns and timeline — skip full task table to save tokens
+  "${SCRIPT_DIR}/generate-metrics.sh" "$JOURNAL_FILE" 2>/dev/null | awk '/^### Failure Patterns/,0' || true
+  echo ""
+fi
 
 # ── Iteration stats ───────────────────────────────────────────────
 

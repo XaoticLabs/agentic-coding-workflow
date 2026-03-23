@@ -41,6 +41,7 @@ STOP_SENTINEL="${PROJECT_DIR}/.claude/ralph-stop"
 STATUS_FILE="${PROJECT_DIR}/.claude/ralph-status.md"
 META_FILE="${PROJECT_DIR}/.claude/ralph-parallel-meta.json"
 POLL_INTERVAL=30
+WORKER_TIMEOUT="${RALPH_WORKER_TIMEOUT:-900}"  # 15 minutes default, in seconds
 
 # ── Phase banner ─────────────────────────────────────────────────────────
 
@@ -187,7 +188,20 @@ echo ""
 
 # ── Phase 5: Poll for completion ────────────────────────────────────────
 
-echo "━━━ Waiting for all workers to complete ━━━"
+echo "━━━ Waiting for all workers to complete (timeout: ${WORKER_TIMEOUT}s per worker) ━━━"
+
+# Initialize per-worker health tracking
+declare -A WORKER_LAST_ACTIVITY
+declare -A WORKER_KILLED
+for ((i=0; i<NUM_WORKERS; i++)); do
+  WORKER_LAST_ACTIVITY[$i]=$(date +%s)
+  WORKER_KILLED[$i]=false
+done
+
+get_worker_commit_count() {
+  local wt_path="$1"
+  git -C "$wt_path" rev-list --count HEAD 2>/dev/null || echo "0"
+}
 
 while :; do
   # Check stop sentinel
@@ -199,13 +213,59 @@ while :; do
     exit 0
   fi
 
-  # Count completed workers
+  # Count completed workers and check health
   DONE_COUNT=0
+  NOW=$(date +%s)
   for ((i=0; i<NUM_WORKERS; i++)); do
     WORKTREE_PATH="${WORKTREE_BASE}/ralph-${SLUG}-worker-${i}"
     MARKER="${WORKTREE_PATH}/.claude/ralph-worker-done-worker-${i}"
+
     if [ -f "$MARKER" ]; then
       DONE_COUNT=$((DONE_COUNT + 1))
+      continue
+    fi
+
+    # Skip already-killed workers
+    if [ "${WORKER_KILLED[$i]}" = true ]; then
+      DONE_COUNT=$((DONE_COUNT + 1))  # Count as done (failed)
+      continue
+    fi
+
+    # Health check: detect activity via git commits or log file changes
+    CURRENT_COMMITS=$(get_worker_commit_count "$WORKTREE_PATH")
+    ITER_LOG="${WORKTREE_PATH}/.claude/ralph-logs/ralph-iterations.log"
+    LOG_MOD=0
+    if [ -f "$ITER_LOG" ]; then
+      LOG_MOD=$(stat -f %m "$ITER_LOG" 2>/dev/null || stat -c %Y "$ITER_LOG" 2>/dev/null || echo "0")
+    fi
+
+    # Update last activity if we see changes
+    LAST_KNOWN="${WORKER_LAST_ACTIVITY[$i]:-0}"
+    if [ "$LOG_MOD" -gt "$LAST_KNOWN" ]; then
+      WORKER_LAST_ACTIVITY[$i]=$LOG_MOD
+    fi
+
+    # Check for timeout
+    IDLE_TIME=$((NOW - ${WORKER_LAST_ACTIVITY[$i]}))
+    if [ "$IDLE_TIME" -gt "$WORKER_TIMEOUT" ]; then
+      echo "⚠ WORKER TIMEOUT: worker-${i} idle for ${IDLE_TIME}s (limit: ${WORKER_TIMEOUT}s). Killing."
+
+      # Kill the specific tmux pane
+      tmux send-keys -t "${SESSION_NAME}" C-c 2>/dev/null || true
+
+      # Write a failure marker
+      mkdir -p "${WORKTREE_PATH}/.claude"
+      echo "{\"worker\": \"worker-${i}\", \"status\": \"timeout\", \"idle_seconds\": ${IDLE_TIME}, \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+        > "${WORKTREE_PATH}/.claude/ralph-worker-done-worker-${i}"
+
+      # Log to the main project journal
+      MAIN_JOURNAL="${PROJECT_DIR}/.claude/ralph-journal.tsv"
+      if [ -f "$MAIN_JOURNAL" ]; then
+        printf "%s\tWORKER_TIMEOUT\tworker-%s\tidle=%ss\tWorker killed after exceeding timeout\n" \
+          "$(date +"%Y-%m-%dT%H:%M:%S")" "$i" "$IDLE_TIME" >> "$MAIN_JOURNAL"
+      fi
+
+      WORKER_KILLED[$i]=true
     fi
   done
 

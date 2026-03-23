@@ -136,3 +136,5 @@ You are done. Exit cleanly. Do NOT pick up another task — the outer loop will 
 - **Must update plan.** The plan is the shared state between iterations.
 - **Must exit.** Don't loop internally — the bash loop handles iteration.
 - **External gate.** After you exit, an external gate runs tests and lint independently. If they fail, your entire iteration is reverted — your commits, your plan updates, everything. The branch tip always represents validated progress. Do not try to game this by modifying test or lint configuration.
+- **Diff size gate.** If your iteration touches more than 20 files (configurable), it will be reverted regardless of test/lint status. Keep changes focused — one task, minimal files. If the task legitimately requires many files, implement it incrementally across subtasks.
+- **Revert details are preserved.** When your iteration is reverted, the actual error output is saved. The next iteration's briefing will include the specific errors, so you can avoid repeating the same mistake.

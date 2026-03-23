@@ -21,6 +21,9 @@ Manages autonomous Claude coding loops. Not user-invocable directly — invoked 
 |--------|---------|
 | `scripts/loop.sh` | Outer bash loop driving iterations |
 | `scripts/generate-agents-md.sh` | Auto-generates `.claude/AGENTS.md` project guide |
+| `scripts/generate-briefing.sh` | Per-iteration context briefing with revert details and trends |
+| `scripts/generate-summary.sh` | Completion summary with metrics and PR description |
+| `scripts/generate-metrics.sh` | Trend analysis from journal: failure rates, hot files, patterns |
 | `scripts/partition-tasks.sh` | Partitions tasks with file-affinity assignment for parallel mode |
 | `scripts/orchestrate-parallel.sh` | Full parallel lifecycle: launch, poll, merge, reconcile, cleanup |
 | `scripts/merge-workers.sh` | Sequential merge of worker branches with conflict resolution |
@@ -58,9 +61,11 @@ Manages autonomous Claude coding loops. Not user-invocable directly — invoked 
 
 ### Harvest Mode
 
-1. Run after completion: `scripts/loop.sh <spec-dir> harvest 1`
-2. Analyzes git history, learnings, and diffs to extract reusable patterns
-3. Updates AGENTS.md with discovered conventions
+1. **Auto-runs on completion** — harvest runs automatically when the plan reaches COMPLETE or a circuit breaker fires. Disable with `AUTO_HARVEST=false`.
+2. Can also be run manually: `scripts/loop.sh <spec-dir> harvest 1`
+3. Analyzes git history, learnings, and diffs to extract reusable patterns
+4. Updates AGENTS.md with discovered conventions
+5. Writes/updates RALPH_OVERRIDES.md with dated rules (stale rules >30 days are pruned on next harvest)
 
 ### Parallel Mode (fully automatic lifecycle)
 
@@ -91,7 +96,8 @@ Manages autonomous Claude coding loops. Not user-invocable directly — invoked 
 - **Plan complete:** When all tasks marked `[x]` and status is COMPLETE
 - **Max iterations:** Configurable safety limit (default 50)
 - **Struggle detection:** Auto-stops after 3 failed attempts on the same task
-- **Circuit breaker:** Auto-stops if commit/iteration ratio drops below 30%
+- **Circuit breaker (tiered):** Soft warning at <30% commit ratio; hard stop if also 3+ consecutive reverts on different tasks
+- **Diff size gate:** Reverts iterations that touch more than 20 files (configurable via RALPH_MAX_DIFF_FILES)
 
 ## Mid-Loop Steering
 
@@ -108,5 +114,8 @@ All Ralph artifacts live under `.claude/`:
 - `ralph-inject.md` — mid-loop steering file (consumed and deleted)
 - `ralph-harvest-<slug>.md` — pattern extraction report (from harvest mode)
 - `ralph-stop` — stop sentinel (touch to stop)
+- `ralph-summary-<slug>.md` — completion summary with metrics and PR description (auto-generated)
+- `ralph-logs/revert-*-reason.txt` — actual error output from gate failures
+- `ralph-logs/injections.log` — audit trail of mid-loop steering injections
 - `ralph-parallel-meta.json` — parallel run metadata (slug, workers, target branch)
 - `ralph-worker-done-*` — per-worker completion markers (in each worktree)
