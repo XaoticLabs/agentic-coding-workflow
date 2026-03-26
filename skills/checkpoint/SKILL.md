@@ -1,160 +1,176 @@
 ---
 name: checkpoint
 description: |
-  Save the current conversation state as a checkpoint. Use when users want to save their
-  progress, create a restore point before risky operations, or mark a milestone in their
-  work session. Keywords: checkpoint, save, snapshot, restore point, save progress,
-  save state, bookmark, mark progress, save session, capture state.
+  Manage conversation checkpoints — save, list, restore, fork, and rewind session state.
+  Use for: checkpoint, save state, snapshot, restore point, save progress, save session,
+  capture state, bookmark, mark progress, list checkpoints, show checkpoints, view saves,
+  saved states, checkpoint history, restore checkpoint, load checkpoint, recover state,
+  return to checkpoint, go back to checkpoint, load saved state, rewind, undo, rollback,
+  step back, previous state, earlier state, fork session, branch session, experiment,
+  try alternative, parallel session, split session, safe experimentation.
+  Subcommands: /agentic-coding-workflow:checkpoint (save), /agentic-coding-workflow:checkpoint list, /agentic-coding-workflow:checkpoint restore <name>,
+  /agentic-coding-workflow:checkpoint fork, /agentic-coding-workflow:checkpoint rewind <n>
 allowed-tools: Bash, Read, Write, Grep, Glob
+effort: low
 user-invocable: true
+argument-hint: "[list | restore <name> | fork | rewind <n> | <name>]"
 ---
 
-# Checkpoint - Save Conversation State
+# Checkpoint Manager
 
-Save the current conversation state with context for later restoration or reference.
+Save, list, restore, fork, and rewind conversation checkpoints. Checkpoints capture git state, working directory, and context notes for later reference.
 
 ## Usage
 
 ```
-/checkpoint [name]
+/agentic-coding-workflow:checkpoint [name]              — Save a checkpoint (auto-names if omitted)
+/agentic-coding-workflow:checkpoint list                — List all saved checkpoints
+/agentic-coding-workflow:checkpoint restore <name>      — Restore a specific checkpoint
+/agentic-coding-workflow:checkpoint fork                — Create a fork point for experimentation
+/agentic-coding-workflow:checkpoint rewind <n>          — Go back N checkpoints
 ```
 
-- **name** (optional): A descriptive name for this checkpoint
-  - If not provided, auto-generate a name based on recent work context
-  - Format: lowercase, hyphenated, 3-5 words (e.g., "auth-refactor-started")
+Parse `$ARGUMENTS` to determine the subcommand. If the first word is `list`, `restore`, `fork`, or `rewind`, route to that subcommand. Otherwise treat the entire argument as a checkpoint name (or auto-generate one).
 
-## What Gets Saved
+## Subcommand: Save (default)
 
-### Captured State
-- Git SHA (code state at checkpoint time)
-- Git branch and uncommitted file list
-- Working directory path
-- User-provided context notes
-- Timestamp and checkpoint metadata
-- Summary of recent work focus
-
-### Limitations (Cannot Capture)
-- Actual conversation message history (server-side)
-- Claude's internal context window
-- Any ephemeral runtime state
-- MCP server states
-
-## Execution Steps
-
-### Step 1: Initialize Checkpoint Directory
+Create a checkpoint of the current session state.
 
 ```bash
-# Ensure .claude/checkpoints exists
-mkdir -p .claude/checkpoints
+mkdir -p .claude/agentic-coding-workflow:checkpoints
 ```
 
-### Step 2: Gather Context for Auto-naming (if no name provided)
+If no name provided, auto-generate one from recent work context:
+- `debugging-{component}`, `refactored-{module}`, `added-{feature}`, `pre-{operation}`, `fixed-{issue}`
 
-Analyze the current conversation to generate a meaningful name:
-
-1. Look at the most recent work focus (files modified, topics discussed)
-2. Check the current todo list for active tasks
-3. Review recent git changes
-
-Generate a name following these patterns:
-- `debugging-{component}` - if fixing bugs
-- `refactored-{module}` - if restructuring code
-- `added-{feature}` - if implementing new functionality
-- `pre-{operation}` - if preparing for something
-- `fixed-{issue}` - if resolving a specific problem
-- `updated-{target}` - if modifying existing code
-
-### Step 3: Create the Checkpoint
-
-Run the checkpoint manager script:
+Create the checkpoint:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/skills/checkpoint/scripts/checkpoint-manager.sh create \
     "<checkpoint-name>" \
-    "<summary-of-recent-work>" \
-    "<context-notes>" \
-    false
+    "<1-2 sentence summary of recent work>" \
+    "<context notes>" \
+    <true|false>  # true if name was auto-generated
 ```
 
-Parameters:
-- **checkpoint-name**: The name (provided or auto-generated)
-- **summary**: 1-2 sentence summary of what was being worked on
-- **context-notes**: Any additional context about the current state
-- **auto**: Set to `true` if name was auto-generated
+Report: checkpoint ID, name, git state, how to list (`/agentic-coding-workflow:checkpoint list`) and restore (`/agentic-coding-workflow:checkpoint restore <name>`).
 
-### Step 4: Confirm to User
+## Subcommand: List
 
-Report back:
-- Checkpoint ID and name
-- What was captured (git state, working directory)
-- How to list checkpoints: `/checkpoints`
-- How to restore: `/restore <name>`
+```bash
+${CLAUDE_PLUGIN_ROOT}/skills/checkpoint/scripts/checkpoint-manager.sh list
+```
 
-## Auto-naming Examples
+Format as a table sorted by timestamp (newest first):
 
-| Recent Activity | Generated Name |
-|----------------|----------------|
-| Debugging authentication flow | `debugging-auth-flow` |
-| Added API endpoint tests | `added-api-tests` |
-| Refactoring database queries | `refactored-db-queries` |
-| Fixed null pointer in parser | `fixed-parser-null-check` |
-| Setting up Redis caching | `added-redis-caching` |
-| Pre-migration preparation | `pre-database-migration` |
-| Code review changes | `applied-review-feedback` |
+```
+=== Checkpoints (N total) ===
 
-## Storage Location
+[YYYY-MM-DD] checkpoint-name
+  ID: ckpt-YYYYMMDD-HHMMSS-xxxx
+  Summary: Brief description of what was being worked on
+```
+
+If no checkpoints exist, show: "No checkpoints found. Create one with `/agentic-coding-workflow:checkpoint [name]`"
+
+## Subcommand: Restore
+
+Requires a checkpoint name or ID as argument.
+
+1. **Find checkpoint:**
+   ```bash
+   ${CLAUDE_PLUGIN_ROOT}/skills/checkpoint/scripts/checkpoint-manager.sh get "<name>"
+   ```
+   If not found, run `list` and show available checkpoints.
+
+2. **Show details:**
+   ```bash
+   ${CLAUDE_PLUGIN_ROOT}/skills/checkpoint/scripts/checkpoint-manager.sh show "<name>"
+   ```
+
+3. **Auto-checkpoint current state** (safety backup):
+   ```bash
+   ${CLAUDE_PLUGIN_ROOT}/skills/checkpoint/scripts/checkpoint-manager.sh create \
+       "pre-restore-$(date +%H%M%S)" \
+       "Auto-checkpoint before restoring to <name>" \
+       "Safety backup before /agentic-coding-workflow:checkpoint restore" \
+       true
+   ```
+
+4. **Load context** from checkpoint files:
+   ```bash
+   cat .claude/checkpoints/<checkpoint-id>/metadata.json
+   cat .claude/checkpoints/<checkpoint-id>/context.json
+   ```
+
+5. **Offer options** if git state differs:
+   - **Context only** (default) — load checkpoint context, keep current code
+   - **View diff** — show changes since checkpoint
+   - **Checkout code** — restore to checkpoint commit
+   - **New branch** — create branch from checkpoint commit
+
+## Subcommand: Fork
+
+Create a fork point for safe experimentation.
+
+1. **Create fork checkpoint:**
+   ```bash
+   fork_name="fork-point-$(date +%Y%m%d-%H%M%S)"
+   ${CLAUDE_PLUGIN_ROOT}/skills/checkpoint/scripts/checkpoint-manager.sh create \
+       "$fork_name" \
+       "Fork point for experimentation" \
+       "Created via /agentic-coding-workflow:checkpoint fork" \
+       true
+   ```
+
+2. **Record fork metadata:**
+   ```bash
+   session_id="fork-$(openssl rand -hex 4)"
+   ${CLAUDE_PLUGIN_ROOT}/skills/checkpoint/scripts/checkpoint-manager.sh fork \
+       "$fork_name" "$session_id" "$checkpoint_id"
+   ```
+
+3. **Present options:**
+   - Continue experimenting in current session (original state is saved)
+   - Abandon experiment: `/agentic-coding-workflow:checkpoint restore <fork-name>`
+   - Parallel exploration: new terminal → `claude` → `/agentic-coding-workflow:checkpoint restore <fork-name>`
+   - Git tip: `git checkout -b experiment/your-idea`
+
+## Subcommand: Rewind
+
+Go back N checkpoints. Argument must be a positive integer.
+
+**Important:** This cannot literally rewind conversation history. It loads context from an earlier checkpoint and optionally reverts git state.
+
+1. **Auto-checkpoint current state** (same as restore)
+
+2. **List checkpoints and select the Nth most recent:**
+   ```bash
+   ${CLAUDE_PLUGIN_ROOT}/skills/checkpoint/scripts/checkpoint-manager.sh list
+   ```
+
+3. **Show the target checkpoint** details and offer the same options as restore (context only, view diff, checkout code, new branch).
+
+If N exceeds checkpoint count, show available checkpoints and ask user to pick one.
+
+## Storage
 
 ```
 .claude/checkpoints/
 ├── index.json                    # Checkpoint registry
 └── ckpt-YYYYMMDD-HHMMSS-xxxx/   # Individual checkpoint
-    ├── metadata.json            # Name, timestamp, summary
-    ├── context.json             # Working dir, git info, notes
-    └── state.json               # Reserved for future state capture
+    ├── metadata.json             # Name, timestamp, summary
+    ├── context.json              # Working dir, git info, notes
+    └── state.json                # Reserved for future state capture
 ```
-
-## Example Interaction
-
-**User:** `/checkpoint`
-
-**Claude:** I'll create a checkpoint of the current session state.
-
-Based on our recent work (implementing user authentication, modifying `src/auth/login.ts` and `src/middleware/session.ts`), I'll name this checkpoint `added-session-auth`.
-
-*Creates checkpoint...*
-
-**Checkpoint created successfully:**
-- **Name:** `added-session-auth`
-- **ID:** `ckpt-20250111-143022-a1b2`
-- **Git state:** Branch `feature/auth` at commit `abc1234` (3 uncommitted files)
-- **Working directory:** `/Users/dev/myproject`
-
-To view all checkpoints: `/checkpoints`
-To restore this checkpoint: `/restore added-session-auth`
-
----
-
-**User:** `/checkpoint pre-refactor-cleanup`
-
-**Claude:** Creating checkpoint with name `pre-refactor-cleanup`...
-
-*Creates checkpoint...*
-
-**Checkpoint created successfully:**
-- **Name:** `pre-refactor-cleanup`
-- **ID:** `ckpt-20250111-143522-c3d4`
-
-## Best Practices
-
-1. **Create checkpoints before risky operations** - refactoring, migrations, major changes
-2. **Use descriptive names** when manually naming checkpoints
-3. **Include context** about why you're checkpointing when asked
-4. **Regular checkpoints** during long sessions help track progress
-5. **Clean up old checkpoints** periodically with the manager script
 
 ## Error Handling
 
-- If `.claude/` directory doesn't exist, create it
-- If checkpoint name already exists, append a unique number
-- If git is not available, proceed without git state (warn user)
-- If jq is not installed, provide manual fallback instructions
+| Error | Resolution |
+|-------|------------|
+| No `.claude/checkpoints/` | Create it automatically |
+| Checkpoint not found | Show available checkpoints |
+| Name already exists | Append unique number |
+| Git not available | Proceed without git state, warn user |
+| Corrupted checkpoint | Attempt to read individual files, report what's missing |
+| Uncommitted changes on restore | Warn user, suggest stash or commit first |

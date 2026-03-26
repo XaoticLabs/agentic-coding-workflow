@@ -4,6 +4,7 @@ allowed-tools:
   - Glob
   - Bash
   - AskUserQuestion
+effort: low
 ---
 
 # Spawn Primary Claude Instance

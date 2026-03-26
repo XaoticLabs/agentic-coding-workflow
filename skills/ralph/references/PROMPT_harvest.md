@@ -59,7 +59,7 @@ Code, utilities, or patterns Ralph created that could be extracted into shared l
 
 ## Step 6: Write the Harvest Report
 
-Write `.claude/ralph-harvest-<slug>.md` with your findings, structured by the categories above.
+Write the harvest report to `.claude/ralph-logs/ralph-harvest-<slug>.md`. Do NOT write it to the project root. Structure it by the categories above.
 
 ## Step 7: Update AGENTS.md
 
@@ -67,7 +67,7 @@ If you identified conventions that should guide future development, append them 
 
 ## Step 8: Write RALPH_OVERRIDES.md (Self-Improvement)
 
-This is the most important step. Write (or update) `RALPH_OVERRIDES.md` in the spec directory. This file gets injected into every future Ralph iteration on this project — it is the mechanism by which Ralph improves across runs.
+This is the most important step. Write (or update) `RALPH_OVERRIDES.md` **inside the spec directory** (i.e., the same directory as `IMPLEMENTATION_PLAN.md` — for example, `.claude/specs/<slug>/RALPH_OVERRIDES.md`). Do NOT write it to the project root. This file gets injected into every future Ralph iteration on this project — it is the mechanism by which Ralph improves across runs.
 
 **What goes in overrides:**
 - Project-specific rules that the base prompt doesn't know (e.g., "Always run `mix ecto.migrate` before tests in this project")

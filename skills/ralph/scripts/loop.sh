@@ -6,10 +6,8 @@
 #   spec-dir:       Path to the spec directory containing IMPLEMENTATION_PLAN.md
 #   mode:           "build" (default), "plan", or "harvest"
 #   max-iterations: Maximum iterations before stopping (default: 50)
-#   --push:         Push to remote after each commit
 #   --once:         Run a single iteration then stop (HITL mode)
 #   --clean-room:   Skip codebase search (greenfield mode)
-#   --pr:           Create/update a draft PR after first commit
 #   --time-budget:  Max seconds per iteration (default: 600, 0 = no limit)
 
 set -euo pipefail
@@ -17,19 +15,15 @@ set -euo pipefail
 SPEC_DIR="${1:?Usage: loop.sh <spec-dir> [mode] [max-iterations] [flags...]}"
 MODE="${2:-build}"
 MAX_ITERATIONS="${3:-50}"
-PUSH_FLAG=""
 ONCE_FLAG=""
 CLEAN_ROOM_FLAG=""
-PR_FLAG=""
 TIME_BUDGET="600"  # 10 minutes default, 0 = no limit
 
 # Check for flags in any position
 for arg in "$@"; do
   case "$arg" in
-    --push)       PUSH_FLAG="1" ;;
     --once)       ONCE_FLAG="1" ;;
     --clean-room) CLEAN_ROOM_FLAG="1" ;;
-    --pr)         PR_FLAG="1" ;;
     --time-budget=*) TIME_BUDGET="${arg#--time-budget=}" ;;
   esac
 done
@@ -78,10 +72,9 @@ echo "║  Mode:       ${MODE}                                "
 echo "║  Spec dir:   ${SPEC_DIR}                            "
 echo "║  Max iters:  ${MAX_ITERATIONS}                      "
 echo "║  Time budget: $( [ "$TIME_BUDGET" = "0" ] && echo "unlimited" || echo "${TIME_BUDGET}s" )"
-echo "║  Push:       ${PUSH_FLAG:-no}                       "
 echo "║  Once:       ${ONCE_FLAG:-no}                       "
 echo "║  Clean-room: ${CLEAN_ROOM_FLAG:-no}                 "
-echo "║  PR:         ${PR_FLAG:-no}                         "
+echo "║  Worktree:  auto (build/reconcile modes)              "
 echo "║  Protected:  $( [ -f "$READONLY_FILE" ] && echo "yes ($(wc -l < "$READONLY_FILE") patterns)" || echo "no" )"
 echo "║  Overrides:  $( [ -f "$OVERRIDES_FILE" ] && echo "yes ($(wc -l < "$OVERRIDES_FILE") lines)" || echo "no" )"
 echo "║                                                     ║"
@@ -137,6 +130,75 @@ if [ "$MODE" = "build" ] && [ -f "$PLAN_FILE" ]; then
     echo "  Fixed ${INTEGRITY_FIXES} orphaned task(s). Plan integrity restored."
     echo ""
   fi
+fi
+
+# ── Worktree isolation (single-track build mode) ────────────────────────
+# Always run build mode in a worktree for branch isolation.
+# Skip if: parallel worker (already has worktree), or plan/harvest mode (read-only).
+
+USING_WORKTREE=false
+MAIN_PROJECT_DIR="$PROJECT_DIR"
+MAIN_STOP_SENTINEL="$STOP_SENTINEL"
+
+if [ -z "${RALPH_WORKER_ID:-}" ] && [[ "$MODE" == "build" || "$MODE" == "reconcile" ]]; then
+  SLUG=$(basename "$SPEC_DIR")
+  REPO_ROOT=$(git rev-parse --show-toplevel)
+  WORKTREE_BRANCH="ralph/${SLUG}"
+  WORKTREE_BASE="${REPO_ROOT}/.claude/worktrees"
+  WORKTREE_PATH="${WORKTREE_BASE}/ralph-${SLUG}"
+
+  # Ensure .claude/worktrees/ is gitignored
+  if ! grep -q '\.claude/worktrees/' "${REPO_ROOT}/.gitignore" 2>/dev/null; then
+    echo -e '\n# Git worktrees (parallel branch work)\n.claude/worktrees/' >> "${REPO_ROOT}/.gitignore"
+  fi
+
+  # Remove stale worktree if it exists
+  if [ -d "$WORKTREE_PATH" ]; then
+    echo "Removing stale worktree: ${WORKTREE_PATH}"
+    git worktree remove --force "$WORKTREE_PATH" 2>/dev/null || rm -rf "$WORKTREE_PATH"
+  fi
+
+  # Remove stale branch if it exists
+  if git show-ref --verify --quiet "refs/heads/$WORKTREE_BRANCH"; then
+    git branch -D "$WORKTREE_BRANCH" 2>/dev/null || true
+  fi
+
+  mkdir -p "$WORKTREE_BASE"
+  git worktree add -b "$WORKTREE_BRANCH" "$WORKTREE_PATH"
+  echo "Created worktree: ${WORKTREE_PATH} (branch: ${WORKTREE_BRANCH})"
+
+  # Copy spec directory and supporting files into worktree
+  mkdir -p "${WORKTREE_PATH}/.claude/specs/"
+  cp -r "$SPEC_DIR" "${WORKTREE_PATH}/.claude/specs/${SLUG}/"
+  mkdir -p "${WORKTREE_PATH}/.claude/ralph-logs"
+  [ -f "${PROJECT_DIR}/.claude/AGENTS.md" ] && cp "${PROJECT_DIR}/.claude/AGENTS.md" "${WORKTREE_PATH}/.claude/"
+
+  # Switch into worktree and re-point all path variables
+  cd "$WORKTREE_PATH"
+  PROJECT_DIR="$WORKTREE_PATH"
+  SPEC_DIR=".claude/specs/${SLUG}"
+  PLAN_FILE="${SPEC_DIR}/IMPLEMENTATION_PLAN.md"
+  LOG_DIR="${PROJECT_DIR}/.claude/ralph-logs"
+  STOP_SENTINEL="${PROJECT_DIR}/.claude/ralph-stop"
+  STATUS_FILE="${PROJECT_DIR}/.claude/ralph-status.md"
+  INJECT_FILE="${PROJECT_DIR}/.claude/ralph-inject.md"
+  PROGRESS_FILE="${PROJECT_DIR}/.claude/ralph-progress.md"
+  JOURNAL_FILE="${PROJECT_DIR}/.claude/ralph-journal.tsv"
+  READONLY_FILE="${SPEC_DIR}/RALPH_READONLY"
+  OVERRIDES_FILE="${SPEC_DIR}/RALPH_OVERRIDES.md"
+
+  # Re-initialize journal in worktree
+  if [ ! -f "$JOURNAL_FILE" ]; then
+    printf "timestamp\toutcome\ttask\tmetric\tnotes\n" > "$JOURNAL_FILE"
+  fi
+
+  USING_WORKTREE=true
+
+  echo ""
+  echo "  Worktree: ${WORKTREE_PATH}"
+  echo "  Branch:   ${WORKTREE_BRANCH}"
+  echo "  ORC will auto-discover this worktree."
+  echo ""
 fi
 
 # ── Struggle detection helpers ──────────────────────────────────────────
@@ -272,10 +334,10 @@ while :; do
 
   echo "━━━ Iteration ${ITERATION}/${MAX_ITERATIONS} ━━━ $(date) ━━━"
 
-  # Check stop sentinel
-  if [ -f "$STOP_SENTINEL" ]; then
+  # Check stop sentinel (check main repo too when running in a worktree)
+  if [ -f "$STOP_SENTINEL" ] || [ -f "$MAIN_STOP_SENTINEL" ]; then
     echo "Stop sentinel found. Exiting gracefully."
-    rm -f "$STOP_SENTINEL"
+    rm -f "$STOP_SENTINEL" "$MAIN_STOP_SENTINEL" 2>/dev/null || true
     break
   fi
 
@@ -625,29 +687,6 @@ ${BRIEFING}
   # Update status dashboard
   write_status "$ITERATION" "${CURRENT_TASK:-plan}" "$ITER_RESULT"
 
-  # Push if requested (only on successful iterations)
-  if [ -n "$PUSH_FLAG" ] && [ "$ITER_RESULT" = "success" ]; then
-    git push 2>/dev/null || echo "Push failed (non-fatal)"
-  fi
-
-  # Auto-create/update draft PR if --pr flag
-  if [ -n "$PR_FLAG" ] && [ -n "$PUSH_FLAG" ]; then
-    if [ "$ITERATION" -eq 1 ]; then
-      # Create draft PR on first iteration
-      BRANCH=$(git branch --show-current)
-      if [ "$BRANCH" != "main" ] && [ "$BRANCH" != "master" ]; then
-        echo "Creating draft PR..."
-        gh pr create --draft --title "Ralph: $(basename "$SPEC_DIR")" \
-          --body "Autonomous implementation via Ralph loop.
-
-Spec: \`${SPEC_DIR}\`
-Mode: ${MODE}
-
-_This PR is updated automatically by the Ralph loop._" 2>/dev/null || echo "PR creation failed (may already exist)"
-      fi
-    fi
-  fi
-
   # --once mode: exit after single iteration
   if [ -n "$ONCE_FLAG" ]; then
     echo ""
@@ -672,6 +711,13 @@ echo ""
 echo "━━━ Ralph loop finished after ${ITERATION} iterations ━━━"
 echo "Logs: ${LOG_DIR}/"
 echo "Status: ${STATUS_FILE}"
+if [ "$USING_WORKTREE" = true ]; then
+  echo ""
+  echo "Worktree: ${WORKTREE_PATH}"
+  echo "Branch:   ${WORKTREE_BRANCH}"
+  echo "Merge with: git merge ${WORKTREE_BRANCH}"
+  echo "Or use ORC to review and merge."
+fi
 
 # Show final plan status
 if [ -f "$PLAN_FILE" ]; then
@@ -699,7 +745,7 @@ if [ "$AUTO_HARVEST" = "true" ] && [ "$MODE" = "build" ] && [ -z "$ONCE_FLAG" ] 
 
   if [ "$SHOULD_HARVEST" = true ]; then
     "$0" "$SPEC_DIR" harvest 1 || echo "Warning: auto-harvest failed (non-fatal)"
-    echo "Harvest complete. Check .claude/ralph-harvest-*.md and RALPH_OVERRIDES.md"
+    echo "Harvest complete. Check .claude/ralph-logs/ralph-harvest-*.md and specs/<slug>/RALPH_OVERRIDES.md"
   fi
 fi
 

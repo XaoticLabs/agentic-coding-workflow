@@ -52,6 +52,28 @@ CRITICAL_PATHS = [
     os.path.expanduser('~'),
 ]
 
+# Dangerous git patterns
+DANGEROUS_GIT_PATTERNS = [
+    # Force push to main/master
+    (r'git\s+push\s+.*--force.*\b(main|master)\b', "Force push to main/master"),
+    (r'git\s+push\s+-f\s+.*\b(main|master)\b', "Force push to main/master"),
+    (r'git\s+push\s+.*\b(main|master)\b.*--force', "Force push to main/master"),
+    (r'git\s+push\s+.*\b(main|master)\b.*-f\b', "Force push to main/master"),
+
+    # Discard all local changes
+    (r'git\s+checkout\s+\.(\s|$)', "Discard all uncommitted changes (git checkout .)"),
+    (r'git\s+restore\s+\.(\s|$)', "Discard all uncommitted changes (git restore .)"),
+
+    # Hard reset
+    (r'git\s+reset\s+--hard', "Hard reset discards all uncommitted changes"),
+
+    # Clean untracked files
+    (r'git\s+clean\s+.*-f', "Force clean removes untracked files permanently"),
+
+    # Force delete branches
+    (r'git\s+branch\s+-D\s+(main|master)\b', "Force delete main/master branch"),
+]
+
 # .env file patterns to protect
 ENV_FILE_PATTERNS = [
     r'\b\.env\b(?!\.sample)',  # .env but not .env.sample
@@ -131,6 +153,35 @@ def is_env_file_access(tool_name: str, tool_input: dict) -> tuple[bool, str]:
     return False, ""
 
 
+def is_dangerous_git_command(command: str) -> tuple[bool, str]:
+    """
+    Check if a git command is dangerous.
+    Returns (is_dangerous, reason)
+    """
+    for pattern, reason in DANGEROUS_GIT_PATTERNS:
+        if re.search(pattern, command, re.IGNORECASE):
+            return True, reason
+    return False, ""
+
+
+def suggest_safer_git_alternative(command: str) -> str:
+    """Suggest a safer alternative to a dangerous git command."""
+    suggestions = []
+    if 'push' in command and ('--force' in command or '-f' in command):
+        suggestions.append("• Use 'git push --force-with-lease' instead (prevents overwriting others' work)")
+        suggestions.append("• Push to a feature branch instead of main/master")
+    if 'checkout .' in command or 'restore .' in command:
+        suggestions.append("• Use 'git stash' to save changes temporarily")
+        suggestions.append("• Discard specific files: 'git checkout -- <file>'")
+    if 'reset --hard' in command:
+        suggestions.append("• Use 'git stash' to save changes before resetting")
+        suggestions.append("• Use 'git reset --soft' or 'git reset --mixed' to keep changes staged/unstaged")
+    if 'clean' in command:
+        suggestions.append("• Use 'git clean -n' first to preview what would be deleted")
+        suggestions.append("• Use 'git clean -i' for interactive mode")
+    return "\n".join(suggestions) if suggestions else "Consider a less destructive git command"
+
+
 def suggest_safer_alternative(command: str, is_env_access: bool = False) -> str:
     """Suggest a safer alternative to the dangerous command."""
     suggestions = []
@@ -158,7 +209,7 @@ def log_blocked_command(session_id: str, command: str, reason: str):
     """Log blocked commands for security audit."""
     try:
         project_dir = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
-        log_dir = Path(project_dir) / "agents" / "security_logs" / session_id
+        log_dir = Path(project_dir) / ".claude" / "security_logs" / session_id
         log_dir.mkdir(parents=True, exist_ok=True)
 
         log_file = log_dir / "blocked_commands.jsonl"
@@ -211,6 +262,26 @@ Please use .env.sample for template files instead."""
 
         if not command:
             sys.exit(0)
+
+        # Check for dangerous git commands
+        is_git_dangerous, git_reason = is_dangerous_git_command(command)
+        if is_git_dangerous:
+            log_blocked_command(session_id, command, git_reason)
+
+            error_message = f"""BLOCKED: Dangerous git command detected!
+
+Command: {command}
+Reason: {git_reason}
+
+This command could cause irreversible data loss or overwrite shared history.
+
+Safer alternatives:
+{suggest_safer_git_alternative(command)}
+
+Please reconsider your approach and use a safer command."""
+
+            print(error_message, file=sys.stderr)
+            sys.exit(2)
 
         # Check if command is dangerous
         is_dangerous, reason = is_dangerous_command(command)

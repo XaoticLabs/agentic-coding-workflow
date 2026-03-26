@@ -10,6 +10,7 @@ allowed-tools:
   - Grep
   - Glob
   - Agent
+effort: high
 user-invocable: true
 ---
 
@@ -71,8 +72,7 @@ For each component, decide:
 - All references must be **one level deep** from SKILL.md. Never chain references (SKILL.md → ref-a.md → ref-b.md) — Claude may only partially read nested references.
 - **No "always-loaded" references.** If content is needed on every invocation, it belongs as a compact inline section in SKILL.md (a table or short checklist), not as a separate file that costs a full Read. The point of references is conditional loading — a reference loaded every time is just a monolith with extra steps.
 
-For deeper guidance on any of these decisions, read the appropriate reference:
-- Progressive disclosure architecture → Read `references/progressive-disclosure-mastery.md`
+For deeper guidance on scripts or reference documents, read the appropriate reference:
 - Script design decisions → Read `references/script-patterns.md`
 - Reference document planning → Read `references/reference-writing-guide.md`
 
@@ -236,7 +236,13 @@ When improving an existing skill's progressive disclosure, **always start with v
    - **Unconditional reference loading** ("always read X", "first load all references") — this is the most common and most costly anti-pattern
    - **Always-loaded references** — references that claim to be "cross-cutting" or "always needed" are almost always better as a compact inline table in SKILL.md. If it's truly needed every time, it should be in SKILL.md, not a reference that costs a full file read.
    - Missing conditional loading instructions
-3. Read `references/progressive-disclosure-mastery.md` for the full anti-patterns checklist
+3. Check against anti-patterns checklist:
+   - **The Monolith** — everything in SKILL.md (3,000+ words). Fix: extract to references/scripts.
+   - **The Eager Loader** — "first, read all references". Fix: conditional loading only.
+   - **The Orphaned Reference** — ref exists but isn't mentioned in SKILL.md. Fix: mention with condition, or delete.
+   - **The Implicit Script** — inline bash/python blocks regenerated every time. Fix: extract to script.
+   - **The "Always Needed" Reference** — claimed cross-cutting but loaded every time. Fix: distill to inline table in SKILL.md; move details to conditional ref.
+   - **The Everything Reference** — single 8,000+ word file. Fix: split by topic.
 4. Restructure: extract references, create scripts, slim SKILL.md
 5. **Re-validate and compare scores** — the score should improve. If it doesn't, something went wrong.
 

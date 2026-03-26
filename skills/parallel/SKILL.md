@@ -5,7 +5,8 @@ description: |
   Use when: working on multiple tasks simultaneously, parallelizing spec tasks, spinning up
   multiple Claude instances, divide-and-conquer workflows. Keywords: parallel, worktrees,
   tmux, multiple claude, concurrent, simultaneous, divide and conquer, spin up.
-allowed-tools: Bash, Read, Write
+allowed-tools: Bash, Read, Write, AskUserQuestion
+effort: low
 user-invocable: true
 ---
 
@@ -16,13 +17,13 @@ Creates N worktrees under `.claude/worktrees/`, opens tmux panes, and launches C
 ## Usage
 
 ```
-/parallel <count> <spec-or-tasks>
+/agentic-coding-workflow:parallel <count> <spec-or-tasks>
 ```
 
 Examples:
-- `/parallel 3 specs/feature-spec.md` — assigns tasks 1-3 from spec to separate worktrees
-- `/parallel 2 "Write tests for auth" "Refactor the API client"` — two explicit tasks
-- `/parallel 3` — creates 3 worktrees, asks for task assignments interactively
+- `/agentic-coding-workflow:parallel 3 specs/feature-spec.md` — assigns tasks 1-3 from spec to separate worktrees
+- `/agentic-coding-workflow:parallel 2 "Write tests for auth" "Refactor the API client"` — two explicit tasks
+- `/agentic-coding-workflow:parallel 3` — creates 3 worktrees, asks for task assignments interactively
 
 ## Workflow
 
@@ -48,9 +49,29 @@ SESSION_NAME="parallel-$(date +%s)"
 tmux new-session -d -s "$SESSION_NAME"
 ```
 
-### 2. Parse Tasks
+### 2. Parse Tasks and Assign by File Affinity
 
-**From a spec file:** Read the spec and extract numbered tasks/sections. Each task gets its own worktree and Claude session.
+**From a spec file (Ralph-compatible directory with IMPLEMENTATION_PLAN.md):**
+
+If the spec path points to a directory containing `IMPLEMENTATION_PLAN.md`, use the partition script for smart task assignment:
+
+```bash
+PARTITION=$(bash "${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/partition-tasks.sh" \
+  "<spec-dir>/IMPLEMENTATION_PLAN.md" "$COUNT")
+```
+
+This assigns tasks to workers by file affinity — tasks that touch the same files go to the same worker, minimizing merge conflicts. Display the assignment:
+
+```
+Task assignment (by file affinity):
+  Worker 0: Tasks 1, 4 (src/auth/, src/models/)
+  Worker 1: Tasks 2, 5 (src/api/, src/routes/)
+  Worker 2: Tasks 3, 6 (test/)
+```
+
+Use AskUserQuestion to let the user confirm or adjust assignments.
+
+**From a spec file (monolithic spec):** Read the spec and extract numbered tasks/sections. Assign tasks round-robin across workers (1→W0, 2→W1, 3→W2, 4→W0, ...). Show the assignment and let the user adjust.
 
 **From inline arguments:** Each quoted argument is a separate task.
 
@@ -103,18 +124,24 @@ tmux select-layout -t "$SESSION_NAME" tiled
 
 ### 5. Launch Claude in Each Pane
 
-For each pane, send the Claude command with the task prompt:
+For each pane, send the Claude command with the assigned task(s):
 
 ```bash
-# Send claude command to each pane
+# If tasks were assigned by partition or round-robin, include specific task numbers
 tmux send-keys -t "${SESSION_NAME}:0.${pane_index}" \
-  "claude -p '${TASK_PROMPT}'" Enter
+  "claude -p '/agentic-coding-workflow:implement ${SPEC_PATH} ${TASK_NUMBERS}'" Enter
 ```
 
 If a spec file was provided, include it as context:
 ```bash
 tmux send-keys -t "${SESSION_NAME}:0.${pane_index}" \
-  "claude --context '${SPEC_FILE}' -p 'Implement task ${i} from the spec'" Enter
+  "claude --context '${SPEC_FILE}' -p 'Implement tasks ${ASSIGNED_TASKS} from the spec. Work through them sequentially.'" Enter
+```
+
+For inline task descriptions (no spec):
+```bash
+tmux send-keys -t "${SESSION_NAME}:0.${pane_index}" \
+  "claude -p '${TASK_PROMPT}'" Enter
 ```
 
 ### 6. Report
@@ -142,9 +169,9 @@ Clean up when done: /worktree-cleanup
 - Each Claude session uses its own API context window
 - Recommend 3-4 for most machines
 
-## Cleanup
+## When Parallel Work is Done
 
-When parallel work is done:
-1. `/worktree-status` — check progress
-2. Merge branches as needed
-3. `/worktree-cleanup` — remove worktrees and prune refs
+1. `/agentic-coding-workflow:git-worktree` status — check progress across all panes
+2. `/agentic-coding-workflow:reunify` — merge all parallel branches back to parent with test gates and conflict resolution
+3. `/agentic-coding-workflow:ship` — squash WIP commits, push, and create a PR
+4. `/agentic-coding-workflow:git-worktree` cleanup — remove worktrees and prune refs (or let `/agentic-coding-workflow:reunify` handle it)

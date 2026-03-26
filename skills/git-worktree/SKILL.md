@@ -3,9 +3,13 @@ name: git-worktree
 description: |
   Manage git worktrees for parallel branch work. Use when: working on multiple branches
   simultaneously, reviewing PRs while coding, hotfixes without stashing, parallel feature
-  development. Keywords: worktree, git worktree, parallel branches, multiple working
-  directories, branch isolation, git add worktree.
-allowed-tools: Bash, Read
+  development, checking worktree status, monitoring parallel work, cleaning up finished
+  worktrees, removing stale worktrees, tidying up after parallel work.
+  Keywords: worktree, git worktree, parallel branches, multiple working directories,
+  branch isolation, git add worktree, worktree status, worktree cleanup, remove worktrees,
+  clean worktrees, prune worktrees, worktree activity, monitor worktrees, check progress.
+allowed-tools: Bash, Read, AskUserQuestion
+effort: low
 user-invocable: true
 ---
 
@@ -15,10 +19,11 @@ user-invocable: true
 
 | Command | Description |
 |---------|-------------|
-| `/worktree-add [branch]` | Create worktree (creates branch if needed) |
-| `/worktree-list` | Show all worktrees |
-| `/worktree-remove [name]` | Remove a worktree |
-| `/worktree-switch [name]` | Get path to switch to worktree |
+| `/agentic-coding-workflow:git-worktree add [branch]` | Create worktree (creates branch if needed) |
+| `/agentic-coding-workflow:git-worktree list` | Show all worktrees |
+| `/agentic-coding-workflow:git-worktree remove [name]` | Remove a worktree |
+| `/agentic-coding-workflow:git-worktree status` | Dashboard of all worktrees with activity |
+| `/agentic-coding-workflow:git-worktree cleanup` | Find and remove finished worktrees |
 
 ## Pre-flight
 
@@ -28,74 +33,82 @@ git rev-parse --is-inside-work-tree 2>/dev/null || echo "NOT_A_GIT_REPO"
 
 If not a git repo, inform user and stop.
 
-## Worktree Location
-
-**Standard location:** `<project-root>/.claude/worktrees/<sanitized-branch>/`
-
-All worktrees live under `.claude/worktrees/` within the project root. This makes discovery, cleanup, and gitignore trivial. The directory is automatically gitignored.
-
-Sanitize branch: Replace `/` with `-`, strip special chars.
-
-## /worktree-add [branch]
+## /worktree add [branch]
 
 ```bash
-# 1. Get paths
-REPO_ROOT=$(git rev-parse --show-toplevel)
-WORKTREE_BASE="${REPO_ROOT}/.claude/worktrees"
-BRANCH="$1"
-DIR_NAME=$(echo "$BRANCH" | sed 's/[\/]/-/g' | sed 's/[^a-zA-Z0-9._-]//g')
-WORKTREE_PATH="${WORKTREE_BASE}/${DIR_NAME}"
-
-# 2. Ensure .claude/worktrees/ is gitignored
-if ! grep -q '\.claude/worktrees/' "${REPO_ROOT}/.gitignore" 2>/dev/null; then
-  echo -e '\n# Git worktrees (parallel branch work)\n.claude/worktrees/' >> "${REPO_ROOT}/.gitignore"
-fi
-
-# 3. Check existing
-git worktree list | grep -q "$WORKTREE_PATH" && echo "Worktree exists"
-
-# 4. Create
-mkdir -p "$WORKTREE_BASE"
-if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
-  git worktree add "$WORKTREE_PATH" "$BRANCH"
-else
-  git worktree add -b "$BRANCH" "$WORKTREE_PATH"
-fi
+bash "${CLAUDE_PLUGIN_ROOT}/skills/git-worktree/scripts/worktree-add.sh" "<branch>"
 ```
 
-Report: path created, `cd` command to switch.
+Output: `CREATED:<path>` or `EXISTS:<path>`. Report path and `cd` command to switch.
 
-## /worktree-list
+## /worktree list
 
 ```bash
-git worktree list
+bash "${CLAUDE_PLUGIN_ROOT}/skills/git-worktree/scripts/worktree-list.sh"
 ```
 
-Format output as table: path, branch, commit. Highlight worktrees under `.claude/worktrees/`.
+Formats output as a table: path, branch, commit. Highlights worktrees under `.claude/worktrees/`.
 
-## /worktree-remove [name]
+## /worktree remove [name]
 
 ```bash
-# Find worktree by branch or directory name
-git worktree list --porcelain
-
-# Remove (warn if uncommitted changes)
-git worktree remove "$WORKTREE_PATH"
-# Force if needed: git worktree remove --force "$WORKTREE_PATH"
-
-# Clean up stale refs
-git worktree prune
+bash "${CLAUDE_PLUGIN_ROOT}/skills/git-worktree/scripts/worktree-remove.sh" "<name>" [--force]
 ```
 
-## /worktree-switch [name]
+Exit codes:
+- 0 + `REMOVED:` — success
+- 1 + `NOT_FOUND:` — worktree not found
+- 2 + `DIRTY:` — has uncommitted changes, needs `--force`. Show changes, ask user to confirm.
 
-Find worktree path and display:
-```
-Path: /code/myapp/.claude/worktrees/feature-auth
-To switch: cd /code/myapp/.claude/worktrees/feature-auth
+## /worktree status
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/skills/git-worktree/scripts/status.sh"
 ```
 
-Note: Cannot change user's shell cwd—provide path for manual `cd`.
+Output is structured blocks per worktree with fields: `index`, `dir`, `branch`, `commit`, `status`, `tmux`.
+
+If output is `NO_WORKTREES`, report that no active worktrees exist.
+
+Format into a readable dashboard:
+
+```
+Worktree Status Dashboard
+==========================
+
+1. feature-payments [.claude/worktrees/feature-payments]
+   Branch: feature/payments | Last commit: abc1234 "Add payment handler"
+   Git: clean (no uncommitted changes)
+   Claude: Writing tests in test_payments.py (tmux session: work:1.2)
+```
+
+For worktrees with an active tmux pane, capture recent output:
+
+```bash
+tmux capture-pane -t "$PANE_ID" -p -S -20 2>/dev/null
+```
+
+## /worktree cleanup
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/skills/git-worktree/scripts/cleanup.sh"
+```
+
+Output is structured blocks per worktree with fields: `dir`, `path`, `branch`, `dirty`, `merged`, `unpushed`, `action`.
+
+If output is `NO_WORKTREES`, report that no worktrees exist and stop.
+
+Format into a table, then use AskUserQuestion to offer:
+- Remove specific worktrees by number
+- Remove all merged+clean worktrees
+- Remove all (with confirmation for dirty ones)
+
+For auto-remove of merged+clean:
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/skills/git-worktree/scripts/cleanup.sh" --auto-remove-merged
+```
+
+**Safety:** Never force-remove without explicit user confirmation. Always show uncommitted changes before removing dirty worktrees. Warn if branch has unpushed commits.
 
 ## When to Suggest Worktrees
 
@@ -119,17 +132,3 @@ Note: Cannot change user's shell cwd—provide path for manual `cd`.
 | Path exists | Suggest different name or remove |
 | Uncommitted changes | Warn, offer `--force` |
 | Branch doesn't exist | Create from HEAD |
-
-## Example
-
-```
-User: /worktree-add feature/payments
-
-Claude: Creating worktree for 'feature/payments'...
-
-Created:
-  Path: /code/myapp/.claude/worktrees/feature-payments
-  Branch: feature/payments (new from main)
-
-Switch: cd /code/myapp/.claude/worktrees/feature-payments
-```

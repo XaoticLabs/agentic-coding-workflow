@@ -7,6 +7,7 @@ allowed-tools:
   - Grep
   - Bash
   - AskUserQuestion
+effort: low
 ---
 
 # Update Rules

@@ -18,12 +18,12 @@ user-invocable: false
 
 # Data Analytics Support
 
-This skill provides reference material for database connectivity and the `/query` and `/analyze` commands.
+This skill provides reference material for database connectivity and the `/agentic-coding-workflow:query` and `/agentic-coding-workflow:analyze` commands.
 
 ## When to Load
 
 - User asks about setting up database connections for Claude
-- User has trouble with `/query` or `/analyze` not finding a database
+- User has trouble with `/agentic-coding-workflow:query` or `/agentic-coding-workflow:analyze` not finding a database
 - User wants to configure a database MCP server
 
 ## References
@@ -32,5 +32,5 @@ This skill provides reference material for database connectivity and the `/query
 
 ## Related Commands
 
-- `/query` — Natural language to SQL, runs queries, returns results
-- `/analyze` — Takes data (CSV, JSON, query results) and produces insights + HTML visualizations
+- `/agentic-coding-workflow:query` — Natural language to SQL, runs queries, returns results
+- `/agentic-coding-workflow:analyze` — Takes data (CSV, JSON, query results) and produces insights + HTML visualizations

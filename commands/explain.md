@@ -7,6 +7,7 @@ allowed-tools:
   - Agent
   - Write
   - AskUserQuestion
+effort: low
 ---
 
 # Explain — Educational Code Breakdown
@@ -167,7 +168,7 @@ Use AskUserQuestion to clarify: "I found several things related to '[concept]' �
 
 ## Important Constraints
 
-- **Explain, don't judge** — this is educational, not a code review. Save opinions for `/grill-me` or `/agentic-coding-workflow:review-implementation`
+- **Explain, don't judge** — this is educational, not a code review. Save opinions for `/agentic-coding-workflow:grill-me` or `/agentic-coding-workflow:review --spec`
 - **Use the codebase's own terminology** — match naming conventions and domain language
 - **Assume intelligence, not knowledge** — the reader is smart but may be new to this specific codebase/pattern
 - **Concrete over abstract** — use actual values, real examples from the code, specific line references

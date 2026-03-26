@@ -6,6 +6,7 @@ allowed-tools:
   - Bash
   - AskUserQuestion
   - Agent
+effort: medium
 ---
 
 # Grill Me — Edge Case & Design Decision Quiz
@@ -183,16 +184,16 @@ If `--strict` flag was used, require 100% PASS for READY verdict.
 ## Example Usage
 
 ```
-/grill-me
+/agentic-coding-workflow:grill-me
 ```
 Reviews all current changes and starts the quiz.
 
 ```
-/grill-me lib/accounts/
+/agentic-coding-workflow:grill-me lib/accounts/
 ```
 Reviews only changes in the accounts module.
 
 ```
-/grill-me --strict
+/agentic-coding-workflow:grill-me --strict
 ```
 Requires perfect answers before proceeding.

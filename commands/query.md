@@ -7,9 +7,7 @@ allowed-tools:
   - Agent
   - AskUserQuestion
   - WebFetch
-  - TaskCreate
-  - TaskUpdate
-  - TaskGet
+effort: low
 ---
 
 # Natural Language Database Query
@@ -52,7 +50,7 @@ Determine which database to query by checking, in order:
 
 If no database is found, explain what's needed and suggest the database MCP setup guide:
 ```
-No database connection detected. To use /query, you need one of:
+No database connection detected. To use /agentic-coding-workflow:query, you need one of:
 - A database MCP server configured in .mcp.json
 - A database CLI (psql, bq, mysql) with access configured
 - A local database running in Docker Compose
@@ -202,7 +200,7 @@ After presenting results, be ready for:
 - "Filter to only [condition]" → add WHERE clause
 - "Show me the raw data" → remove aggregation
 - "Save this as CSV" → re-run with CSV output
-- "Analyze this" → suggest `/analyze` with the results
+- "Analyze this" → suggest `/agentic-coding-workflow:analyze` with the results
 
 ## Safety Rules
 
@@ -229,26 +227,26 @@ Suggest checking network/VPN, or trying a different connection method.
 ## Example Usage
 
 ```
-/query "how many users signed up last week?"
+/agentic-coding-workflow:query "how many users signed up last week?"
 ```
 Detects database, generates SQL with date filter, runs it, returns the count.
 
 ```
-/query --db staging "top 10 accounts by total revenue"
+/agentic-coding-workflow:query --db staging "top 10 accounts by total revenue"
 ```
 Connects to staging, joins accounts with revenue data, returns ranked list.
 
 ```
-/query --csv "all active campaigns with owner email and creation date"
+/agentic-coding-workflow:query --csv "all active campaigns with owner email and creation date"
 ```
 Runs the query and saves results to a CSV file.
 
 ```
-/query --raw "SELECT status, count(*) FROM orders WHERE created_at > '2024-01-01' GROUP BY 1"
+/agentic-coding-workflow:query --raw "SELECT status, count(*) FROM orders WHERE created_at > '2024-01-01' GROUP BY 1"
 ```
 Validates the SQL is read-only, runs it directly, presents results.
 
 ```
-/query --db bigquery "what's our daily active user count for the past 30 days?"
+/agentic-coding-workflow:query --db bigquery "what's our daily active user count for the past 30 days?"
 ```
 Uses bq CLI to query BigQuery, returns time series data with trend summary.

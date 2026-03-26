@@ -9,6 +9,7 @@ allowed-tools:
   - AskUserQuestion
   - EnterPlanMode
   - ExitPlanMode
+effort: high
 ---
 
 # Tech Debt Scanner
@@ -120,7 +121,7 @@ Score each finding on two axes:
 mkdir -p .claude/reports
 ```
 
-**Write the report** to `.claude/reports/techdebt-<date>.md`:
+**Write the report** to `.claude/reports/agentic-coding-workflow:techdebt-<date>.md`:
 
 ```markdown
 # Tech Debt Report
@@ -182,21 +183,21 @@ mkdir -p .claude/reports
 ## Example Usage
 
 ```
-/techdebt
+/agentic-coding-workflow:techdebt
 ```
 Full project scan, all categories.
 
 ```
-/techdebt lib/
+/agentic-coding-workflow:techdebt lib/
 ```
 Scan only the `lib/` directory.
 
 ```
-/techdebt todos
+/agentic-coding-workflow:techdebt todos
 ```
 Only scan for TODO/FIXME comments across the project.
 
 ```
-/techdebt src/api dead-code
+/agentic-coding-workflow:techdebt src/api dead-code
 ```
 Scan `src/api` for dead code only.

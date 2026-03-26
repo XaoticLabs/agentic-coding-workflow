@@ -6,37 +6,28 @@ A checkpointing and session management system for Claude Code that enables savin
 
 | Command | Description |
 |---------|-------------|
-| `/checkpoint [name]` | Save current state with optional name |
-| `/checkpoints` | List all saved checkpoints |
-| `/restore <name>` | Restore a specific checkpoint |
-| `/rewind <n>` | Conceptually rewind n steps |
-| `/fork-session` | Branch session for experimentation |
+| `/agentic-coding-workflow:checkpoint [name]` | Save current state with optional name |
+| `/agentic-coding-workflow:checkpoint list` | List all saved checkpoints |
+| `/agentic-coding-workflow:checkpoint restore <name>` | Restore a specific checkpoint |
+| `/agentic-coding-workflow:checkpoint rewind <n>` | Conceptually rewind n steps |
+| `/agentic-coding-workflow:checkpoint fork` | Branch session for experimentation |
 
 ## Installation
 
-The skills are installed in `~/.claude/skills/`:
+The skill is installed in the plugin's `skills/checkpoint/` directory:
 
 ```
-~/.claude/skills/
-├── checkpoint/
-│   ├── SKILL.md
-│   ├── scripts/
-│   │   └── checkpoint-manager.sh
-│   └── reference/
-│       └── README.md (this file)
-├── checkpoints/
-│   └── SKILL.md
-├── restore/
-│   └── SKILL.md
-├── rewind/
-│   └── SKILL.md
-└── fork-session/
-    └── SKILL.md
+skills/checkpoint/
+├── SKILL.md              # Orchestrator with all subcommands
+├── scripts/
+│   └── checkpoint-manager.sh
+└── reference/
+    └── README.md (this file)
 ```
 
 ## Storage Structure
 
-Checkpoints are stored per-project in `.claude/checkpoints/`:
+Checkpoints are stored per-project in `.claude/agentic-coding-workflow:checkpoint list/`:
 
 ```
 your-project/
@@ -70,13 +61,13 @@ your-project/
 
 **With auto-generated name:**
 ```
-/checkpoint
+/agentic-coding-workflow:checkpoint
 ```
 Claude analyzes recent work and generates a descriptive name like `debugging-auth-flow` or `added-api-tests`.
 
 **With custom name:**
 ```
-/checkpoint pre-major-refactor
+/agentic-coding-workflow:checkpoint pre-major-refactor
 ```
 
 **Auto-naming patterns:**
@@ -90,7 +81,7 @@ Claude analyzes recent work and generates a descriptive name like `debugging-aut
 ### Listing Checkpoints
 
 ```
-/checkpoints
+/agentic-coding-workflow:checkpoint list
 ```
 
 Output:
@@ -113,7 +104,7 @@ Output:
 ### Restoring Checkpoints
 
 ```
-/restore pre-refactor-cleanup
+/agentic-coding-workflow:checkpoint restore pre-refactor-cleanup
 ```
 
 Options provided:
@@ -125,7 +116,7 @@ Options provided:
 ### Rewinding
 
 ```
-/rewind 2
+/agentic-coding-workflow:checkpoint rewind 2
 ```
 
 Shows available checkpoints and offers to restore the 2nd most recent.
@@ -135,7 +126,7 @@ Shows available checkpoints and offers to restore the 2nd most recent.
 ### Forking Sessions
 
 ```
-/fork-session
+/agentic-coding-workflow:checkpoint fork
 ```
 
 Creates a fork point for safe experimentation:
@@ -149,42 +140,42 @@ Creates a fork point for safe experimentation:
 ### Workflow 1: Safe Refactoring
 
 ```
-1. /checkpoint pre-refactor
+1. /agentic-coding-workflow:checkpoint pre-refactor
 2. [Make extensive changes]
-3. If something breaks: /restore pre-refactor
-4. If successful: /checkpoint refactor-complete
+3. If something breaks: /agentic-coding-workflow:checkpoint restore pre-refactor
+4. If successful: /agentic-coding-workflow:checkpoint refactor-complete
 ```
 
 ### Workflow 2: Exploring Alternatives
 
 ```
-1. /fork-session
+1. /agentic-coding-workflow:checkpoint fork
 2. [Try approach A]
-3. /checkpoint approach-a-result
-4. /restore fork-point-*
+3. /agentic-coding-workflow:checkpoint approach-a-result
+4. /agentic-coding-workflow:checkpoint restore fork-point-*
 5. [Try approach B]
-6. /checkpoint approach-b-result
+6. /agentic-coding-workflow:checkpoint approach-b-result
 7. [Compare and choose]
 ```
 
 ### Workflow 3: Long Session Management
 
 ```
-1. /checkpoint session-start
+1. /agentic-coding-workflow:checkpoint session-start
 2. [Work for a while]
-3. /checkpoint milestone-1
+3. /agentic-coding-workflow:checkpoint milestone-1
 4. [More work]
-5. /checkpoint milestone-2
-6. [If need to review]: /checkpoints
-7. [If need earlier context]: /restore milestone-1
+5. /agentic-coding-workflow:checkpoint milestone-2
+6. [If need to review]: /agentic-coding-workflow:checkpoint list
+7. [If need earlier context]: /agentic-coding-workflow:checkpoint restore milestone-1
 ```
 
 ### Workflow 4: Pre-Migration Safety
 
 ```
-1. /checkpoint pre-database-migration
+1. /agentic-coding-workflow:checkpoint pre-database-migration
 2. [Run migrations]
-3. If issues: /restore pre-database-migration
+3. If issues: /agentic-coding-workflow:checkpoint restore pre-database-migration
    - Optionally: git checkout <sha> to restore code
 ```
 
@@ -199,7 +190,7 @@ Checkpoints capture git state but don't modify your repository:
 **Manual git restoration:**
 ```bash
 # View checkpoint's git state
-cat .claude/checkpoints/<id>/context.json | jq '.git'
+cat .claude/agentic-coding-workflow:checkpoint list/<id>/context.json | jq '.git'
 
 # Checkout that commit
 git checkout <sha>
@@ -233,8 +224,8 @@ git checkout -b recovery/my-checkpoint <sha>
 
 | Issue | Solution |
 |-------|----------|
-| "No checkpoints found" | Run `/checkpoint` to create your first one |
-| "Checkpoint not found" | Run `/checkpoints` to see available names |
+| "No checkpoints found" | Run `/agentic-coding-workflow:checkpoint` to create your first one |
+| "Checkpoint not found" | Run `/agentic-coding-workflow:checkpoint list` to see available names |
 | Script permission denied | Run `chmod +x ~/.claude/skills/checkpoint/scripts/*.sh` |
 | jq not found | Install jq: `brew install jq` (macOS) or `apt install jq` (Linux) |
 | Git SHA doesn't exist | Commit may have been garbage collected; skip git restore |

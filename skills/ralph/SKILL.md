@@ -8,6 +8,7 @@ description: |
   autonomous coding, auto-implement, headless, unattended, batch implement, ralph loop,
   geoffrey huntley, self-driving, auto-pilot coding.
 allowed-tools: Bash, Read, Write, Glob, Grep
+effort: medium
 user-invocable: false
 ---
 
@@ -37,6 +38,17 @@ Manages autonomous Claude coding loops. Not user-invocable directly — invoked 
 | `references/PROMPT_harvest.md` | harvest | Post-run pattern extraction — analyze diffs, extract conventions |
 | `references/PROMPT_resolve.md` | resolve | Merge conflict resolution — resolve markers, test, commit |
 | `references/PROMPT_reconcile.md` | reconcile | Post-merge verification — run tests, fix integration issues |
+
+## Worktree Isolation
+
+All build/reconcile mode runs automatically create a git worktree at `.claude/worktrees/ralph-<slug>` on branch `ralph/<slug>`. This provides:
+
+- **Branch isolation** — Ralph never commits directly to main
+- **ORC integration** — ORC auto-discovers the worktree for stop/merge controls
+- **Safe rollback** — if Ralph goes sideways, just delete the branch
+- **Consistent model** — single-track and parallel mode both use worktrees
+
+Plan and harvest modes run in-place (read-only/analytical, no commits). Parallel workers get their own worktrees from `orchestrate-parallel.sh`.
 
 ## Workflow
 
@@ -86,8 +98,6 @@ Manages autonomous Claude coding loops. Not user-invocable directly — invoked 
 | Flag | Purpose |
 |------|---------|
 | `--once` | Single iteration, foreground (HITL mode) |
-| `--push` | Push to remote after each commit |
-| `--pr` | Auto-create/update draft PR (requires --push) |
 | `--clean-room` | Skip codebase search — greenfield mode |
 
 ## Stop Mechanisms
@@ -112,9 +122,9 @@ All Ralph artifacts live under `.claude/`:
 - `ralph-status.md` — live progress dashboard (updated each iteration)
 - `ralph-progress.md` — ephemeral session scratchpad (cleaned up on completion)
 - `ralph-inject.md` — mid-loop steering file (consumed and deleted)
-- `ralph-harvest-<slug>.md` — pattern extraction report (from harvest mode)
+- `ralph-logs/ralph-harvest-<slug>.md` — pattern extraction report (from harvest mode)
 - `ralph-stop` — stop sentinel (touch to stop)
-- `ralph-summary-<slug>.md` — completion summary with metrics and PR description (auto-generated)
+- `ralph-logs/ralph-summary-<slug>.md` — completion summary with metrics and PR description (auto-generated)
 - `ralph-logs/revert-*-reason.txt` — actual error output from gate failures
 - `ralph-logs/injections.log` — audit trail of mid-loop steering injections
 - `ralph-parallel-meta.json` — parallel run metadata (slug, workers, target branch)

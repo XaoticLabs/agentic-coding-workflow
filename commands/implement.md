@@ -6,11 +6,10 @@ allowed-tools:
   - Write
   - Edit
   - Bash
-  - Task
-  - TodoWrite
   - AskUserQuestion
   - EnterPlanMode
   - ExitPlanMode
+effort: high
 ---
 
 # Implement Task from Spec
@@ -110,6 +109,54 @@ This ensures every ad-hoc task gets deliberate planning before code changes, reg
 - Check if dependent tasks are mentioned as completed in the spec or codebase
 - If dependencies appear incomplete, warn the user and ask whether to proceed
 - List what the dependent tasks were supposed to deliver
+
+### Phase 1.5: Create Worktree
+
+**Skip this phase if in Ralph mode** — Ralph's `loop.sh` handles its own worktree creation.
+
+All implementation work runs in a worktree for branch isolation. Derive a default branch name from the spec:
+- From spec path: `.claude/specs/AI-1234-auth-feature/` → suggest `AI-1234-auth-feature`
+- From spec file: `.claude/specs/auth-feature-spec.md` → suggest `auth-feature`
+- From ad-hoc flow: use the slug from the plan created in Phase 0
+
+Ask the user to confirm or override the branch name via `AskUserQuestion`:
+> Branch name for this work? (default: `<derived-name>`, or enter a custom name)
+
+Create the worktree:
+
+```bash
+REPO_ROOT=$(git rev-parse --show-toplevel)
+WORKTREE_BASE="${REPO_ROOT}/.claude/worktrees"
+
+# Ensure .claude/worktrees/ is gitignored
+grep -q '\.claude/worktrees/' "${REPO_ROOT}/.gitignore" 2>/dev/null || echo -e '\n.claude/worktrees/' >> "${REPO_ROOT}/.gitignore"
+
+# Create worktree on a new branch
+mkdir -p "$WORKTREE_BASE"
+git worktree add -b "<branch-name>" "${WORKTREE_BASE}/<branch-name>"
+```
+
+Copy the spec and plan files into the worktree:
+
+```bash
+# Copy spec
+mkdir -p "${WORKTREE_BASE}/<branch-name>/.claude/specs/"
+cp -r "<spec-path>" "${WORKTREE_BASE}/<branch-name>/.claude/specs/"
+
+# Copy plan if it exists
+if [ -d ".claude/plans/" ]; then
+  mkdir -p "${WORKTREE_BASE}/<branch-name>/.claude/plans/"
+  cp .claude/plans/<matching-plan>.md "${WORKTREE_BASE}/<branch-name>/.claude/plans/" 2>/dev/null || true
+fi
+```
+
+Switch into the worktree for all subsequent work. Print:
+```
+Working in .claude/worktrees/<branch-name> on branch <branch-name>.
+Changes stay on this branch until merged.
+```
+
+All remaining phases (2-6) execute inside the worktree.
 
 ### Phase 2: Pre-Implementation Analysis
 

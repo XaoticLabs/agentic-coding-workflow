@@ -8,9 +8,7 @@
 #   6. Cleanup
 #
 # Usage: orchestrate-parallel.sh <spec-dir> <slug> <num-workers> <max-iterations> [flags...]
-#   --push:       Push after each worker commit
 #   --clean-room: Skip codebase search (greenfield mode)
-#   --pr:         Auto-create draft PR
 
 set -euo pipefail
 
@@ -19,15 +17,10 @@ SLUG="${2:?Usage: orchestrate-parallel.sh <spec-dir> <slug> <num-workers> <max-i
 NUM_WORKERS="${3:?Usage: orchestrate-parallel.sh <spec-dir> <slug> <num-workers> <max-iterations> [flags...]}"
 MAX_ITERATIONS="${4:-50}"
 
-PUSH_FLAG=""
 CLEAN_ROOM_FLAG=""
-PR_FLAG=""
-
 for arg in "$@"; do
   case "$arg" in
-    --push)       PUSH_FLAG="--push" ;;
     --clean-room) CLEAN_ROOM_FLAG="--clean-room" ;;
-    --pr)         PR_FLAG="--pr" ;;
   esac
 done
 
@@ -163,9 +156,7 @@ BASH_PATH=$(command -v bash)
 
 # Build flag string for loop.sh
 FLAGS=""
-[ -n "$PUSH_FLAG" ] && FLAGS="$FLAGS --push"
 [ -n "$CLEAN_ROOM_FLAG" ] && FLAGS="$FLAGS --clean-room"
-[ -n "$PR_FLAG" ] && FLAGS="$FLAGS --pr"
 
 for ((i=0; i<NUM_WORKERS; i++)); do
   WORKTREE_PATH="${WORKTREE_BASE}/ralph-${SLUG}-worker-${i}"

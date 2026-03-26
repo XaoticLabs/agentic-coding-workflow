@@ -6,7 +6,7 @@ allowed-tools:
   - Write
   - Bash
   - AskUserQuestion
-  - Task
+effort: high
 ---
 
 # Implementation Spec Generator
@@ -160,7 +160,9 @@ For each atomic task, write a complete specification:
 mkdir -p .claude/specs
 ```
 
-**Write the document** to `.claude/specs/<feature-slug>-spec.md`:
+**Derive the slug** from the input plan filename. If the plan file has a ticket ID prefix (e.g., `AI-1234-auth-feature.md`), preserve it in the spec slug. The slug should match the plan's slug exactly so all artifacts share the same naming convention.
+
+**Write the document** to `.claude/specs/<slug>-spec.md`:
 
 ```markdown
 # Implementation Spec: [Feature Name]

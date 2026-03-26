@@ -8,9 +8,7 @@ allowed-tools:
   - Agent
   - AskUserQuestion
   - WebFetch
-  - TaskCreate
-  - TaskUpdate
-  - TaskGet
+effort: high
 ---
 
 # Bug Finder & Debugger
@@ -59,7 +57,7 @@ docker stats --no-stream                           # Resource usage
 
 **`--env staging` (Kubernetes — staging EKS):**
 ```bash
-kubectl config use-context <STAGING_CLUSTER_CONTEXT>
+kubectl config use-context arn:aws:eks:us-east-2:604412908292:cluster/staging-eks
 kubectl -n <namespace> get pods                    # Pod status
 kubectl -n <namespace> logs <pod> --tail=100       # Recent logs
 kubectl -n <namespace> get events --sort-by='.lastTimestamp' | tail -20  # Events
@@ -68,7 +66,7 @@ kubectl -n <namespace> get events --sort-by='.lastTimestamp' | tail -20  # Event
 **`--env prod` (Kubernetes — prod EKS):**
 **Confirm with user before any command.** All commands are read-only.
 ```bash
-kubectl config use-context <PROD_CLUSTER_CONTEXT>
+kubectl config use-context arn:aws:eks:us-east-2:940766330009:cluster/prod-eks
 kubectl -n <namespace> get pods
 kubectl -n <namespace> logs <pod> --tail=100
 kubectl -n <namespace> get events --sort-by='.lastTimestamp' | tail -20
@@ -200,9 +198,9 @@ Provide a summary:
 Code-only debugging — searches codebase, identifies root cause, implements fix.
 
 ```
-/agentic-coding-workflow:debug-bug --env staging api "webhook deliveries stuck in pending"
+/agentic-coding-workflow:debug-bug --env staging integrations "webhook deliveries stuck in pending"
 ```
-Gathers staging k8s logs/events for the api service, then investigates the code with that context.
+Gathers staging k8s logs/events for the integrations service, then investigates the code with that context.
 
 ```
 /agentic-coding-workflow:debug-bug --env local "tests fail with postgres connection timeout"

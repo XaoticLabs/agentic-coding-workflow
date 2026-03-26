@@ -1,5 +1,5 @@
 {
-  "description": "Core agentic coding hooks - security and testing",
+  "description": "Core agentic coding workflow hooks - security and testing",
   "hooks": {
     "PreToolUse": [
       {
@@ -18,6 +18,42 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/subagent_permission_router.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "description": "Auto-commits WIP snapshots every 60s on feature branches to prevent lost progress",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/auto-commit-wip.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "description": "Removes orphaned pr-review-* worktrees left by crashed or interrupted review sessions",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/cleanup-review-worktrees.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "description": "Logs API failures (rate limits, auth errors) and sends toast notifications for visibility",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/stop-failure-logger.sh",
             "timeout": 5
           }
         ]

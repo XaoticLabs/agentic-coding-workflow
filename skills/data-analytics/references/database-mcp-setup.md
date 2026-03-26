@@ -1,6 +1,6 @@
 # Database MCP Setup Guide
 
-How to configure database connections for use with `/query` and `/analyze`.
+How to configure database connections for use with `/agentic-coding-workflow:query` and `/agentic-coding-workflow:analyze`.
 
 ## Option 1: Database MCP Servers (Recommended)
 
@@ -198,10 +198,10 @@ psql -h localhost -U postgres -d myapp_dev
 
 ## Verifying Your Setup
 
-After configuring, test with `/query`:
+After configuring, test with `/agentic-coding-workflow:query`:
 
 ```
-/query "show me the first 5 rows from any table"
+/agentic-coding-workflow:query "show me the first 5 rows from any table"
 ```
 
 If it works, you're good. If not, the error message will tell you what's misconfigured.

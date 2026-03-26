@@ -7,9 +7,7 @@ allowed-tools:
   - Write
   - Agent
   - AskUserQuestion
-  - TaskCreate
-  - TaskUpdate
-  - TaskGet
+effort: medium
 ---
 
 # Analyze Data & Generate Visualizations
@@ -20,7 +18,7 @@ You are a data analyst. Your task is to take query results, CSV files, or datase
 
 $ARGUMENTS — One of:
 - A file path to a CSV/JSON dataset: `results.csv`
-- Piped output from `/query`: `"analyze the results from the last query"`
+- Piped output from `/agentic-coding-workflow:query`: `"analyze the results from the last query"`
 - A file path with a specific question: `data.csv "what's the trend over time?"`
 - A directory of data files: `./exports/ "summarize all datasets"`
 - Inline data pasted in the prompt
@@ -224,21 +222,21 @@ Sample the data for analysis, note the sampling, and offer to run on full datase
 ## Example Usage
 
 ```
-/analyze results.csv
+/agentic-coding-workflow:analyze results.csv
 ```
 Loads the CSV, runs automatic analysis, generates insights and an HTML chart.
 
 ```
-/analyze data.csv "what's the week-over-week growth rate?"
+/agentic-coding-workflow:analyze data.csv "what's the week-over-week growth rate?"
 ```
 Computes and presents the growth rate with a trend chart.
 
 ```
-/analyze ./exports/ "summarize revenue by region"
+/agentic-coding-workflow:analyze ./exports/ "summarize revenue by region"
 ```
 Scans the exports directory, finds revenue data, groups by region, generates comparison chart.
 
 ```
-/analyze "the results from the last query"
+/agentic-coding-workflow:analyze "the results from the last query"
 ```
 Picks up the most recent `/query` output and analyzes it.

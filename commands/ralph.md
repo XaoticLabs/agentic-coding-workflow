@@ -6,6 +6,7 @@ allowed-tools:
   - Write
   - Bash
   - AskUserQuestion
+effort: medium
 ---
 
 # Ralph — Autonomous Coding Loop
@@ -21,7 +22,6 @@ $ARGUMENTS - One of:
 - `<spec-slug> --once` — single iteration, watched (HITL mode for prompt tuning)
 - `<spec-slug> --clean-room` — greenfield mode, skip codebase search
 - `<spec-slug> --harvest` — extract patterns and conventions after a completed run
-- `<spec-slug> --pr` — auto-create/update a draft PR (requires --push)
 - `<spec-slug> --time-budget=N` — max seconds per iteration (default: 600, 0 = no limit)
 - `<spec-slug> --status` — show completion dashboard
 - `<spec-slug> --stop` — create stop sentinel to halt the loop gracefully
@@ -37,10 +37,8 @@ Extract from `$ARGUMENTS`:
 - **--once**: optional, single iteration then stop (HITL mode)
 - **--clean-room**: optional, skip codebase search for greenfield work
 - **--harvest**: optional, extract patterns after completed run
-- **--pr**: optional, auto-create draft PR (requires --push)
 - **--status**: optional, show dashboard and exit
 - **--stop**: optional, create stop sentinel and exit
-- **--push**: optional, push after each commit
 - **--max N**: optional, max iterations (default 50)
 - **--time-budget=N**: optional, max seconds per iteration (default 600, 0 = unlimited)
 
@@ -63,6 +61,10 @@ Also read `.claude/specs/<slug>/IMPLEMENTATION_PLAN.md` and display:
 - Check for running tmux sessions: `tmux list-sessions 2>/dev/null | grep ralph`
 - Check ralph-logs for recent activity
 
+**If the plan status is COMPLETE**, suggest next steps:
+- `/agentic-coding-workflow:review --spec` to review the changes
+- `/agentic-coding-workflow:ship` to squash WIP commits, fill the PR template, and create a PR
+
 Exit after displaying.
 
 **If `--harvest`:**
@@ -72,7 +74,7 @@ Run the loop in harvest mode (single iteration):
 bash "${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/loop.sh" "$SPEC_DIR" harvest 1
 ```
 
-This analyzes the completed ralph run, extracts reusable patterns, updates AGENTS.md with discovered conventions, and writes a harvest report to `.claude/ralph-harvest-<slug>.md`.
+This analyzes the completed ralph run, extracts reusable patterns, updates AGENTS.md with discovered conventions, and writes a harvest report to `.claude/ralph-logs/ralph-harvest-<slug>.md`.
 
 Exit after harvesting.
 
@@ -155,9 +157,7 @@ fi
 
 # Build flag string
 FLAGS=""
-[ -n "$PUSH_FLAG" ] && FLAGS="$FLAGS --push"
 [ -n "$CLEAN_ROOM_FLAG" ] && FLAGS="$FLAGS --clean-room"
-[ -n "$PR_FLAG" ] && FLAGS="$FLAGS --pr"
 
 # Launch in new tmux session
 tmux new-session -d -s "$SESSION_NAME" \
@@ -169,12 +169,16 @@ Report:
 Ralph loop launched!
 
 Session:  ralph-<slug>
+Worktree: .claude/worktrees/ralph-<slug>
+Branch:   ralph/<slug>
 Attach:   tmux attach -t ralph-<slug>
 Status:   /agentic-coding-workflow:ralph <slug> --status
 Stop:     /agentic-coding-workflow:ralph <slug> --stop
 Steer:    echo 'instructions' > .claude/ralph-inject.md
-Logs:     .claude/ralph-logs/
-Dashboard: .claude/ralph-status.md
+Logs:     .claude/ralph-logs/ (inside worktree)
+Dashboard: .claude/ralph-status.md (inside worktree)
+
+Changes land on the ralph/<slug> branch. Merge via ORC or `git merge ralph/<slug>`.
 ```
 
 ### Phase 7: Parallel Mode
@@ -192,9 +196,7 @@ Dashboard: .claude/ralph-status.md
 ```bash
 # Build flag string
 FLAGS=""
-[ -n "$PUSH_FLAG" ] && FLAGS="$FLAGS --push"
 [ -n "$CLEAN_ROOM_FLAG" ] && FLAGS="$FLAGS --clean-room"
-[ -n "$PR_FLAG" ] && FLAGS="$FLAGS --pr"
 
 SESSION_NAME="ralph-${SLUG}-orchestrator"
 
@@ -261,11 +263,6 @@ Runs planning mode only — generates/refreshes IMPLEMENTATION_PLAN.md.
 /agentic-coding-workflow:ralph auth-feature --clean-room
 ```
 Greenfield mode — implements from spec only, skips codebase search.
-
-```
-/agentic-coding-workflow:ralph auth-feature --push --pr
-```
-Launches loop that pushes after each commit and creates a draft PR.
 
 ```
 /agentic-coding-workflow:ralph auth-feature --parallel 3

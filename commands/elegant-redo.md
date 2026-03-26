@@ -9,7 +9,7 @@ allowed-tools:
   - AskUserQuestion
   - EnterPlanMode
   - ExitPlanMode
-  - Task
+effort: high
 ---
 
 # Elegant Redo — Scrap and Reimplement with Hindsight
@@ -171,16 +171,16 @@ Previous implementation saved as:
 ## Example Usage
 
 ```
-/elegant-redo
+/agentic-coding-workflow:elegant-redo
 ```
 Checkpoint everything, analyze the full implementation, and redo from scratch.
 
 ```
-/elegant-redo lib/accounts/auth.ex
+/agentic-coding-workflow:elegant-redo lib/accounts/auth.ex
 ```
 Only redo the auth module — keep everything else as-is.
 
 ```
-/elegant-redo "focus on the database layer, the API layer was fine"
+/agentic-coding-workflow:elegant-redo "focus on the database layer, the API layer was fine"
 ```
 Redo with guidance on what specifically needs rethinking.

@@ -7,6 +7,7 @@ allowed-tools:
   - Write
   - Agent
   - AskUserQuestion
+effort: medium
 ---
 
 # Visualize — Architecture & System Diagrams

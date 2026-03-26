@@ -6,11 +6,11 @@ allowed-tools:
   - Write
   - Bash
   - AskUserQuestion
-  - Task
   - WebFetch
   - Agent
-
-  - mcp__claude_ai_Linear__*
+  - mcp__claude_ai_Linear__get_issue
+  - mcp__claude_ai_Linear__list_issues
+effort: high
 ---
 
 # Feature Planning Partner
@@ -155,9 +155,9 @@ When all items pass, tell the user: "The plan is ready to write. Shall I generat
 mkdir -p <target-project-path>/.claude/plans
 ```
 
-**Generate a slug** from the feature name (lowercase, hyphens, no special chars).
+**Generate a slug** from the feature name (lowercase, hyphens, no special chars). **If the input was a ticket ID** (e.g., `AI-1234`), prefix the slug with the ticket ID: `AI-1234-feature-name`. This ticket-prefixed slug becomes the canonical name for all downstream artifacts (specs, worktrees, branches). If the input was a description string with no ticket, use just the feature name slug.
 
-**Write the document** to `<target-project-path>/.claude/plans/<feature-slug>.md` using the template below.
+**Write the document** to `<target-project-path>/.claude/plans/<slug>.md` using the template below.
 
 > **LEVEL OF DETAIL CHECK:** Before writing, review your draft mentally. If it contains specific file paths with line-level changes, code snippets, class/function definitions, or per-file modification tables — **STOP**. You are writing an implementation spec, not a plan. Strip it back to conceptual descriptions. The plan captures "what" and "why" and high-level "how". The `/agentic-coding-workflow:write-spec` command produces the detailed implementation specification.
 

@@ -13,37 +13,9 @@ scripts/        → Standalone utility scripts
 .claude-plugin/ → Plugin manifest (plugin.json, marketplace.json)
 ```
 
-## Core Conventions
+Component-specific conventions are in `.claude/rules/` — see `commands.md`, `skills.md`, `hooks.md`, `agents.md` for detailed rules on each component type.
 
-### Commands
-- Commands live in `commands/<name>.md` with YAML frontmatter for `allowed-tools`
-- Accept input via `$ARGUMENTS` — support multiple input formats (ticket ID, file path, inline description)
-- Use `EnterPlanMode`/`ExitPlanMode` for planning phases; `AskUserQuestion` for interactive steps
-- Phase-based structure: load context → analyze → execute → verify → report
-- Reference existing commands for pattern consistency before creating new ones
-
-### Skills
-- Each skill is a directory: `skills/<name>/SKILL.md` + optional `scripts/` and `references/`
-- SKILL.md frontmatter must include: `name`, `description`, `allowed-tools`, `user-invocable`
-- The `description` field is critical — it controls when the skill triggers. Include exact trigger phrases, synonyms, and keywords. Be exhaustive
-- Scripts handle deterministic work (file operations, git commands, parsing); SKILL.md orchestrates
-- References hold domain knowledge loaded conditionally — challenge every paragraph for token cost
-- Use `/agentic-coding-workflow:skill-forge` when building or optimizing skills
-
-### Hooks
-- Hook scripts are registered in `hooks/hooks.json` using `${CLAUDE_PLUGIN_ROOT}` paths
-- Events: `PreToolUse`, `PostToolUse`, `Stop`, `SubagentStop`, `SessionStart`, `SessionEnd`, `UserPromptSubmit`
-- PreToolUse hooks receive JSON on stdin with `tool_name` and `tool_input`; exit 2 to block
-- Stop hooks receive JSON on stdin; output `{"decision": "block", "reason": "..."}` to prevent stopping
-- Prompt-based hooks use `type: "prompt"` instead of `type: "command"` — preferred for judgment calls
-
-### Agents
-- Agent definitions in `agents/` are markdown files defining role, instructions, constraints
-- Usable as both subagent context (via Agent tool prompt) and full instance context (via `claude --context`)
-- Keep definitions focused: one role per file, clear boundaries on what the agent should/shouldn't do
-- Available roles: `researcher`, `test-writer`, `explorer`
-
-### Subagents vs Primary Instances — When to Use Which
+## Subagents vs Primary Instances — When to Use Which
 
 There are two ways to throw more compute at a problem. Pick the right one:
 
@@ -75,7 +47,7 @@ There are two ways to throw more compute at a problem. Pick the right one:
 
 ## Workflow
 
-The plugin's core workflow is: `/agentic-coding-workflow:prime` → `/agentic-coding-workflow:plan` → `/agentic-coding-workflow:review-plan` → `/agentic-coding-workflow:write-spec` → `/agentic-coding-workflow:implement` → `/agentic-coding-workflow:review-implementation`. All intermediate artifacts go in `.claude/plans/` and `.claude/specs/`.
+The plugin's core workflow is: `/agentic-coding-workflow:prime` → `/agentic-coding-workflow:plan` → `/agentic-coding-workflow:review --plan` → `/agentic-coding-workflow:write-spec` → `/agentic-coding-workflow:implement` → `/agentic-coding-workflow:test` → `/agentic-coding-workflow:review --spec` → `/agentic-coding-workflow:ship`. All intermediate artifacts go in `.claude/plans/` and `.claude/specs/`. Implement creates its own worktree automatically. For autonomous execution, use `/agentic-coding-workflow:ralph` which handles parallel workers, task partitioning, and reunification. For manual parallel work, use `/agentic-coding-workflow:parallel` to spin up N implement sessions, then `/agentic-coding-workflow:reunify` to merge back.
 
 ## File Organization
 
@@ -83,14 +55,7 @@ The plugin's core workflow is: `/agentic-coding-workflow:prime` → `/agentic-co
 - Keep `hooks.json` as the single source of truth for hook registration
 - New scripts must be `chmod +x` and use appropriate shebangs
 - Reference materials are scoped to their skill — don't create global reference dumps
-- **Runtime artifacts go in `.claude/`** — plans, specs, checkpoints, prime-context, logs, and any other generated output. Never write runtime artifacts to top-level directories (e.g., `prime-context/` or `agents/security_logs/`)
-
-## Testing & Validation
-
-- Use `skills/skill-forge/scripts/validate-skill.py` to validate skill structure
-- The `lint-on-stop.sh` hook runs linting/tests on Stop — code must pass before Claude stops
-- Hook scripts should fail gracefully (exit 0 on errors) to avoid blocking all operations
-- **Plugin cache vs working directory**: Edits to plugin files in the working directory don't take effect until the plugin cache is updated. The cache lives at `~/.claude/plugins/cache/`. To test changes immediately, copy modified files to the cache location
+- **Runtime artifacts go in `.claude/`** — plans, specs, checkpoints, prime-context, logs, and any other generated output. Never write runtime artifacts to top-level directories
 
 ## What NOT to Do
 
@@ -99,11 +64,14 @@ The plugin's core workflow is: `/agentic-coding-workflow:prime` → `/agentic-co
 - Don't create commands without YAML frontmatter — they won't get proper tool permissions
 - Don't hardcode paths — use `${CLAUDE_PLUGIN_ROOT}` for plugin-relative and `${CLAUDE_PROJECT_DIR}` for project-relative paths
 
+## Testing & Validation
+
+- Use `skills/skill-forge/scripts/validate-skill.py` to validate skill structure
+- Hook scripts should fail gracefully (exit 0 on errors) to avoid blocking all operations
+- **Plugin cache vs working directory**: Edits to plugin files in the working directory don't take effect until the plugin cache is updated. The cache lives at `~/.claude/plugins/cache/`. To test changes immediately, copy modified files to the cache location
+
 ## Learning & Output Styles
 
-For learning-oriented workflows, use `/agentic-coding-workflow:config` to set output style to "Explanatory" — Claude will provide more context and reasoning behind suggestions. Useful when onboarding to a new codebase or exploring unfamiliar patterns.
-
-**Learning commands:**
 - `/agentic-coding-workflow:explain` — educational breakdown of code, changes, or systems (the "why" behind the code)
 - `/agentic-coding-workflow:visualize` — ASCII, Mermaid, and HTML architecture diagrams
 
