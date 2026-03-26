@@ -3,7 +3,7 @@
 #
 # Usage: merge-workers.sh <slug> <num-workers> <target-branch> <spec-dir>
 #
-# Sequentially merges ralph/<slug>/worker-{0..N-1} into target branch.
+# Sequentially merges <slug>/worker-{0..N-1} into target branch.
 # On conflict: launches Claude with PROMPT_resolve.md to resolve.
 
 set -euo pipefail
@@ -28,7 +28,7 @@ MERGE_LOG=""
 CONFLICT_COUNT=0
 
 for ((i=0; i<NUM_WORKERS; i++)); do
-  BRANCH="ralph/${SLUG}/worker-${i}"
+  BRANCH="${SLUG}/worker-${i}"
   echo ""
   echo "── Merging worker-${i} (${BRANCH}) ──"
 

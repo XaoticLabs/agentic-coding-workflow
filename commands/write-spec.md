@@ -11,25 +11,24 @@ effort: high
 
 # Implementation Spec Generator
 
-Transforms a brainstorming document into a detailed implementation specification with atomic, actionable tasks.
+Transforms a plan document into a detailed implementation specification with atomic, actionable tasks.
 
 ## Input
 
 $ARGUMENTS - Either:
 - A path to a plan document (e.g., `.claude/plans/feature-name.md`)
-- A path to a brainstorming document (e.g., `brainstorming/feature-name.md`)
-- A feature slug (e.g., `feature-name`) — will look in `.claude/plans/` first, then `brainstorming/`
+- A feature slug (e.g., `feature-name`) — will look in `.claude/plans/`
 - An inline quoted prompt (e.g., `"add rate limiting to the API"`) — treated as a lightweight plan
 
 ## Instructions
 
-### Phase 1: Load and Parse Brainstorming Document
+### Phase 1: Load and Parse Plan Document
 
 **Locate the document:**
 - If full path provided, read it directly
-- If slug provided, look for `.claude/plans/<slug>.md` first, then fall back to `brainstorming/<slug>.md`
+- If slug provided, look for `.claude/plans/<slug>.md`
 - If an inline quoted prompt is provided (no file match), treat the string as a lightweight plan and proceed directly to Phase 2 (codebase analysis) using the prompt as context
-- If file not found, list available docs from both `.claude/plans/` and `brainstorming/` and ask user to select one
+- If file not found, list available docs from `.claude/plans/` and ask user to select one
 
 **Extract key information:**
 - Problem statement and goals
@@ -59,7 +58,7 @@ $ARGUMENTS - Either:
 
 ### Phase 3: Clarify Open Questions
 
-**If the brainstorming doc has unresolved questions:**
+**If the plan has unresolved questions:**
 - Use AskUserQuestion to resolve any that are critical for implementation
 - Mark questions that can be deferred to implementation time
 - Document assumptions made for questions that can't be answered now
@@ -68,7 +67,7 @@ $ARGUMENTS - Either:
 
 **Before breaking into tasks, explicitly surface and resolve vague areas.**
 
-Scan the plan/brainstorming document and your Phase 2 analysis for ambiguity:
+Scan the plan document and your Phase 2 analysis for ambiguity:
 
 1. **Identify vague language:**
    - Look for words like "appropriate", "as needed", "various", "etc.", "should handle", "properly"
@@ -137,7 +136,7 @@ For each atomic task, write a complete specification:
 - Error handling requirements
 
 **Edge cases to handle:**
-- [Edge case 1 from brainstorming doc]
+- [Edge case 1 from plan]
 - [Edge case 2]
 
 **Acceptance criteria:**
@@ -167,7 +166,7 @@ mkdir -p .claude/specs
 ```markdown
 # Implementation Spec: [Feature Name]
 
-> Generated from: `.claude/plans/<slug>.md` (or `brainstorming/<slug>.md` or inline prompt)
+> Generated from: `.claude/plans/<slug>.md` (or inline prompt)
 > Generated on: [date]
 
 ## Overview
@@ -352,7 +351,7 @@ Before finalizing the spec, verify:
 - [ ] Every task has clear acceptance criteria
 - [ ] Every task specifies which files to modify
 - [ ] Dependencies between tasks are explicit
-- [ ] Edge cases from brainstorming are assigned to specific tasks
+- [ ] Edge cases from the plan are assigned to specific tasks
 - [ ] Security considerations are addressed in relevant tasks
 - [ ] Testing requirements are clear for each task
 - [ ] The critical path is identified
@@ -365,7 +364,7 @@ Before finalizing the spec, verify:
 - **Reference actual code** - don't write specs in a vacuum, point to real files and patterns
 - **Keep tasks atomic** - resist the urge to bundle related work
 - **Make dependencies explicit** - no hidden assumptions about task ordering
-- **Include the "why"** - link back to brainstorming decisions where relevant
+- **Include the "why"** - link back to plan decisions where relevant
 - **Don't over-specify** - leave room for implementation judgment on minor details
 
 ## Example Usage
@@ -375,7 +374,7 @@ Before finalizing the spec, verify:
 ```
 
 This would:
-1. Look for `.claude/plans/batch-conversation-analysis.md`, then `brainstorming/batch-conversation-analysis.md`
+1. Look for `.claude/plans/batch-conversation-analysis.md`
 2. Analyze relevant parts of the codebase
 3. Surface and resolve ambiguous requirements
 4. Break the feature into 5-15 atomic tasks

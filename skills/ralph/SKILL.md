@@ -41,7 +41,7 @@ Manages autonomous Claude coding loops. Not user-invocable directly — invoked 
 
 ## Worktree Isolation
 
-All build/reconcile mode runs automatically create a git worktree at `.claude/worktrees/ralph-<slug>` on branch `ralph/<slug>`. This provides:
+All build/reconcile mode runs automatically create a git worktree at `.claude/worktrees/<slug>` on branch `<slug>`. This provides:
 
 - **Branch isolation** — Ralph never commits directly to main
 - **ORC integration** — ORC auto-discovers the worktree for stop/merge controls

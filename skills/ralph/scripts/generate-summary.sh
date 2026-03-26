@@ -7,11 +7,12 @@
 
 set -euo pipefail
 
-SPEC_DIR="${1:?Usage: generate-summary.sh <spec-dir> <journal-file> <iterations> <commits-at-start> <start-time>}"
+SPEC_DIR="${1:?Usage: generate-summary.sh <spec-dir> <journal-file> <iterations> <commits-at-start> <start-time> [trace-file]}"
 JOURNAL_FILE="${2:?}"
 ITERATIONS="${3:?}"
 COMMITS_AT_START="${4:?}"
 START_TIME="${5:?}"
+TRACE_FILE="${6:-}"
 
 SLUG=$(basename "$SPEC_DIR")
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
@@ -138,6 +139,27 @@ if [ -n "$REVERT_ANALYSIS" ]; then
 ${REVERT_ANALYSIS}
 \`\`\`
 EOF
+fi
+
+# ── Tool usage (from trace) ──────────────────────────────────────────
+
+if [ -n "$TRACE_FILE" ] && [ -f "$TRACE_FILE" ]; then
+  TOOL_USAGE=$(grep '"type":"tool_call"' "$TRACE_FILE" 2>/dev/null | \
+    sed 's/.*"tool":"\([^"]*\)".*/\1/' | sort | uniq -c | sort -rn || true)
+  TOTAL_TOOL_CALLS=$(grep -c '"type":"tool_call"' "$TRACE_FILE" 2>/dev/null || echo 0)
+  if [ -n "$TOOL_USAGE" ]; then
+    cat >> "$SUMMARY_FILE" <<EOF
+
+## Tool Usage (${TOTAL_TOOL_CALLS} total calls)
+
+\`\`\`
+${TOOL_USAGE}
+\`\`\`
+
+**Trace file:** \`${TRACE_FILE}\`
+View with: \`trace-viewer.py ${TRACE_FILE} --view tools\`
+EOF
+  fi
 fi
 
 # ── PR template detection ─────────────────────────────────────────────

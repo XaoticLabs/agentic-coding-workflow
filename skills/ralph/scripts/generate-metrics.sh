@@ -7,10 +7,31 @@
 
 set -euo pipefail
 
-JOURNAL_FILE="${1:?Usage: generate-metrics.sh <journal-file> [plan-file]}"
+JOURNAL_FILE="${1:?Usage: generate-metrics.sh <journal-file> [plan-file] [trace-file]}"
 PLAN_FILE="${2:-}"
+TRACE_FILE="${3:-}"
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 LOG_DIR="${PROJECT_DIR}/.claude/ralph-logs"
+
+# If trace file is available, generate a temporary journal-compatible file from it
+# so existing awk logic can work unchanged
+if [ -n "$TRACE_FILE" ] && [ -f "$TRACE_FILE" ]; then
+  TRACE_JOURNAL=$(mktemp)
+  printf "timestamp\toutcome\ttask\tmetric\tnotes\n" > "$TRACE_JOURNAL"
+  grep '"type":"verdict"' "$TRACE_FILE" 2>/dev/null | while IFS= read -r line; do
+    ts=$(echo "$line" | sed 's/.*"ts":"\([^"]*\)".*/\1/')
+    outcome=$(echo "$line" | sed 's/.*"outcome":"\([^"]*\)".*/\1/')
+    task=$(echo "$line" | sed 's/.*"task":"\([^"]*\)".*/\1/')
+    printf "%s\t%s\t%s\t-\t-\n" "$ts" "$outcome" "$task"
+  done >> "$TRACE_JOURNAL"
+  # Use the trace-derived journal for metrics if it has data
+  TRACE_LINES=$(($(wc -l < "$TRACE_JOURNAL") - 1))
+  if [ "$TRACE_LINES" -gt 0 ]; then
+    JOURNAL_FILE="$TRACE_JOURNAL"
+  else
+    rm -f "$TRACE_JOURNAL"
+  fi
+fi
 
 if [ ! -f "$JOURNAL_FILE" ] || [ "$(wc -l < "$JOURNAL_FILE")" -le 1 ]; then
   echo "(no journal data for metrics)"
@@ -58,12 +79,15 @@ echo ""
 echo "### Hot Files (associated with reverts)"
 echo ""
 
-# Look at revert reason files for file lists
+# Look at trace gate events or revert reason files for file lists
 HOT_FILES=""
-if [ -d "$LOG_DIR" ]; then
+if [ -n "$TRACE_FILE" ] && [ -f "$TRACE_FILE" ]; then
+  HOT_FILES=$(grep '"type":"gate"' "$TRACE_FILE" 2>/dev/null | grep '"passed":false' | \
+    grep -oE '[a-zA-Z0-9_/.-]+\.(ex|exs|ts|tsx|js|jsx|py|go|rs|rb)' 2>/dev/null | \
+    sort | uniq -c | sort -rn | head -10 || true)
+elif [ -d "$LOG_DIR" ]; then
   for reason_file in "$LOG_DIR"/revert-*-reason.txt; do
     [ -f "$reason_file" ] || continue
-    # Extract file paths from error output (common patterns in test/lint output)
     grep -oE '[a-zA-Z0-9_/.-]+\.(ex|exs|ts|tsx|js|jsx|py|go|rs|rb)' "$reason_file" 2>/dev/null || true
   done | sort | uniq -c | sort -rn | head -10 > /tmp/ralph-hot-files-$$ 2>/dev/null || true
   HOT_FILES=$(cat /tmp/ralph-hot-files-$$ 2>/dev/null || true)
@@ -169,3 +193,6 @@ if [ "$TOTAL_ENTRIES" -ge 4 ]; then
 else
   echo "(not enough entries for trend analysis)"
 fi
+
+# Clean up temp file if we created one from trace
+[ -n "${TRACE_JOURNAL:-}" ] && rm -f "$TRACE_JOURNAL" 2>/dev/null || true

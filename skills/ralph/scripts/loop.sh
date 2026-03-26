@@ -41,7 +41,37 @@ OVERRIDES_FILE="${SPEC_DIR}/RALPH_OVERRIDES.md"
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 PROMPT_DIR="${SCRIPT_DIR}/../references"
 
+SLUG=$(basename "$SPEC_DIR")
+STREAM_PROCESSOR="${SCRIPT_DIR}/stream-processor.py"
+
 mkdir -p "$LOG_DIR"
+
+# ── Trace file (single structured log for the run) ───────────────────
+TRACE_FILE="${LOG_DIR}/${SLUG}-trace.jsonl"
+
+# ── Trace event helper ────────────────────────────────────────────────
+# Appends a single JSON line to the trace file.
+# Usage: trace_event <type> [key=value ...]
+trace_event() {
+  local type="$1"
+  shift
+  local json="{\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"type\":\"${type}\""
+  for kv in "$@"; do
+    local key="${kv%%=*}"
+    local val="${kv#*=}"
+    if [[ "$val" =~ ^[0-9]+$ ]]; then
+      json="${json},\"${key}\":${val}"
+    elif [[ "$val" == "true" || "$val" == "false" ]]; then
+      json="${json},\"${key}\":${val}"
+    else
+      # Escape quotes and collapse newlines, truncate for safety
+      val=$(printf '%s' "$val" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ' | head -c 500)
+      json="${json},\"${key}\":\"${val}\""
+    fi
+  done
+  json="${json}}"
+  echo "$json" >> "$TRACE_FILE"
+}
 
 # ── Initialize failure journal ────────────────────────────────────────
 if [ ! -f "$JOURNAL_FILE" ]; then
@@ -122,6 +152,7 @@ if [ "$MODE" = "build" ] && [ -f "$PLAN_FILE" ]; then
       INTEGRITY_FIXES=$((INTEGRITY_FIXES + 1))
       printf "%s\tINTEGRITY_FIX\t%s\t-\tOrphaned commit %s re-marked incomplete\n" \
         "$(date +"%Y-%m-%dT%H:%M:%S")" "${task_num:-unknown}" "$hash" >> "$JOURNAL_FILE"
+      trace_event "integrity_fix" "task=${task_num:-unknown}" "orphaned_commit=$hash"
     fi
   done < <(grep '^\- \[x\]' "$PLAN_FILE" 2>/dev/null || true)
   rm -f "${PLAN_FILE}.bak"
@@ -141,11 +172,11 @@ MAIN_PROJECT_DIR="$PROJECT_DIR"
 MAIN_STOP_SENTINEL="$STOP_SENTINEL"
 
 if [ -z "${RALPH_WORKER_ID:-}" ] && [[ "$MODE" == "build" || "$MODE" == "reconcile" ]]; then
-  SLUG=$(basename "$SPEC_DIR")
+  TARGET_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "main")
   REPO_ROOT=$(git rev-parse --show-toplevel)
-  WORKTREE_BRANCH="ralph/${SLUG}"
+  WORKTREE_BRANCH="${SLUG}"
   WORKTREE_BASE="${REPO_ROOT}/.claude/worktrees"
-  WORKTREE_PATH="${WORKTREE_BASE}/ralph-${SLUG}"
+  WORKTREE_PATH="${WORKTREE_BASE}/${SLUG}"
 
   # Ensure .claude/worktrees/ is gitignored
   if ! grep -q '\.claude/worktrees/' "${REPO_ROOT}/.gitignore" 2>/dev/null; then
@@ -187,10 +218,11 @@ if [ -z "${RALPH_WORKER_ID:-}" ] && [[ "$MODE" == "build" || "$MODE" == "reconci
   READONLY_FILE="${SPEC_DIR}/RALPH_READONLY"
   OVERRIDES_FILE="${SPEC_DIR}/RALPH_OVERRIDES.md"
 
-  # Re-initialize journal in worktree
+  # Re-initialize journal and trace in worktree
   if [ ! -f "$JOURNAL_FILE" ]; then
     printf "timestamp\toutcome\ttask\tmetric\tnotes\n" > "$JOURNAL_FILE"
   fi
+  TRACE_FILE="${LOG_DIR}/${SLUG}-trace.jsonl"
 
   USING_WORKTREE=true
 
@@ -259,6 +291,7 @@ check_circuit_breaker() {
       CIRCUIT_BREAKER_SOFT_WARNED=true
       printf "%s\tSOFT_CIRCUIT_BREAK\t-\tratio=%s%%\tLow commit ratio but continuing\n" \
         "$(date +"%Y-%m-%dT%H:%M:%S")" "$ratio" >> "$JOURNAL_FILE"
+      trace_event "circuit_break" "type_detail=soft" "reason=Low commit ratio ${ratio}%"
     fi
   fi
   return 0
@@ -285,8 +318,8 @@ write_status() {
 
   local total_tasks=0 done_tasks=0
   if [ -f "$PLAN_FILE" ]; then
-    total_tasks=$(grep -c '^\- \[[ x]\] \*\*Task' "$PLAN_FILE" 2>/dev/null || echo "0")
-    done_tasks=$(grep -c '^\- \[x\] \*\*Task' "$PLAN_FILE" 2>/dev/null || echo "0")
+    total_tasks=$(grep -c '^\- \[[ x]\] \*\*Task' "$PLAN_FILE" 2>/dev/null || true); total_tasks=${total_tasks:-0}
+    done_tasks=$(grep -c '^\- \[x\] \*\*Task' "$PLAN_FILE" 2>/dev/null || true); done_tasks=${done_tasks:-0}
   fi
 
   local commits_now
@@ -323,13 +356,18 @@ EOF
 ITERATION=0
 START_TIME=$(date +%s)
 
-# Append to iteration log (preserve history across restarts)
+# Trace: run start
+trace_event "run_start" "slug=${SLUG}" "mode=${MODE}" "max_iters=${MAX_ITERATIONS}"
+
+# Append to iteration log (preserve history across restarts) — legacy, kept during migration
 echo "" >> "${LOG_DIR}/ralph-iterations.log" 2>/dev/null || true
 echo "# Ralph Run — $(date)" >> "${LOG_DIR}/ralph-iterations.log"
 
 while :; do
   ITERATION=$((ITERATION + 1))
+  ITER_START_TIME=$(date +%s)
   TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
+  INJECTION_CONSUMED=""
   LOG_FILE="${LOG_DIR}/iter-${ITERATION}-${TIMESTAMP}.log"
 
   echo "━━━ Iteration ${ITERATION}/${MAX_ITERATIONS} ━━━ $(date) ━━━"
@@ -369,6 +407,7 @@ while :; do
         write_status "$ITERATION" "$CURRENT_TASK" "STRUGGLE_STOP"
         break
       fi
+      trace_event "struggle_warning" "task=${CURRENT_TASK}" "retry=${SAME_TASK_COUNT}" "threshold=${STRUGGLE_THRESHOLD}"
       echo "⚠ Retry ${SAME_TASK_COUNT}/${STRUGGLE_THRESHOLD} on task: ${CURRENT_TASK}"
     else
       SAME_TASK_COUNT=0
@@ -381,8 +420,17 @@ while :; do
     echo "${ITERATION} | $(date +%H:%M:%S) | HARD_CIRCUIT_BREAK | low commit ratio + consecutive reverts" >> "${LOG_DIR}/ralph-iterations.log"
     printf "%s\tHARD_CIRCUIT_BREAK\t-\treverts=%s\tConsecutive reverts on: %s\n" \
       "$(date +"%Y-%m-%dT%H:%M:%S")" "$CONSECUTIVE_REVERTS" "$CONSECUTIVE_REVERT_TASKS" >> "$JOURNAL_FILE"
+    trace_event "circuit_break" "type_detail=hard" "reason=${CONSECUTIVE_REVERTS} consecutive reverts" "tasks=${CONSECUTIVE_REVERT_TASKS}"
     write_status "$ITERATION" "${CURRENT_TASK:-unknown}" "HARD_CIRCUIT_BREAK"
     break
+  fi
+
+  # ── Plan state snapshot ────────────────────────────────────────────
+  if [ "$MODE" = "build" ] && [ -f "$PLAN_FILE" ]; then
+    PLAN_TOTAL=$(grep -c '^\- \[[ x]\] \*\*Task' "$PLAN_FILE" 2>/dev/null || true); PLAN_TOTAL=${PLAN_TOTAL:-0}
+    PLAN_DONE=$(grep -c '^\- \[x\] \*\*Task' "$PLAN_FILE" 2>/dev/null || true); PLAN_DONE=${PLAN_DONE:-0}
+    PLAN_REMAINING=$((PLAN_TOTAL - PLAN_DONE))
+    trace_event "plan_state" "iter=${ITERATION}" "total=${PLAN_TOTAL}" "done=${PLAN_DONE}" "remaining=${PLAN_REMAINING}" "task=${CURRENT_TASK:-unknown}"
   fi
 
   # ── Build the prompt ────────────────────────────────────────────────
@@ -419,6 +467,7 @@ $(cat "$OVERRIDES_FILE")
       cat "$INJECT_FILE"
       echo ""
     } >> "$INJECTION_LOG"
+    trace_event "injection" "iter=${ITERATION}" "content=$(head -3 "$INJECT_FILE" | tr '\n' ' ')"
     PROMPT="${PROMPT}
 
 ---
@@ -427,6 +476,7 @@ $(cat "$OVERRIDES_FILE")
 $(cat "$INJECT_FILE")
 "
     rm -f "$INJECT_FILE"
+    INJECTION_CONSUMED=1
   fi
 
   # Targeted spec loading: extract spec file for current task
@@ -450,7 +500,7 @@ $( [ -n "$TASK_SPEC" ] && echo "**Current task spec file:** ${SPEC_DIR}/${TASK_S
   # ── Generate structured briefing for context ─────────────────────
   BRIEFING=""
   if [ "$MODE" = "build" ] && [ -x "${SCRIPT_DIR}/generate-briefing.sh" ]; then
-    BRIEFING=$("${SCRIPT_DIR}/generate-briefing.sh" "$PLAN_FILE" "$JOURNAL_FILE" "$ITERATION" 2>/dev/null || true)
+    BRIEFING=$("${SCRIPT_DIR}/generate-briefing.sh" "$PLAN_FILE" "$JOURNAL_FILE" "$ITERATION" "$TRACE_FILE" 2>/dev/null || true)
   fi
 
   if [ -n "$BRIEFING" ]; then
@@ -464,46 +514,49 @@ ${BRIEFING}
   fi
 
   # ── Run Claude (with optional time budget) ───────────────────────
-  echo "Launching Claude (${MODE} mode, budget: $( [ "$TIME_BUDGET" = "0" ] && echo "unlimited" || echo "${TIME_BUDGET}s" ))..."
+  PROMPT_BYTES=${#PROMPT}
+  trace_event "prompt_built" "iter=${ITERATION}" "prompt_bytes=${PROMPT_BYTES}" "has_overrides=$( [ -f "$OVERRIDES_FILE" ] && echo true || echo false )" "has_injection=$( [ -n "${INJECTION_CONSUMED:-}" ] && echo true || echo false )" "has_briefing=$( [ -n "$BRIEFING" ] && echo true || echo false )"
+  echo "Launching Claude (${MODE} mode, budget: $( [ "$TIME_BUDGET" = "0" ] && echo "unlimited" || echo "${TIME_BUDGET}s" ), prompt: ${PROMPT_BYTES} bytes)..."
   ITER_RESULT="success"
-  CLAUDE_CMD="claude -p --dangerously-skip-permissions --model sonnet"
+  CLAUDE_CMD="claude -p --dangerously-skip-permissions --verbose --model sonnet --output-format stream-json"
 
-  if [ "$TIME_BUDGET" != "0" ] && command -v timeout >/dev/null 2>&1; then
-    # Use timeout (coreutils) — available on Linux, brew install coreutils on macOS
-    if echo "$PROMPT" | timeout "$TIME_BUDGET" $CLAUDE_CMD > "$LOG_FILE" 2>&1; then
-      echo "Iteration ${ITERATION} completed successfully."
-    else
-      EXIT_CODE=$?
-      if [ "$EXIT_CODE" -eq 124 ]; then
-        ITER_RESULT="timeout"
-        echo "Iteration ${ITERATION} timed out after ${TIME_BUDGET}s."
-      else
-        ITER_RESULT="error (code ${EXIT_CODE})"
-        echo "Iteration ${ITERATION} exited with error (code ${EXIT_CODE}). Check ${LOG_FILE}"
-      fi
+  # Trace: iteration start
+  trace_event "iteration_start" "iter=${ITERATION}" "task=${CURRENT_TASK:-plan}" "pre_commit=${PRE_COMMIT}"
+
+  # Resolve timeout command
+  TIMEOUT_CMD=""
+  if [ "$TIME_BUDGET" != "0" ]; then
+    if command -v timeout >/dev/null 2>&1; then
+      TIMEOUT_CMD="timeout $TIME_BUDGET"
+    elif command -v gtimeout >/dev/null 2>&1; then
+      TIMEOUT_CMD="gtimeout $TIME_BUDGET"
     fi
-  elif [ "$TIME_BUDGET" != "0" ] && command -v gtimeout >/dev/null 2>&1; then
-    # macOS with coreutils installed via brew
-    if echo "$PROMPT" | gtimeout "$TIME_BUDGET" $CLAUDE_CMD > "$LOG_FILE" 2>&1; then
-      echo "Iteration ${ITERATION} completed successfully."
-    else
-      EXIT_CODE=$?
-      if [ "$EXIT_CODE" -eq 124 ]; then
-        ITER_RESULT="timeout"
-        echo "Iteration ${ITERATION} timed out after ${TIME_BUDGET}s."
-      else
-        ITER_RESULT="error (code ${EXIT_CODE})"
-        echo "Iteration ${ITERATION} exited with error (code ${EXIT_CODE}). Check ${LOG_FILE}"
-      fi
-    fi
+  fi
+
+  # Run Claude piped through the stream processor:
+  #   claude stdout (stream-json) -> processor stdin
+  #   processor stdout (text)     -> LOG_FILE
+  #   processor stderr (display)  -> terminal (tmux pane)
+  #   processor also appends tool_call events to TRACE_FILE
+  set +e
+  if [ -n "$TIMEOUT_CMD" ]; then
+    echo "$PROMPT" | $TIMEOUT_CMD $CLAUDE_CMD 2>/dev/null \
+      | "$STREAM_PROCESSOR" --trace-file "$TRACE_FILE" > "$LOG_FILE"
   else
-    # No timeout available or budget=0 — run unbounded
-    if echo "$PROMPT" | $CLAUDE_CMD > "$LOG_FILE" 2>&1; then
-      echo "Iteration ${ITERATION} completed successfully."
-    else
-      ITER_RESULT="error (code $?)"
-      echo "Iteration ${ITERATION} exited with error (code $?). Check ${LOG_FILE}"
-    fi
+    echo "$PROMPT" | $CLAUDE_CMD 2>/dev/null \
+      | "$STREAM_PROCESSOR" --trace-file "$TRACE_FILE" > "$LOG_FILE"
+  fi
+  CLAUDE_EXIT=${PIPESTATUS[0]}
+  set -e
+
+  if [ "$CLAUDE_EXIT" -eq 0 ]; then
+    echo "Iteration ${ITERATION} completed successfully."
+  elif [ "$CLAUDE_EXIT" -eq 124 ]; then
+    ITER_RESULT="timeout"
+    echo "Iteration ${ITERATION} timed out after ${TIME_BUDGET}s."
+  else
+    ITER_RESULT="error (code ${CLAUDE_EXIT})"
+    echo "Iteration ${ITERATION} exited with error (code ${CLAUDE_EXIT}). Check ${LOG_FILE}"
   fi
 
   # ── Post-iteration gate: mechanical accept/reject ────────────────
@@ -531,6 +584,7 @@ ${BRIEFING}
         GATE_PASSED=false
         echo "REVERT: Modified protected files: $(echo -e "$VIOLATED" | head -5)"
         printf "%s\tREVERT_PROTECTED\t%s\t-\tModified protected: %s\n" "$JOURNAL_TS" "$TASK_LABEL" "$(echo -e "$VIOLATED" | tr '\n' ' ')" >> "$JOURNAL_FILE"
+        trace_event "gate" "gate=protected_files" "passed=false" "violated=$(echo -e "$VIOLATED" | tr '\n' ' ' | head -c 200)"
       fi
     fi
 
@@ -548,6 +602,7 @@ ${BRIEFING}
         echo "REVERT: Diff touches ${DIFF_FILE_COUNT} files (max ${MAX_DIFF_FILES}). Iteration scope too large."
         printf "%s\tREVERT_SCOPE\t%s\tfiles=%s\tDiff touched %s files (max %s)\n" \
           "$JOURNAL_TS" "$TASK_LABEL" "$DIFF_FILE_COUNT" "$DIFF_FILE_COUNT" "$MAX_DIFF_FILES" >> "$JOURNAL_FILE"
+        trace_event "gate" "gate=diff_size" "passed=false" "files_changed=${DIFF_FILE_COUNT}" "max=${MAX_DIFF_FILES}"
       fi
     fi
 
@@ -628,6 +683,7 @@ ${BRIEFING}
             tail -30 "${LOG_DIR}/gate-test-${ITERATION}.log"
           } > "$REVERT_REASON_FILE"
           printf "%s\tREVERT_TESTS\t%s\t-\t%s\n" "$JOURNAL_TS" "$TASK_LABEL" "$FAIL_TAIL" >> "$JOURNAL_FILE"
+          trace_event "gate" "gate=tests" "passed=false" "output_tail=${FAIL_TAIL}"
         fi
       fi
 
@@ -647,6 +703,7 @@ ${BRIEFING}
             tail -30 "${LOG_DIR}/gate-lint-${ITERATION}.log"
           } > "$REVERT_REASON_FILE"
           printf "%s\tREVERT_LINT\t%s\t-\t%s\n" "$JOURNAL_TS" "$TASK_LABEL" "$FAIL_TAIL" >> "$JOURNAL_FILE"
+          trace_event "gate" "gate=lint" "passed=false" "output_tail=${FAIL_TAIL}"
         fi
       fi
     fi
@@ -656,11 +713,18 @@ ${BRIEFING}
       echo "KEEP: Iteration ${ITERATION} passed all gates."
       COMMITS_ADDED=$(git rev-list --count "$PRE_COMMIT"..HEAD)
       printf "%s\tKEEP\t%s\tcommits=%s\t%s\n" "$JOURNAL_TS" "$TASK_LABEL" "$COMMITS_ADDED" "$POST_COMMIT" >> "$JOURNAL_FILE"
+      trace_event "gate" "gate=all" "passed=true"
+      # Capture commit details for the trace
+      COMMIT_MSG=$(git log --format="%s" -1 2>/dev/null || echo "")
+      DIFF_STAT=$(git diff --shortstat "$PRE_COMMIT"..HEAD 2>/dev/null || echo "")
+      FILES_CHANGED=$(git diff --name-only "$PRE_COMMIT"..HEAD 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "")
+      trace_event "verdict" "outcome=KEEP" "task=${TASK_LABEL}" "iter=${ITERATION}" "commit=${POST_COMMIT}" "commit_msg=${COMMIT_MSG}" "diff_stat=${DIFF_STAT}" "files_changed=${FILES_CHANGED}"
       track_success
     else
       echo "REVERT: Rolling back to ${PRE_COMMIT:0:8}..."
       git reset --hard "$PRE_COMMIT"
       ITER_RESULT="reverted"
+      trace_event "verdict" "outcome=REVERT" "task=${TASK_LABEL}" "iter=${ITERATION}"
       track_revert "$TASK_LABEL"
       # Re-mark task as incomplete if plan was updated during the iteration
       # (The reset already handles this since plan changes are reverted too)
@@ -674,15 +738,19 @@ ${BRIEFING}
       git reset --hard "$PRE_COMMIT"
     fi
     printf "%s\tTIMEOUT\t%s\t%ss\tKilled after time budget exceeded\n" "$JOURNAL_TS" "$TASK_LABEL" "$TIME_BUDGET" >> "$JOURNAL_FILE"
+    trace_event "verdict" "outcome=TIMEOUT" "task=${TASK_LABEL}" "iter=${ITERATION}" "budget=${TIME_BUDGET}"
     ITER_RESULT="timeout"
 
   elif [ "$PRE_COMMIT" = "$POST_COMMIT" ]; then
     # No commit produced — log as no-op
     printf "%s\tNO_COMMIT\t%s\t-\t%s\n" "$JOURNAL_TS" "$TASK_LABEL" "$ITER_RESULT" >> "$JOURNAL_FILE"
+    trace_event "verdict" "outcome=NO_COMMIT" "task=${TASK_LABEL}" "iter=${ITERATION}"
   fi
 
-  # Log iteration
+  # Log iteration (legacy + trace)
   echo "${ITERATION} | $(date +%H:%M:%S) | ${ITER_RESULT} | ${CURRENT_TASK:-plan}" >> "${LOG_DIR}/ralph-iterations.log"
+  ITER_DURATION=$(( $(date +%s) - ITER_START_TIME ))
+  trace_event "iteration_end" "iter=${ITERATION}" "outcome=${ITER_RESULT}" "commit=${POST_COMMIT:-none}" "duration_s=${ITER_DURATION}"
 
   # Update status dashboard
   write_status "$ITERATION" "${CURRENT_TASK:-plan}" "$ITER_RESULT"
@@ -707,23 +775,77 @@ if [ -n "$WORKER_ID" ]; then
   echo "Worker completion marker written: ${MARKER_FILE}"
 fi
 
+# ── Trace: run end ──────────────────────────────────────────────────────
+TOTAL_DURATION_M=$(( ($(date +%s) - START_TIME) / 60 ))
+KEPT_COUNT=$(grep -c '"outcome":"KEEP"' "$TRACE_FILE" 2>/dev/null || echo 0)
+REVERTED_COUNT=$(grep -c '"outcome":"REVERT' "$TRACE_FILE" 2>/dev/null || echo 0)
+trace_event "run_end" "total_iters=${ITERATION}" "kept=${KEPT_COUNT}" "reverted=${REVERTED_COUNT}" "duration_m=${TOTAL_DURATION_M}"
+
 echo ""
 echo "━━━ Ralph loop finished after ${ITERATION} iterations ━━━"
-echo "Logs: ${LOG_DIR}/"
+echo "Logs:  ${LOG_DIR}/"
+echo "Trace: ${TRACE_FILE}"
 echo "Status: ${STATUS_FILE}"
-if [ "$USING_WORKTREE" = true ]; then
-  echo ""
-  echo "Worktree: ${WORKTREE_PATH}"
-  echo "Branch:   ${WORKTREE_BRANCH}"
-  echo "Merge with: git merge ${WORKTREE_BRANCH}"
-  echo "Or use ORC to review and merge."
-fi
+echo "View:  trace-viewer.py ${TRACE_FILE} [--view timeline|summary|tools|reverts]"
 
 # Show final plan status
 if [ -f "$PLAN_FILE" ]; then
   echo ""
   echo "Plan status:"
   grep -E "^## Status:|^\- \[[ x]\]" "$PLAN_FILE" | head -20
+fi
+
+# ── Worktree cleanup (single-track mode) ───────────────────────────────
+if [ "$USING_WORKTREE" = true ]; then
+  echo ""
+
+  # Copy trace and logs back to main project before potential cleanup
+  mkdir -p "${MAIN_PROJECT_DIR}/.claude/ralph-logs"
+  cp "$TRACE_FILE" "${MAIN_PROJECT_DIR}/.claude/ralph-logs/" 2>/dev/null || true
+  [ -f "$JOURNAL_FILE" ] && cp "$JOURNAL_FILE" "${MAIN_PROJECT_DIR}/.claude/" 2>/dev/null || true
+
+  BRANCH_COMMITS=$(git rev-list --count "${TARGET_BRANCH}..HEAD" 2>/dev/null || echo "0")
+
+  if [ "$BRANCH_COMMITS" -gt 0 ]; then
+    echo "Branch '${WORKTREE_BRANCH}' has ${BRANCH_COMMITS} commits ahead of ${TARGET_BRANCH}."
+    echo ""
+    echo "  To merge:   cd ${MAIN_PROJECT_DIR} && git merge ${WORKTREE_BRANCH}"
+    echo "  To review:  git log --oneline ${TARGET_BRANCH}..${WORKTREE_BRANCH}"
+    echo "  To discard: git worktree remove --force ${WORKTREE_PATH} && git branch -D ${WORKTREE_BRANCH}"
+    echo ""
+
+    # Prompt for merge if running interactively (not a worker)
+    if [ -t 0 ] && [ -z "${RALPH_NO_MERGE_PROMPT:-}" ]; then
+      read -p "Merge '${WORKTREE_BRANCH}' into ${TARGET_BRANCH} now? [y/N] " -n 1 -r REPLY
+      echo ""
+      if [[ "$REPLY" =~ ^[Yy]$ ]]; then
+        cd "$MAIN_PROJECT_DIR"
+        if git merge "$WORKTREE_BRANCH"; then
+          echo "Merged successfully. Cleaning up worktree..."
+          git worktree remove --force "$WORKTREE_PATH" 2>/dev/null || rm -rf "$WORKTREE_PATH"
+          git branch -D "$WORKTREE_BRANCH" 2>/dev/null || true
+          git worktree prune 2>/dev/null || true
+          echo "Worktree and branch cleaned up."
+        else
+          echo "Merge failed (conflicts?). Worktree preserved for manual resolution."
+          echo "  Resolve, then: git worktree remove --force ${WORKTREE_PATH}"
+        fi
+      else
+        echo "Worktree preserved at: ${WORKTREE_PATH}"
+        echo "Branch preserved: ${WORKTREE_BRANCH}"
+      fi
+    else
+      echo "Non-interactive mode — worktree preserved."
+      echo "Merge manually or use /agentic-coding-workflow:reunify"
+    fi
+  else
+    echo "No new commits on worktree branch. Cleaning up..."
+    cd "$MAIN_PROJECT_DIR"
+    git worktree remove --force "$WORKTREE_PATH" 2>/dev/null || rm -rf "$WORKTREE_PATH"
+    git branch -D "$WORKTREE_BRANCH" 2>/dev/null || true
+    git worktree prune 2>/dev/null || true
+    echo "Worktree and branch cleaned up (no changes to keep)."
+  fi
 fi
 
 # ── Auto-harvest on completion ──────────────────────────────────────────
@@ -753,7 +875,7 @@ fi
 
 if [ "$MODE" = "build" ] && [ -z "$ONCE_FLAG" ] && [ -z "$WORKER_ID" ]; then
   if [ -x "${SCRIPT_DIR}/generate-summary.sh" ]; then
-    "${SCRIPT_DIR}/generate-summary.sh" "$SPEC_DIR" "$JOURNAL_FILE" "$ITERATION" "$COMMITS_AT_START" "$START_TIME" 2>/dev/null || true
+    "${SCRIPT_DIR}/generate-summary.sh" "$SPEC_DIR" "$JOURNAL_FILE" "$ITERATION" "$COMMITS_AT_START" "$START_TIME" "$TRACE_FILE" 2>/dev/null || true
   fi
 fi
 

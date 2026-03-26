@@ -15,7 +15,7 @@ effort: high
 
 # Feature Planning Partner
 
-A unified planning command that combines brainstorming and plan formation into a single interactive session. Produces a comprehensive plan document that feeds directly into `/agentic-coding-workflow:write-spec`.
+An interactive planning command that explores the problem space and produces a comprehensive plan document that feeds directly into `/agentic-coding-workflow:write-spec`.
 
 ## Input
 

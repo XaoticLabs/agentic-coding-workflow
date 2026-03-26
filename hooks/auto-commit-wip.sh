@@ -7,20 +7,18 @@
 # Cooldown: 60 seconds between auto-commits
 # Skips: subagents, non-git dirs, no changes, plugin repo itself, main/master branches
 
-set -euo pipefail
-
-# Read hook input from stdin
-input=$(cat)
+# Read hook input from stdin — gracefully handle missing/malformed input
+input=$(cat 2>/dev/null || echo '{}')
 
 # Only fire on file-modification tools
-tool_name=$(echo "$input" | jq -r '.tool_name // ""')
+tool_name=$(echo "$input" | jq -r '.tool_name // ""' 2>/dev/null || echo "")
 case "$tool_name" in
     Edit|Write|NotebookEdit) ;;
     *) exit 0 ;;
 esac
 
 # Skip subagent sessions (they shouldn't commit)
-is_subagent=$(echo "$input" | jq -r '.is_subagent // false')
+is_subagent=$(echo "$input" | jq -r '.is_subagent // false' 2>/dev/null || echo "false")
 if [ "$is_subagent" = "true" ]; then
     exit 0
 fi

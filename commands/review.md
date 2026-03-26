@@ -56,46 +56,32 @@ Route to the `pr-reviewer` skill in an isolated worktree.
 - Otherwise auto-detect: `mix.exs` → elixir, `pyproject.toml`/`setup.py` → python
 - Branches separated by spaces, "and", commas
 
-### 2. Look Up PR Numbers
+### 2. Launch via Script
 
+**IMPORTANT: Do NOT use subagents or the Agent tool for PR code reviews. You MUST run the launch script below.** The script handles everything: fetching, worktree creation, PR number lookup, dependency bootstrapping, tmux session creation (for multi-branch), and launching independent Claude review sessions.
+
+Find the launch script:
 ```bash
-gh pr list --head <branch_name> --json number -q '.[0].number'
+LAUNCH_SCRIPT=$(find ~/.claude/plugins -path "*/agentic-coding-workflow/scripts/launch-reviews.sh" -o -path "*/agentic-coding-marketplace/scripts/launch-reviews.sh" 2>/dev/null | head -1)
+if [ -z "$LAUNCH_SCRIPT" ]; then
+  LAUNCH_SCRIPT="$(git rev-parse --show-toplevel)/scripts/launch-reviews.sh"
+fi
 ```
 
-### 3. Pre-flight & Fetch
-
+Run it with the detected language and branch list:
 ```bash
-git rev-parse --is-inside-work-tree 2>/dev/null || echo "NOT_A_GIT_REPO"
-command -v tmux >/dev/null 2>&1 || echo "TMUX_NOT_FOUND"
-git fetch origin <branches...>
+bash "$LAUNCH_SCRIPT" "$LANGUAGE" branch1 [branch2] [branch3]
 ```
 
-If pre-flight fails, fall back to in-session review (no worktree/tmux).
+The script will:
+- **Single branch:** Run the review directly in the current terminal
+- **Multiple branches:** Create a tmux session with one pane per branch, each running an independent Claude review session
 
-### 4. Create Worktrees
+After launching, report the tmux session name if applicable. Your job is done — the review sessions are independent.
 
-```bash
-REPO_ROOT=$(git rev-parse --show-toplevel)
-WORKTREE_BASE="${REPO_ROOT}/.claude/worktrees"
-mkdir -p "$WORKTREE_BASE"
+### 3. Fallback (no tmux, no script)
 
-DIR_NAME="pr-review-$(echo "$BRANCH" | sed 's/[\/]/-/g' | sed 's/[^a-zA-Z0-9._-]//g')"
-WORKTREE_PATH="${WORKTREE_BASE}/${DIR_NAME}"
-git worktree add "$WORKTREE_PATH" "origin/${BRANCH}" --detach
-```
-
-### 5. Launch Reviews
-
-**Single branch:** Run review script directly.
-```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/review-in-worktree.sh" "$REPO_ROOT" "$WORKTREE_PATH" "$BRANCH" "$LANGUAGE" "$PR_NUMBER"
-```
-
-**Multiple branches:** Create tmux session with one pane per review, then report the session info.
-
-### 6. Fallback (no tmux)
-
-Review in current session: create worktree, cd into it, invoke the `pr-reviewer` skill directly, then cleanup worktree when done.
+Only if the launch script cannot be found: review in current session by creating a worktree, cd into it, invoke the `pr-reviewer` skill directly, then cleanup worktree when done.
 
 ---
 

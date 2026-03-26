@@ -27,6 +27,9 @@ $ARGUMENTS - Either:
 ### Phase 1: Pre-flight
 
 ```bash
+# Remove any stale PR description from a previous run
+rm -f .claude/pr-description.md
+
 # Get current branch
 BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null)
 
@@ -186,34 +189,54 @@ Write to `.claude/pr-description.md`.
 
 In both cases, keep content concise. The diff speaks for itself — focus on the "why" and testing strategy, not re-describing every line changed.
 
-### Phase 6: Push and Create PR
+### Phase 5.5: User Review of PR Description (ENFORCED BY HOOK)
+
+A PreToolUse hook (`ship-gate.sh`) will **block** `gh pr create` unless `.claude/pr-description.md` contains the marker `<!-- user-approved -->` at the top. You cannot skip this step — the hook runs in the harness and will reject the command.
+
+1. Read back the full contents of `.claude/pr-description.md` and display it to the user.
+2. Use AskUserQuestion to ask: "Here's the PR description I generated. Approve it as-is, or tell me what to change."
+3. Wait for the user's response. Do not continue until they reply.
+4. If the user requests changes: apply them to `.claude/pr-description.md`, show the updated version, and ask again.
+5. After the user explicitly approves (e.g., "looks good", "yes", "ship it"), add the approval marker:
 
 ```bash
-# Push with upstream tracking
-git push -u origin "${BRANCH}"
+# Add approval marker — ship-gate.sh hook checks for this before allowing gh pr create
+sed -i '' '1s/^/<!-- user-approved -->\n/' .claude/pr-description.md
 ```
 
-Determine PR title from:
-1. The spec name (if found): "Implement <feature name>"
-2. The branch name, cleaned up: `feature/batch-analysis` → "Batch analysis"
-3. The first intentional commit message if nothing else works
+Only then proceed to Phase 6.
 
-Create the PR:
+### Phase 6: Push and Create PR
+
+Run the following script block **exactly as written** — do not modify, summarize, or reinterpret any part of it. Copy-paste the entire block into a single Bash tool call:
 
 ```bash
-# Check for --draft flag
-DRAFT_FLAG=""
-# If --draft in $ARGUMENTS, add --draft
+# Determine base and branch
+BRANCH=$(git symbolic-ref --short HEAD)
+for candidate in main master; do
+  if git show-ref --verify --quiet "refs/heads/$candidate"; then BASE="$candidate"; break; fi
+done
 
+# Push with upstream tracking
+git push -u origin "${BRANCH}"
+
+# PR title is ALWAYS the first commit message — no exceptions
+PR_TITLE=$(git log --oneline --reverse "${BASE}..HEAD" | head -1 | cut -d' ' -f2-)
+
+echo "BRANCH=$BRANCH"
+echo "PR_TITLE=$PR_TITLE"
+```
+
+Then create the PR using the **exact** `$PR_TITLE` value printed above. If `--draft` was in $ARGUMENTS, add the `--draft` flag:
+
+```bash
 gh pr create \
-  --title "<pr-title>" \
-  --body-file .claude/pr-description.md \
-  $DRAFT_FLAG
+  --title "<exact PR_TITLE from above>" \
+  --body-file .claude/pr-description.md
 ```
 
 If `gh pr create` fails because a PR already exists:
 ```bash
-# Get existing PR URL
 gh pr view "${BRANCH}" --json url --jq '.url'
 ```
 Report the existing PR URL instead.

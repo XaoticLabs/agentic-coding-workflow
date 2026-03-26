@@ -111,11 +111,11 @@ if ! grep -q '\.claude/worktrees/' "${REPO_ROOT}/.gitignore" 2>/dev/null; then
   echo -e '\n# Git worktrees (parallel branch work)\n.claude/worktrees/' >> "${REPO_ROOT}/.gitignore"
 fi
 
-BRANCH_PREFIX="ralph/${SLUG}"
+BRANCH_PREFIX="${SLUG}"
 
 for ((i=0; i<NUM_WORKERS; i++)); do
   BRANCH="${BRANCH_PREFIX}/worker-${i}"
-  WORKTREE_PATH="${WORKTREE_BASE}/ralph-${SLUG}-worker-${i}"
+  WORKTREE_PATH="${WORKTREE_BASE}/${SLUG}-worker-${i}"
 
   # Remove stale worktree if it exists
   if [ -d "$WORKTREE_PATH" ]; then
@@ -159,7 +159,7 @@ FLAGS=""
 [ -n "$CLEAN_ROOM_FLAG" ] && FLAGS="$FLAGS --clean-room"
 
 for ((i=0; i<NUM_WORKERS; i++)); do
-  WORKTREE_PATH="${WORKTREE_BASE}/ralph-${SLUG}-worker-${i}"
+  WORKTREE_PATH="${WORKTREE_BASE}/${SLUG}-worker-${i}"
   WORKER_SPEC_DIR=".claude/specs/${SLUG}"
 
   CMD="export PATH='${PATH}'; RALPH_WORKER_ID=worker-${i} CLAUDE_PROJECT_DIR='${WORKTREE_PATH}' '${BASH_PATH}' '${SCRIPT_DIR}/loop.sh' '${WORKER_SPEC_DIR}' build ${MAX_ITERATIONS} ${FLAGS}"
@@ -208,7 +208,7 @@ while :; do
   DONE_COUNT=0
   NOW=$(date +%s)
   for ((i=0; i<NUM_WORKERS; i++)); do
-    WORKTREE_PATH="${WORKTREE_BASE}/ralph-${SLUG}-worker-${i}"
+    WORKTREE_PATH="${WORKTREE_BASE}/${SLUG}-worker-${i}"
     MARKER="${WORKTREE_PATH}/.claude/ralph-worker-done-worker-${i}"
 
     if [ -f "$MARKER" ]; then
@@ -308,7 +308,7 @@ update_phase "CLEANUP" "Removing worktrees and temporary files"
 
 # Remove worktrees
 for ((i=0; i<NUM_WORKERS; i++)); do
-  WORKTREE_PATH="${WORKTREE_BASE}/ralph-${SLUG}-worker-${i}"
+  WORKTREE_PATH="${WORKTREE_BASE}/${SLUG}-worker-${i}"
   BRANCH="${BRANCH_PREFIX}/worker-${i}"
 
   if [ -d "$WORKTREE_PATH" ]; then
