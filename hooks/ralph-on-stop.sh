@@ -1,41 +1,52 @@
 #!/bin/bash
-# Stop hook: LLM-as-judge quality review for Ralph iterations
-# Evaluates the committed diff against project conventions before allowing exit.
-# Only active in Ralph mode (RALPH_MODE=1).
-# Blocks if the judge finds substantive quality issues worth fixing this iteration.
+# Stop hook: Ralph mode gates (plan enforcement + quality judge)
+# Only active when RALPH_MODE=1.
+# Gate 1: Blocks if code changed but IMPLEMENTATION_PLAN.md wasn't updated
+# Gate 2: LLM-as-judge review of committed diff for substantive issues
 
-input=$(cat)
+SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+source "${SCRIPT_DIR}/lib/common.sh"
 
-# Prevent infinite loops
-stop_hook_active=$(echo "$input" | jq -r '.stop_hook_active // false' 2>/dev/null)
-if [ "$stop_hook_active" = "true" ]; then
-  exit 0
+input=$(read_hook_input)
+check_stop_hook_active "$input" && exit 0
+check_ralph_mode || exit 0
+cd_project
+
+# ── Gate 1: Plan update enforcement ──────────────────────────────────
+
+plan_file=""
+for candidate in IMPLEMENTATION_PLAN.md .claude/plans/IMPLEMENTATION_PLAN.md; do
+  if [ -f "$candidate" ]; then
+    plan_file="$candidate"
+    break
+  fi
+done
+
+if [ -n "$plan_file" ]; then
+  plan_changed=$(git diff --name-only -- "$plan_file" 2>/dev/null; git diff --cached --name-only -- "$plan_file" 2>/dev/null)
+  code_changes=$(git diff --name-only 2>/dev/null; git diff --cached --name-only 2>/dev/null)
+
+  if [ -z "$plan_changed" ] && [ -n "$code_changes" ]; then
+    echo '{"decision": "block", "reason": "Ralph mode: IMPLEMENTATION_PLAN.md was not updated. Mark the completed task as done and add any learnings before exiting."}'
+    exit 0
+  fi
 fi
 
-# Only active in Ralph mode
-if [ "${RALPH_MODE}" != "1" ]; then
-  exit 0
-fi
+# ── Gate 2: Quality judge ────────────────────────────────────────────
 
-cd "$CLAUDE_PROJECT_DIR" || exit 0
-
-# Get the diff from the last 2 commits (task commit + plan update commit)
 DIFF=$(git diff HEAD~2..HEAD 2>/dev/null)
 if [ -z "$DIFF" ]; then
-  # No commits to review
   exit 0
 fi
 
-# Cap diff size to avoid blowing context — only review first 4000 chars
+# Cap diff size to conserve context
 DIFF_TRIMMED=$(echo "$DIFF" | head -c 4000)
 
-# Read AGENTS.md for project conventions if available
 CONVENTIONS=""
 if [ -f ".claude/AGENTS.md" ]; then
   CONVENTIONS=$(head -100 ".claude/AGENTS.md")
 fi
 
-# Build the judge prompt
 JUDGE_PROMPT="You are a code quality judge for an autonomous coding loop. Review this diff and decide if it has substantive quality issues that should be fixed NOW (before moving to the next task).
 
 IMPORTANT: You are reviewing autonomous agent output. Be pragmatic, not pedantic.
@@ -67,7 +78,6 @@ FAIL: <one-sentence description of the issue that must be fixed>
 
 Nothing else."
 
-# Run the judge
 VERDICT=$(echo "$JUDGE_PROMPT" | claude -p --model haiku --output-format text 2>/dev/null | tail -1)
 
 if echo "$VERDICT" | grep -q "^FAIL:"; then
@@ -76,5 +86,4 @@ if echo "$VERDICT" | grep -q "^FAIL:"; then
   exit 0
 fi
 
-# Pass or unparseable response — allow
 exit 0

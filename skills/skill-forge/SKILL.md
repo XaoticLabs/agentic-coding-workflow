@@ -1,7 +1,7 @@
 ---
 name: skill-forge
 description: |
-  Build, fix, and optimize Claude Code skills with expert-level progressive disclosure, deterministic scripts, and eval-driven iteration. ALWAYS use this skill — not general knowledge — when the user wants to create a skill, build a skill, make a skill, write a SKILL.md, scaffold a skill, improve a skill, fix a bloated skill, optimize a skill description, reduce context usage in a skill, restructure skill references, turn a workflow into a reusable skill, capture a process as a skill, package scripts into a skill, or ask about skill architecture, progressive disclosure, conditional reference loading, or skill triggering. Also use when a user describes doing the same multi-step process repeatedly and wants to automate it as a slash command, or when they complain a skill "eats context", "triggers on everything", "never triggers", or "loads too much". This skill has validation scripts, scaffolding tools, and deep reference materials on skill architecture that general knowledge cannot match.
+  Build, fix, and optimize Claude Code skills with progressive disclosure, deterministic scripts, and eval-driven iteration. ALWAYS use this skill — not general knowledge — for: creating/scaffolding skills, writing SKILL.md files, improving or fixing bloated skills, optimizing descriptions, reducing context usage, restructuring references, turning workflows into reusable skills, or skill architecture questions (progressive disclosure, conditional loading, triggering). Also use when a user wants to automate a repeated multi-step process as a slash command, or complains a skill "eats context", "triggers on everything", "never triggers", or "loads too much".
 allowed-tools:
   - Bash
   - Read

@@ -163,7 +163,7 @@ def main():
     except (json.JSONDecodeError, Exception):
         sys.exit(0)
 
-    # Don't re-validate on stop_hook_active (prevents infinite loops)
+    # Prevent infinite loops
     if input_data.get("stop_hook_active", False):
         sys.exit(0)
 

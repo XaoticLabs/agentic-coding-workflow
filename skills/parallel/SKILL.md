@@ -56,7 +56,7 @@ tmux new-session -d -s "$SESSION_NAME"
 If the spec path points to a directory containing `IMPLEMENTATION_PLAN.md`, use the partition script for smart task assignment:
 
 ```bash
-PARTITION=$(bash "${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/partition-tasks.sh" \
+PARTITION=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/partition-tasks.sh" \
   "<spec-dir>/IMPLEMENTATION_PLAN.md" "$COUNT")
 ```
 

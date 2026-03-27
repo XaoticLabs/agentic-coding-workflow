@@ -2,13 +2,11 @@
 # Stop hook: Suggest /agentic-coding-workflow:update-rules if the session had user corrections
 # Replaces the prompt-based hook to avoid "No assistant message found" errors
 
-input=$(cat)
+SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+source "${SCRIPT_DIR}/lib/common.sh"
 
-# Prevent infinite loops
-stop_hook_active=$(echo "$input" | jq -r '.stop_hook_active // false' 2>/dev/null)
-if [ "$stop_hook_active" = "true" ]; then
-    exit 0
-fi
+input=$(read_hook_input)
+check_stop_hook_active "$input" && exit 0
 
 # Get transcript path
 transcript_path=$(echo "$input" | jq -r '.transcript_path // empty' 2>/dev/null)
