@@ -54,11 +54,9 @@ CRITICAL_PATHS = [
 
 # Dangerous git patterns
 DANGEROUS_GIT_PATTERNS = [
-    # Force push to main/master
-    (r'git\s+push\s+.*--force.*\b(main|master)\b', "Force push to main/master"),
-    (r'git\s+push\s+-f\s+.*\b(main|master)\b', "Force push to main/master"),
-    (r'git\s+push\s+.*\b(main|master)\b.*--force', "Force push to main/master"),
-    (r'git\s+push\s+.*\b(main|master)\b.*-f\b', "Force push to main/master"),
+    # Block pushes to main/master (direct push, force push, force-with-lease — all blocked)
+    (r'git\s+push\s+.*\b(main|master)\b', "Push to main/master (all pushes to main/master are blocked)"),
+    (r'git\s+push\b(?!.*\s)$', "Push to default branch (use explicit branch names to avoid pushing to main)"),
 
     # Discard all local changes
     (r'git\s+checkout\s+\.(\s|$)', "Discard all uncommitted changes (git checkout .)"),
@@ -167,9 +165,9 @@ def is_dangerous_git_command(command: str) -> tuple[bool, str]:
 def suggest_safer_git_alternative(command: str) -> str:
     """Suggest a safer alternative to a dangerous git command."""
     suggestions = []
-    if 'push' in command and ('--force' in command or '-f' in command):
-        suggestions.append("• Use 'git push --force-with-lease' instead (prevents overwriting others' work)")
+    if 'push' in command:
         suggestions.append("• Push to a feature branch instead of main/master")
+        suggestions.append("• Create a PR to merge changes into main/master")
     if 'checkout .' in command or 'restore .' in command:
         suggestions.append("• Use 'git stash' to save changes temporarily")
         suggestions.append("• Discard specific files: 'git checkout -- <file>'")

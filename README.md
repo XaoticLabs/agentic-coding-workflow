@@ -2,27 +2,38 @@
 
 A Claude Code plugin with commands, skills, and hooks for a streamlined development workflow.
 
-## Quick Start (2 minutes)
+## Quick Start
 
 **1. Install Claude Code** (if you haven't already):
-Native Install (recommended)
+
+Native install (recommended):
 ```bash
 curl -fsSL https://claude.ai/install.sh | bash
 ```
-Homebrew
+Homebrew:
 ```bash
 brew install --cask claude-code
 ```
 
-**2. Install this plugin** — from any project directory, run:
+**2. Add the marketplace and install the plugin:**
+```bash
+claude
+# then inside Claude Code:
+/plugin marketplace add XaoticLabs/agentic-coding-workflow
+/plugin install agentic-coding-workflow@xaoticlabs-marketplace
+```
+
+Alternatively, use the interactive UI:
 ```bash
 claude
 # then inside Claude Code:
 /plugin
-# select "Add plugin" → paste this repo URL
+# Go to "Marketplaces" tab → Add → enter: XaoticLabs/agentic-coding-workflow
+# Follow instructions to install and enable
+/reload-plugins
 ```
 
-**3. Start using it** — open your project and try:
+**3. Start using it** — open any project and try:
 ```bash
 cd your-project
 claude
@@ -35,50 +46,101 @@ Then type any of these:
 
 ## Why This Exists
 
-**This plugin adds opinionated workflows on top of Claude Code** so you don't have to figure out prompting patterns yourself. Though, once you are more comfortable with Claude Code (or your agentic TUI of choice) I highly recommend modifying, creating, deleting, and experimenting with your own flow. This is just how one engineer works and is an attempt to unify and codify things that might help people get a more consistent flow with less of a headache of config.
+**This plugin adds opinionated workflows on top of Claude Code** so you don't have to figure out prompting patterns yourself. Once you're more comfortable with Claude Code (or your agentic TUI of choice) I highly recommend modifying, creating, deleting, and experimenting with your own flow. This is just how one engineer works and is an attempt to unify and codify things that might help people get a more consistent flow with less of a headache of config.
 
 ### The mental model
 
-**Interactive mode:** The workflow (`plan → spec → implement → review`) is meant to be done in order, but any step can be started independently if you've already planned, implemented, etc,.
+**Interactive mode:** The workflow (`plan → spec → implement → review`) is meant to be done in order, but any step can be started independently if you've already planned, implemented, etc.
 
-**Autonomous mode (Ralph):** Experimental version of the workflow using the (in)famous Ralph Wiggums method. There's a script and more that explains it but basically you can take your spec and let Ralph run off with it.
-
+**Autonomous mode (Ralph):** Uses Geoffrey Huntley's Ralph methodology — an autonomous coding loop where Claude picks tasks, implements, tests, commits, and updates the plan with no human in the loop. You can take your spec and let Ralph run off with it.
 
 ## Commands
 
+### Core Workflow
+
 | Command | What it does |
 |---------|--------------|
-| `/agentic-coding-workflow:prime` | Loads initial context. Looks at things like git logs and documents. Add `--deep` for a more thorough codebase analysis. |
-| `/agentic-coding-workflow:plan` | Interactive planning partner. Takes a ticket ID or feature description, goes over it with you, and produces a plan doc. |
-| `/agentic-coding-workflow:write-spec` | Takes a plan doc and turns it into a proper implementation spec with atomic, actionable tasks. |
+| `/agentic-coding-workflow:prime` | Loads initial context — git logs, docs, project structure. Add `--deep` for thorough codebase analysis. |
+| `/agentic-coding-workflow:plan` | Interactive planning partner. Takes a ticket ID or feature description, explores edge cases, produces a plan doc. |
+| `/agentic-coding-workflow:write-spec` | Transforms a plan into an implementation spec with atomic, actionable tasks. |
 | `/agentic-coding-workflow:implement` | Picks up a task from a spec and builds it out. Also supports ad-hoc descriptions with plan-first flow. |
-| `/agentic-coding-workflow:review` | Unified code review — PR review, spec compliance check (`--spec`), plan critique (`--plan`), or WIP squash (`--prep`). Auto-detects Elixir/Python, supports parallel multi-branch reviews. |
-| `/agentic-coding-workflow:debug-bug` | Bug hunter. |
-| `/agentic-coding-workflow:troubleshoot` | Infrastructure diagnostics + quick kubectl access. Covers local Docker, staging, and prod k8s. |
-| `/agentic-coding-workflow:ralph` | Autonomous coding loop. Takes a spec, works through every task unattended — implements, tests, commits, updates the plan, repeats. Supports `--once` (HITL mode), `--clean-room` (greenfield), `--harvest` (extract patterns after a run), and `--parallel` (multiple worktrees). |
+| `/agentic-coding-workflow:test` | Detects project test framework, runs the suite (or a subset), and reports structured results. |
+| `/agentic-coding-workflow:review` | Unified code review — PR review, spec compliance (`--spec`), plan critique (`--plan`), or WIP squash (`--prep`). Auto-detects Elixir/Python, supports parallel multi-branch reviews. |
+| `/agentic-coding-workflow:ship` | Pushes the current branch, creates a PR with a generated description, and reports the URL. |
+
+### Autonomous & Parallel
+
+| Command | What it does |
+|---------|--------------|
+| `/agentic-coding-workflow:ralph` | Autonomous coding loop. Works through every task unattended — implements, tests, commits, updates the plan, repeats. Supports `--once` (HITL mode), `--clean-room` (greenfield), `--harvest` (extract patterns), and `--parallel` (multiple worktrees). |
+| `/agentic-coding-workflow:parallel` | Spins up N worktrees with tmux panes and Claude sessions for parallel task work. |
+| `/agentic-coding-workflow:reunify` | Merges parallel worktree branches back, runs tests after each merge, resolves conflicts, and verifies against the spec. |
+| `/agentic-coding-workflow:spawn` | Launches a full Claude Code session in a tmux pane with an agent role preloaded — for when you need a visible, steerable instance. |
+| `/agentic-coding-workflow:dashboard` | Live tmux dashboard monitoring all active worktrees and Claude activity. |
+
+### Debugging & Analysis
+
+| Command | What it does |
+|---------|--------------|
+| `/agentic-coding-workflow:debug-bug` | Bug hunter — finds and fixes bugs with structured investigation. |
+| `/agentic-coding-workflow:troubleshoot` | Infrastructure diagnostics + kubectl access. Covers local Docker, staging, and prod k8s. |
+| `/agentic-coding-workflow:analyze` | Data analyst — takes query results, CSVs, or datasets and produces insights, summaries, and visualizations. |
+| `/agentic-coding-workflow:query` | Translates natural language questions into SQL, runs them, and presents results. |
+| `/agentic-coding-workflow:techdebt` | Scans the codebase for tech debt and surfaces actionable findings. |
+
+### Learning & Improvement
+
+| Command | What it does |
+|---------|--------------|
+| `/agentic-coding-workflow:explain` | Educational breakdown of code, changes, or systems — the "why" behind the code, not just what it does. |
+| `/agentic-coding-workflow:visualize` | Generates architecture diagrams — ASCII for terminal, Mermaid for docs, HTML for rich visuals. |
+| `/agentic-coding-workflow:grill-me` | Reviews your staged changes, generates tough questions about edge cases and design decisions. You have to demonstrate understanding before proceeding to PR. |
+| `/agentic-coding-workflow:elegant-redo` | Scraps a failed implementation and redoes it with hindsight from what went wrong. |
+| `/agentic-coding-workflow:harness-audit` | Inventories all harness components, documents their assumptions, and suggests simplification experiments as models improve. |
 | `/agentic-coding-workflow:update-rules` | Updates CLAUDE.md or `.claude/rules/` after corrections or pattern discoveries. |
 
 ## Skills
 
 | Skill | What it does |
 |-------|--------------|
-| `/agentic-coding-workflow:checkpoint` | Manage session checkpoints — save, list, restore, fork, rewind (subcommands) |
+| `/agentic-coding-workflow:checkpoint` | Manage session checkpoints — save, list, restore, fork, rewind |
 | `/agentic-coding-workflow:git-worktree` | Manages git worktrees — add, list, remove, status dashboard, and cleanup |
+| `/agentic-coding-workflow:parallel` | Creates multiple worktrees with tmux panes and Claude sessions for parallel work |
+| `/agentic-coding-workflow:reunify` | Reunifies parallel worktree branches back onto a parent feature branch |
+| `/agentic-coding-workflow:skill-forge` | Build, fix, and optimize Claude Code skills — scaffolding, progressive disclosure, eval-driven iteration |
 | `tmux-multiplexer` | Controls tmux for spinning up multi-agent workflows and parallel tasks |
-| `neovim-controller` | Talks to a running neovim instance via RPC - open files, run LSP commands, etc. |
+| `neovim-controller` | Talks to a running Neovim instance via RPC — open files, run LSP commands, navigate symbols |
 | `pr-reviewer` | The brains behind `/agentic-coding-workflow:review` — knows Elixir and Python patterns, auto-detects language |
-| `ralph` | Orchestrates autonomous Ralph loop iterations. Manages all the administrative stuff |
+| `ralph` | Orchestrates autonomous Ralph loop iterations with separated evaluator and tiered evaluation modes |
+| `data-analytics` | Database querying and data analysis support — MCP server config, connection setup, SQL help |
+
+## Agents
+
+Reusable agent role definitions in `agents/` — work as both subagent prompts (via the `Agent` tool) and full primary instances (via `claude --context`).
+
+| Agent | Role |
+|-------|------|
+| `researcher` | Read-only research and exploration |
+| `implementer` | Code implementation from specs and tasks |
+| `test-writer` | Test creation and coverage |
+| `evaluator` | Independent code evaluation (used by Ralph) |
+| `explorer` | Codebase exploration and analysis |
 
 ## Hooks
 
-| Hook | What it does |
-|------|--------------|
-| `dangerous_command_blocker.py` | Catches dangerous commands like `rm -rf /` and blocks access to `.env` files |
-| `lint-on-stop.sh` | Runs linting and tests when Claude tries to stop - if there are errors, it blocks and asks Claude to fix them |
-| `rules-prompt.md` | After implementation tasks, gently prompts about capturing learned patterns as rules |
-| `toast-notify.sh` | Pops up a macOS notification when Claude needs your attention |
-| `ralph-quality-judge.sh` | Scores each Ralph iteration on quality — flags regressions and struggle patterns |
-| `ralph-plan-update` | In Ralph mode, verifies the implementation plan was updated before allowing Claude to exit |
+| Hook | Event | What it does |
+|------|-------|--------------|
+| `dangerous_command_blocker.py` | PreToolUse | Catches dangerous commands (`rm -rf /`, `.env` access) and blocks them |
+| `subagent_permission_router.py` | PreToolUse | Auto-approves read-only tools for all sessions, extra tools for subagents |
+| `ship-gate.sh` | PreToolUse | Blocks `gh pr create` unless PR description exists and user approved it |
+| `audit-logger.py` | PostToolUse | Logs all tool calls to `.claude/logs/tool-calls.jsonl` for audit and debugging |
+| `lint-on-stop.sh` | Stop | Runs linting and tests when Claude stops — blocks and asks Claude to fix errors |
+| `rule-capture-on-stop.sh` | Stop | After implementation, prompts about capturing learned patterns as rules |
+| `ralph-on-stop.sh` | Stop | In Ralph mode, manages iteration handoff and plan updates |
+| `validate-output.py` | Stop | Validates command output artifacts exist and contain required sections |
+| `toast-notify.sh` | Stop | Pops up a macOS notification when Claude needs your attention |
+| `stop-failure-logger.sh` | StopFailure | Logs API failures (rate limits, auth errors) and sends toast notifications |
+| `cleanup-review-worktrees.sh` | SessionEnd | Removes orphaned `pr-review-*` worktrees left by crashed sessions |
 
 ## CLAUDE.md & Rules System
 
@@ -88,7 +150,7 @@ This plugin ships with a `CLAUDE.md` and `.claude/rules/` directory that teach C
 - **`.claude/rules/<topic>.md`** — path-scoped rules that only load when Claude touches matching files (uses YAML `globs:` frontmatter)
 - **`~/.claude/CLAUDE.md`** — personal preferences that apply across all projects
 
-The `/agentic-coding-workflow:update-rules` command helps you build these up over time. The `rules-prompt` stop hook gently reminds you to capture patterns after implementation tasks.
+The `/agentic-coding-workflow:update-rules` command helps you build these up over time. The `rule-capture-on-stop` hook gently reminds you to capture patterns after implementation tasks.
 
 **Scope precedence:** Managed policy > CLI args > Local settings > Project settings > User settings
 
@@ -97,32 +159,32 @@ The `/agentic-coding-workflow:update-rules` command helps you build these up ove
 ### Interactive (human-in-the-loop)
 
 1. `/agentic-coding-workflow:prime` — Load up context for a ticket
-2. `/agentic-coding-workflow:plan AI-1234` — Talk through what you're building, go over edge cases and things you might not have thought of.
+2. `/agentic-coding-workflow:plan AI-1234` — Talk through what you're building, go over edge cases and things you might not have thought of
 3. `/agentic-coding-workflow:review --plan` — Get a plan critique (optional)
 4. `/agentic-coding-workflow:write-spec feature-name` — Turn the plan into an implementation spec
 5. `/agentic-coding-workflow:implement 1` — Build task 1 from the spec
-6. Repeat for remaining tasks. Use `/agentic-coding-workflow:parallel 3 specs/feature/` to work on multiple tasks simultaneously with auto task assignment.
-7. `/agentic-coding-workflow:reunify` — Merge parallel branches back (if you used `/agentic-coding-workflow:parallel`)
+6. Repeat for remaining tasks. Use `/agentic-coding-workflow:parallel 3 specs/feature/` to work on multiple tasks simultaneously with auto task assignment
+7. `/agentic-coding-workflow:reunify` — Merge parallel branches back (if you used parallel)
 8. `/agentic-coding-workflow:test` — Run the test suite
 9. `/agentic-coding-workflow:review --spec` — Make sure it matches the spec
-10. `/agentic-coding-workflow:ship` — Fill the PR template and create a PR
+10. `/agentic-coding-workflow:ship` — Create the PR
 
 ### Autonomous (Ralph loop)
 
-Best when the spec is solid and you'd rather review a finished branch than babysit each task. Also useful for experimenting with how hands off you can comfortably get and still deliver excellent code quality.
+Best when the spec is solid and you'd rather review a finished branch than babysit each task.
 
 1. `/agentic-coding-workflow:prime` — Load context
 2. `/agentic-coding-workflow:plan AI-1234` — Plan the feature
-3. `/agentic-coding-workflow:review --plan` — Critique the plan (don't skip this — it's your last chance to steer directly without stopping Ralph)
+3. `/agentic-coding-workflow:review --plan` — Critique the plan (don't skip — last chance to steer before Ralph takes over)
 4. `/agentic-coding-workflow:write-spec feature-name --ralph` — Generate atomic specs + implementation plan
-5. `/agentic-coding-workflow:ralph feature-name --once` — Run a single watched iteration to validate your spec and plan (HITL mode)
+5. `/agentic-coding-workflow:ralph feature-name --once` — Run a single watched iteration to validate spec and plan (HITL mode)
 6. `/agentic-coding-workflow:ralph feature-name` — Launch the autonomous loop
 7. Go do something else. Check back with `/agentic-coding-workflow:ralph feature-name --status` or read `.claude/ralph-status.md`
 8. Steer mid-loop by writing instructions to `.claude/ralph-inject.md`
-9. `/agentic-coding-workflow:ralph feature-name --harvest` — After completion, extract reusable patterns and conventions
-10. `/agentic-coding-workflow:review --spec` → `/agentic-coding-workflow:ship` — Review, fill the PR template, and create a PR
+9. `/agentic-coding-workflow:ralph feature-name --harvest` — After completion, extract reusable patterns
+10. `/agentic-coding-workflow:review --spec` → `/agentic-coding-workflow:ship` — Review and create the PR
 
-For greenfield work, add `--clean-room` to skip codebase search. For large features, `/agentic-coding-workflow:ralph feature-name --parallel 3` splits work across worktrees — three independent Claude instances working through dependency-ordered tasks simultaneously.
+For greenfield work, add `--clean-room` to skip codebase search. For large features, `--parallel 3` splits work across worktrees — three independent Claude instances working through dependency-ordered tasks simultaneously.
 
 **"Where do I start?"**
-Run `claude` in a project. Try a few of the commands, read over the plugins a bit. Once you feel comfortable, try a few `/agentic-coding-workflow:implement` tasks, and then try `/agentic-coding-workflow:ralph` on a small spec.
+Run `claude` in a project. Try `/agentic-coding-workflow:prime` then `/agentic-coding-workflow:plan` with a feature idea. Once comfortable, try `/agentic-coding-workflow:implement` on a task, and then `/agentic-coding-workflow:ralph` on a small spec.
