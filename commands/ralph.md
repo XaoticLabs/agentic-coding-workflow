@@ -21,7 +21,6 @@ $ARGUMENTS - One of:
 - `<spec-slug> --plan` — planning mode only (gap analysis, generate plan)
 - `<spec-slug> --once` — single iteration, watched (HITL mode for prompt tuning)
 - `<spec-slug> --clean-room` — greenfield mode, skip codebase search
-- `<spec-slug> --contracts` — generate sprint contracts (measurable done criteria per task)
 - `<spec-slug> --harvest` — extract patterns and conventions after a completed run
 - `<spec-slug> --time-budget=N` — max seconds per iteration (default: 600, 0 = no limit)
 - `<spec-slug> --eval-per-iter` — enable per-iteration LLM evaluation (default: end-of-run only)
@@ -37,7 +36,6 @@ Extract from `$ARGUMENTS`:
 - **spec-slug** (required): matches a directory at `.claude/specs/<slug>/`
 - **--parallel N**: optional, number of parallel workers (2-6)
 - **--plan**: optional, planning-only mode
-- **--contracts**: optional, generate sprint contracts after planning
 - **--eval-per-iter**: optional, enable per-iteration LLM evaluation (for edge-of-capability tasks)
 - **--no-eval**: optional, disable all LLM evaluation
 - **--once**: optional, single iteration then stop (HITL mode)
@@ -120,23 +118,6 @@ bash "${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/loop.sh" "$SPEC_DIR" plan 1
 
 If `--plan` was explicitly requested, exit after planning.
 If plan was auto-generated because it didn't exist, continue to Phase 5b.
-
-### Phase 5b: Contract Generation
-
-**If `--contracts` or no `CONTRACTS.md` exists in the spec directory:**
-
-Run the loop in contract generation mode (single iteration):
-
-```bash
-bash "${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/loop.sh" "$SPEC_DIR" contracts 1
-```
-
-This generates `CONTRACTS.md` with specific, measurable acceptance criteria for each task. The evaluator grades against these contracts during build iterations.
-
-If `--contracts` was explicitly requested, exit after generating contracts.
-If contracts were auto-generated, continue to Phase 6.
-
-If the user passed `--no-contracts`, skip this phase entirely and proceed without contracts (evaluator will fall back to spec acceptance criteria).
 
 ### Phase 6: Launch Loop
 
@@ -304,11 +285,6 @@ Shows completion dashboard (live progress, timing, success rate).
 /agentic-coding-workflow:ralph auth-feature --stop
 ```
 Creates stop sentinel — loop exits after current iteration.
-
-```
-/agentic-coding-workflow:ralph auth-feature --contracts
-```
-Generates sprint contracts — measurable "done" criteria for each task. Evaluator grades against these.
 
 ```
 /agentic-coding-workflow:ralph auth-feature --eval-per-iter

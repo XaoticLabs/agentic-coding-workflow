@@ -5,10 +5,10 @@ description: |
   Claude with fresh context, using git and files as memory. Each iteration picks one task,
   implements it, tests it, commits, updates the plan, and exits. Backpressure from tests
   and lint ensures quality without human oversight. Includes separated evaluator for
-  independent code evaluation, sprint contracts for measurable acceptance criteria, and
-  tiered evaluation modes (end-of-run or per-iteration). Keywords: ralph, autonomous loop,
-  autonomous coding, auto-implement, headless, unattended, batch implement, ralph loop,
-  geoffrey huntley, self-driving, auto-pilot coding, evaluator, contracts, evaluation.
+  independent code evaluation and tiered evaluation modes (end-of-run or per-iteration).
+  Keywords: ralph, autonomous loop, autonomous coding, auto-implement, headless, unattended,
+  batch implement, ralph loop, geoffrey huntley, self-driving, auto-pilot coding, evaluator,
+  evaluation.
 allowed-tools: Bash, Read, Write, Glob, Grep
 effort: medium
 user-invocable: false
@@ -37,8 +37,7 @@ Manages autonomous Claude coding loops. Not user-invocable directly — invoked 
 |----------|------|---------|
 | `references/PROMPT_build.md` | build | Per-iteration build prompt — pick task, implement, test, commit |
 | `references/PROMPT_plan.md` | plan | Planning-only prompt — gap analysis, generate implementation plan |
-| `references/PROMPT_contracts.md` | contracts | Sprint contract generation — measurable "done" criteria per task |
-| `references/PROMPT_evaluate.md` | evaluate | Independent code evaluation — grade against spec/contracts, return verdict |
+| `references/PROMPT_evaluate.md` | evaluate | Independent code evaluation — grade against spec and plan acceptance criteria, return verdict |
 | `references/PROMPT_harvest.md` | harvest | Post-run pattern extraction — analyze diffs, extract conventions |
 | `references/PROMPT_resolve.md` | resolve | Merge conflict resolution — resolve markers, test, commit |
 | `references/PROMPT_reconcile.md` | reconcile | Post-merge verification — run tests, fix integration issues |
@@ -82,13 +81,6 @@ Plan and harvest modes run in-place (read-only/analytical, no commits). Parallel
 1. Run loop: `scripts/loop.sh <spec-dir> plan 1`
 2. Single iteration: reads specs, analyzes codebase, generates `IMPLEMENTATION_PLAN.md`
 
-### Contract Generation Mode
-
-1. Run loop: `scripts/loop.sh <spec-dir> contracts 1`
-2. Single iteration: reads plan + specs, generates `CONTRACTS.md` with measurable criteria per task
-3. Should run after plan mode — contracts define what "done" looks like for each task
-4. The evaluator grades against these contracts during build iterations
-
 ### Harvest Mode
 
 1. **Auto-runs on completion** — harvest runs automatically when the plan reaches COMPLETE or a circuit breaker fires. Disable with `AUTO_HARVEST=false`.
@@ -119,7 +111,7 @@ The evaluator is a separate Claude session that reviews implementation quality i
 
 By default, the evaluator runs **once at the end of the run**, reviewing the full body of work:
 - Reviews the entire diff from run start to HEAD
-- Grades against full spec and all contracts
+- Grades against full spec and plan acceptance criteria
 - Produces an advisory quality report (does NOT trigger reverts)
 - Human reviews the report before merging
 - Disable with `RALPH_EVAL_END_OF_RUN=false`
@@ -185,4 +177,3 @@ All Ralph artifacts live under `.claude/`:
 - `ralph-parallel-meta.json` — parallel run metadata (slug, workers, target branch)
 - `ralph-worker-done-*` — per-worker completion markers (in each worktree)
 - `harness-audit-<date>.md` — harness audit reports (from /harness-audit command)
-- `specs/<slug>/CONTRACTS.md` — sprint contracts (measurable done criteria per task)

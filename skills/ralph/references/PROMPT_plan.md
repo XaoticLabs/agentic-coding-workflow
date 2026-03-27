@@ -34,10 +34,19 @@ Write `IMPLEMENTATION_PLAN.md` in the spec directory:
 
 - [ ] **Task 1: <name>** — Priority: HIGH, Deps: none, Spec: 01-topic.md, Files: src/auth/login.ts src/auth/types.ts
   - <1-2 line description of what to implement>
+  - **Acceptance criteria:**
+    - POST /api/login with valid credentials returns 200 with `token` and `expires_at`
+    - POST /api/login with invalid password returns 401
+    - Tests cover: valid login, invalid password, missing email, rate limiting
 - [ ] **Task 2: <name>** — Priority: HIGH, Deps: Task 1, Spec: 02-topic.md, Files: src/auth/session.ts src/middleware/auth.ts
   - <1-2 line description>
+  - **Acceptance criteria:**
+    - <specific observable behavior — binary pass/fail>
+    - <specific test file and cases that must exist>
 - [ ] **Task 3: <name>** — Priority: MEDIUM, Deps: none, Spec: 03-topic.md, Files: src/api/routes.ts src/api/handlers.ts
   - <1-2 line description>
+  - **Acceptance criteria:**
+    - <specific observable behavior — binary pass/fail>
 
 ## Learnings
 
@@ -66,6 +75,20 @@ Scan the specs for opportunities to integrate AI-powered features into the appli
 - **If the spec does NOT mention AI features**, briefly note in the Gap Analysis whether any spec requirements could benefit from AI integration, but do not add unsolicited AI tasks
 
 This step exists because building proper AI agents with tools requires specific architectural decisions that generic "implement feature X" tasks don't capture.
+
+## Acceptance Criteria Quality
+
+Each task must include **Acceptance criteria** — specific, measurable "done" conditions the evaluator grades against. Each criterion must be:
+
+- **Observable**: An evaluator can check it by reading code or running a command
+- **Binary**: It either passes or fails — no "somewhat meets" allowed
+- **Scoped**: It references specific files, functions, or behaviors — not general qualities
+
+**Bad:** "Authentication should work properly"
+**Good:** "POST /api/login with valid credentials returns 200 with JSON body containing `token` (string) and `expires_at` (ISO 8601 timestamp)"
+
+**Bad:** "Tests should cover the feature"
+**Good:** "test/auth/login_test.exs includes tests for: valid login, invalid password (401), missing email (422)"
 
 ## Prioritization Rules
 

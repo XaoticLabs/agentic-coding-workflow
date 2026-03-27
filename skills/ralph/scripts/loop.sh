@@ -54,7 +54,7 @@ STREAM_PROCESSOR="${SCRIPT_DIR}/stream-processor.py"
 # it gives real lift. (See: Anthropic harness design article)
 EVAL_VERDICT_FILE="${PROJECT_DIR}/.claude/ralph-eval-verdict.json"
 EVAL_SUMMARY_FILE="${PROJECT_DIR}/.claude/ralph-eval-summary.md"
-CONTRACTS_FILE="${SPEC_DIR}/CONTRACTS.md"
+# Contracts removed — acceptance criteria now live inline in IMPLEMENTATION_PLAN.md
 RALPH_EVALUATE_UI="${RALPH_EVALUATE_UI:-false}"
 # Per-iteration evaluation (opt-in for hard tasks)
 EVAL_PER_ITER="${RALPH_EVAL_PER_ITER:-false}"            # Run evaluator per-iteration (default: end-of-run only)
@@ -103,9 +103,8 @@ case "$MODE" in
   build)      PROMPT_TEMPLATE="${PROMPT_DIR}/PROMPT_build.md" ;;
   harvest)    PROMPT_TEMPLATE="${PROMPT_DIR}/PROMPT_harvest.md" ;;
   reconcile)  PROMPT_TEMPLATE="${PROMPT_DIR}/PROMPT_reconcile.md" ;;
-  contracts)  PROMPT_TEMPLATE="${PROMPT_DIR}/PROMPT_contracts.md" ;;
   evaluate)   PROMPT_TEMPLATE="${PROMPT_DIR}/PROMPT_evaluate.md" ;;
-  *)          echo "Error: mode must be 'plan', 'build', 'harvest', 'contracts', 'evaluate', or 'reconcile'"; exit 1 ;;
+  *)          echo "Error: mode must be 'plan', 'build', 'harvest', 'evaluate', or 'reconcile'"; exit 1 ;;
 esac
 
 if [ ! -f "$PROMPT_TEMPLATE" ]; then
@@ -127,7 +126,7 @@ echo "║  Clean-room: ${CLEAN_ROOM_FLAG:-no}                 "
 echo "║  Worktree:  auto (build/reconcile modes)              "
 echo "║  Protected:  $( [ -f "$READONLY_FILE" ] && echo "yes ($(wc -l < "$READONLY_FILE") patterns)" || echo "no" )"
 echo "║  Overrides:  $( [ -f "$OVERRIDES_FILE" ] && echo "yes ($(wc -l < "$OVERRIDES_FILE") lines)" || echo "no" )"
-echo "║  Contracts:  $( [ -f "$CONTRACTS_FILE" ] && echo "yes" || echo "no" )"
+echo "║  Criteria:   inline (in IMPLEMENTATION_PLAN.md)"
 echo "║  Evaluator:  $( [ "$EVAL_PER_ITER" = "true" ] && echo "per-iteration (>=${EVAL_DIFF_THRESHOLD} files)" || echo "end-of-run" )"
 echo "║  UI eval:    ${RALPH_EVALUATE_UI}"
 echo "║                                                     ║"
@@ -242,7 +241,7 @@ if [ -z "${RALPH_WORKER_ID:-}" ] && [[ "$MODE" == "build" || "$MODE" == "reconci
   OVERRIDES_FILE="${SPEC_DIR}/RALPH_OVERRIDES.md"
   EVAL_VERDICT_FILE="${PROJECT_DIR}/.claude/ralph-eval-verdict.json"
   EVAL_SUMMARY_FILE="${PROJECT_DIR}/.claude/ralph-eval-summary.md"
-  CONTRACTS_FILE="${SPEC_DIR}/CONTRACTS.md"
+  # Contracts removed — acceptance criteria now live inline in IMPLEMENTATION_PLAN.md
 
   # Re-initialize journal and trace in worktree
   if [ ! -f "$JOURNAL_FILE" ]; then
@@ -347,28 +346,23 @@ run_evaluator() {
   # Determine whether to run full evaluation
   local diff_file_count
   diff_file_count=$(git diff --name-only "$pre_commit" "$post_commit" | wc -l | tr -d ' ')
-  local has_contracts=false
-  [ -f "$CONTRACTS_FILE" ] && has_contracts=true
-
   # Per-iteration evaluation must be explicitly enabled.
   # Default is end-of-run only (per Anthropic harness design findings).
   local run_full=false
   if [ "$EVAL_PER_ITER" = "true" ]; then
     if [ "$diff_file_count" -ge "$EVAL_DIFF_THRESHOLD" ]; then
       run_full=true
-    elif [ "$has_contracts" = "true" ] && [ "$diff_file_count" -ge 3 ]; then
-      run_full=true
     fi
   fi
 
   if [ "$run_full" = "false" ]; then
     echo "  Evaluator: LIGHT mode (${diff_file_count} files changed, threshold ${EVAL_DIFF_THRESHOLD}). Skipping LLM evaluation."
-    trace_event "evaluator" "tier=light" "files_changed=${diff_file_count}" "has_contracts=${has_contracts}"
+    trace_event "evaluator" "tier=light" "files_changed=${diff_file_count}"
     return 2
   fi
 
-  echo "  Evaluator: FULL mode (${diff_file_count} files changed, contracts: ${has_contracts}). Launching evaluation..."
-  trace_event "evaluator" "tier=full" "files_changed=${diff_file_count}" "has_contracts=${has_contracts}"
+  echo "  Evaluator: FULL mode (${diff_file_count} files changed). Launching evaluation..."
+  trace_event "evaluator" "tier=full" "files_changed=${diff_file_count}"
 
   # Build evaluator prompt
   local eval_prompt
@@ -383,7 +377,6 @@ run_evaluator() {
 **Task:** ${task_label}
 **Iteration:** ${iteration}
 **Spec directory:** ${SPEC_DIR}
-**Contracts file:** ${CONTRACTS_FILE}
 **UI evaluation:** ${RALPH_EVALUATE_UI}
 **Verdict output:** ${EVAL_VERDICT_FILE}
 **Summary output:** ${EVAL_SUMMARY_FILE}
@@ -1035,12 +1028,11 @@ if [ "$EVAL_END_OF_RUN" = "true" ] && [ "$MODE" = "build" ] && [ -z "$ONCE_FLAG"
 **Kept iterations:** ${KEPT_COUNT}
 **Reverted iterations:** ${REVERTED_COUNT}
 **Spec directory:** ${SPEC_DIR}
-**Contracts file:** ${CONTRACTS_FILE}
 **UI evaluation:** ${RALPH_EVALUATE_UI}
 **Verdict output:** ${EVAL_VERDICT_FILE}
 **Summary output:** ${EVAL_SUMMARY_FILE}
 
-**Important:** You are reviewing the ENTIRE run's output, not a single task. Grade the overall implementation against the full spec and all contracts. Your verdict does NOT trigger a revert — it produces a quality report for the human to review before merging.
+**Important:** You are reviewing the ENTIRE run's output, not a single task. Grade the overall implementation against the full spec and plan acceptance criteria. Your verdict does NOT trigger a revert — it produces a quality report for the human to review before merging.
 "
 
     rm -f "$EVAL_VERDICT_FILE" "$EVAL_SUMMARY_FILE"

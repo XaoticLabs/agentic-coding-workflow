@@ -49,14 +49,13 @@ Scan the plugin to catalog every component that shapes autonomous behavior. For 
 **Evaluation System** (evaluator phase):
 - Tiered evaluation thresholds — when to run light vs full eval
 - Evaluator scoring dimensions and thresholds
-- Sprint contracts — measurable done criteria
+- Plan acceptance criteria — measurable done criteria inline in plan tasks
 - Calibration reference — scored examples and smell detection
 
 **Prompt Engineering**:
 - PROMPT_build.md — build iteration instructions
 - PROMPT_evaluate.md — evaluation instructions
 - PROMPT_plan.md — planning instructions
-- PROMPT_contracts.md — contract generation instructions
 - PROMPT_harvest.md — pattern extraction instructions
 - PROMPT_reconcile.md — post-merge verification
 - PROMPT_resolve.md — conflict resolution
@@ -119,7 +118,7 @@ For each "possibly stale" or "likely redundant" component, propose an A/B test:
 Based on the article's findings, check if any of these are missing:
 
 - [ ] Separated evaluation from generation (evaluator agent)
-- [ ] Sprint contracts (measurable done criteria)
+- [ ] Inline acceptance criteria in plan tasks
 - [ ] Evaluator calibration (few-shot examples with scores)
 - [ ] Active feature exercising (not just code review)
 - [ ] Prompt steering awareness (tracking how prompt wording affects output)
