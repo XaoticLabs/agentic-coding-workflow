@@ -52,6 +52,21 @@ Write `IMPLEMENTATION_PLAN.md` in the spec directory:
 | 03-topic.md | Complete | Already implemented, verified |
 ```
 
+## Step 5: Identify AI Feature Opportunities
+
+Scan the specs for opportunities to integrate AI-powered features into the application. Claude's training data covers AI integration patterns thinly, so be explicit:
+
+- **Look for user-facing features** that could be enhanced with an AI agent (search, recommendations, content generation, data analysis, natural language interfaces)
+- **If the spec mentions AI features**, plan them as distinct tasks with specific tool definitions — the generator needs concrete guidance, not "add AI"
+- **For agent-based features**, specify:
+  - What tools the agent should have (read database, call APIs, generate content)
+  - What the agent's system prompt should accomplish
+  - How the agent connects to the application's UI/API
+  - What guardrails constrain the agent (rate limits, content filtering, scope restrictions)
+- **If the spec does NOT mention AI features**, briefly note in the Gap Analysis whether any spec requirements could benefit from AI integration, but do not add unsolicited AI tasks
+
+This step exists because building proper AI agents with tools requires specific architectural decisions that generic "implement feature X" tasks don't capture.
+
 ## Prioritization Rules
 
 1. **Risk first** — architectural decisions, integration points, and unknown unknowns get highest priority. These decisions cascade through everything — get them right early. Mark these as HIGH priority with a `[RISK]` tag.

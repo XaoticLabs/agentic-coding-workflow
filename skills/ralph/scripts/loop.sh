@@ -44,6 +44,24 @@ PROMPT_DIR="${SCRIPT_DIR}/../references"
 SLUG=$(basename "$SPEC_DIR")
 STREAM_PROCESSOR="${SCRIPT_DIR}/stream-processor.py"
 
+# ── Evaluator configuration ──────────────────────────────────────────
+# Default: single evaluator pass at END of run (reviews full body of work).
+# Per-iteration evaluation is opt-in for edge-of-capability tasks.
+#
+# The evaluator's value depends on where the task sits relative to what the
+# model can do reliably solo. For tasks within the model's comfort zone,
+# per-iteration evaluation is unnecessary overhead. For tasks at the edge,
+# it gives real lift. (See: Anthropic harness design article)
+EVAL_VERDICT_FILE="${PROJECT_DIR}/.claude/ralph-eval-verdict.json"
+EVAL_SUMMARY_FILE="${PROJECT_DIR}/.claude/ralph-eval-summary.md"
+CONTRACTS_FILE="${SPEC_DIR}/CONTRACTS.md"
+RALPH_EVALUATE_UI="${RALPH_EVALUATE_UI:-false}"
+# Per-iteration evaluation (opt-in for hard tasks)
+EVAL_PER_ITER="${RALPH_EVAL_PER_ITER:-false}"            # Run evaluator per-iteration (default: end-of-run only)
+EVAL_DIFF_THRESHOLD="${RALPH_EVAL_DIFF_THRESHOLD:-5}"    # Files changed to trigger per-iter eval (when enabled)
+# End-of-run evaluation (default: on)
+EVAL_END_OF_RUN="${RALPH_EVAL_END_OF_RUN:-true}"         # Run evaluator once at end of run
+
 mkdir -p "$LOG_DIR"
 
 # ── Trace file (single structured log for the run) ───────────────────
@@ -81,11 +99,13 @@ fi
 # ── Resolve prompt template ─────────────────────────────────────────────
 
 case "$MODE" in
-  plan)      PROMPT_TEMPLATE="${PROMPT_DIR}/PROMPT_plan.md" ;;
-  build)     PROMPT_TEMPLATE="${PROMPT_DIR}/PROMPT_build.md" ;;
-  harvest)   PROMPT_TEMPLATE="${PROMPT_DIR}/PROMPT_harvest.md" ;;
-  reconcile) PROMPT_TEMPLATE="${PROMPT_DIR}/PROMPT_reconcile.md" ;;
-  *)         echo "Error: mode must be 'plan', 'build', 'harvest', or 'reconcile'"; exit 1 ;;
+  plan)       PROMPT_TEMPLATE="${PROMPT_DIR}/PROMPT_plan.md" ;;
+  build)      PROMPT_TEMPLATE="${PROMPT_DIR}/PROMPT_build.md" ;;
+  harvest)    PROMPT_TEMPLATE="${PROMPT_DIR}/PROMPT_harvest.md" ;;
+  reconcile)  PROMPT_TEMPLATE="${PROMPT_DIR}/PROMPT_reconcile.md" ;;
+  contracts)  PROMPT_TEMPLATE="${PROMPT_DIR}/PROMPT_contracts.md" ;;
+  evaluate)   PROMPT_TEMPLATE="${PROMPT_DIR}/PROMPT_evaluate.md" ;;
+  *)          echo "Error: mode must be 'plan', 'build', 'harvest', 'contracts', 'evaluate', or 'reconcile'"; exit 1 ;;
 esac
 
 if [ ! -f "$PROMPT_TEMPLATE" ]; then
@@ -107,6 +127,9 @@ echo "║  Clean-room: ${CLEAN_ROOM_FLAG:-no}                 "
 echo "║  Worktree:  auto (build/reconcile modes)              "
 echo "║  Protected:  $( [ -f "$READONLY_FILE" ] && echo "yes ($(wc -l < "$READONLY_FILE") patterns)" || echo "no" )"
 echo "║  Overrides:  $( [ -f "$OVERRIDES_FILE" ] && echo "yes ($(wc -l < "$OVERRIDES_FILE") lines)" || echo "no" )"
+echo "║  Contracts:  $( [ -f "$CONTRACTS_FILE" ] && echo "yes" || echo "no" )"
+echo "║  Evaluator:  $( [ "$EVAL_PER_ITER" = "true" ] && echo "per-iteration (>=${EVAL_DIFF_THRESHOLD} files)" || echo "end-of-run" )"
+echo "║  UI eval:    ${RALPH_EVALUATE_UI}"
 echo "║                                                     ║"
 echo "║  Stop gracefully: touch .claude/ralph-stop          ║"
 echo "║  Steer mid-loop:  write .claude/ralph-inject.md     ║"
@@ -217,6 +240,9 @@ if [ -z "${RALPH_WORKER_ID:-}" ] && [[ "$MODE" == "build" || "$MODE" == "reconci
   JOURNAL_FILE="${PROJECT_DIR}/.claude/ralph-journal.tsv"
   READONLY_FILE="${SPEC_DIR}/RALPH_READONLY"
   OVERRIDES_FILE="${SPEC_DIR}/RALPH_OVERRIDES.md"
+  EVAL_VERDICT_FILE="${PROJECT_DIR}/.claude/ralph-eval-verdict.json"
+  EVAL_SUMMARY_FILE="${PROJECT_DIR}/.claude/ralph-eval-summary.md"
+  CONTRACTS_FILE="${SPEC_DIR}/CONTRACTS.md"
 
   # Re-initialize journal and trace in worktree
   if [ ! -f "$JOURNAL_FILE" ]; then
@@ -249,6 +275,7 @@ get_current_task() {
 # ── Circuit breaker helpers ─────────────────────────────────────────────
 
 COMMITS_AT_START=$(git rev-list --count HEAD 2>/dev/null || echo "0")
+COMMITS_AT_START_HASH=$(git rev-parse HEAD 2>/dev/null || echo "none")
 CIRCUIT_BREAKER_WINDOW=5     # Check every N iterations
 CIRCUIT_BREAKER_MIN_RATIO=30 # Minimum commit% (commits/iterations * 100)
 CONSECUTIVE_REVERTS=0        # Track consecutive reverts across different tasks
@@ -307,6 +334,111 @@ track_revert() {
 track_success() {
   CONSECUTIVE_REVERTS=0
   CONSECUTIVE_REVERT_TASKS=""
+}
+
+# ── Evaluator phase (tiered: light vs full) ───────────────────────────
+# Returns 0 = ACCEPT, 1 = REVISE, 2 = skipped (light eval)
+run_evaluator() {
+  local pre_commit="$1"
+  local post_commit="$2"
+  local task_label="$3"
+  local iteration="$4"
+
+  # Determine whether to run full evaluation
+  local diff_file_count
+  diff_file_count=$(git diff --name-only "$pre_commit" "$post_commit" | wc -l | tr -d ' ')
+  local has_contracts=false
+  [ -f "$CONTRACTS_FILE" ] && has_contracts=true
+
+  # Per-iteration evaluation must be explicitly enabled.
+  # Default is end-of-run only (per Anthropic harness design findings).
+  local run_full=false
+  if [ "$EVAL_PER_ITER" = "true" ]; then
+    if [ "$diff_file_count" -ge "$EVAL_DIFF_THRESHOLD" ]; then
+      run_full=true
+    elif [ "$has_contracts" = "true" ] && [ "$diff_file_count" -ge 3 ]; then
+      run_full=true
+    fi
+  fi
+
+  if [ "$run_full" = "false" ]; then
+    echo "  Evaluator: LIGHT mode (${diff_file_count} files changed, threshold ${EVAL_DIFF_THRESHOLD}). Skipping LLM evaluation."
+    trace_event "evaluator" "tier=light" "files_changed=${diff_file_count}" "has_contracts=${has_contracts}"
+    return 2
+  fi
+
+  echo "  Evaluator: FULL mode (${diff_file_count} files changed, contracts: ${has_contracts}). Launching evaluation..."
+  trace_event "evaluator" "tier=full" "files_changed=${diff_file_count}" "has_contracts=${has_contracts}"
+
+  # Build evaluator prompt
+  local eval_prompt
+  eval_prompt=$(cat "${PROMPT_DIR}/PROMPT_evaluate.md")
+
+  # Append context metadata
+  eval_prompt="${eval_prompt}
+
+---
+**Pre-commit:** ${pre_commit}
+**Post-commit:** ${post_commit}
+**Task:** ${task_label}
+**Iteration:** ${iteration}
+**Spec directory:** ${SPEC_DIR}
+**Contracts file:** ${CONTRACTS_FILE}
+**UI evaluation:** ${RALPH_EVALUATE_UI}
+**Verdict output:** ${EVAL_VERDICT_FILE}
+**Summary output:** ${EVAL_SUMMARY_FILE}
+"
+
+  # Run evaluator as a separate Claude session
+  rm -f "$EVAL_VERDICT_FILE" "$EVAL_SUMMARY_FILE"
+
+  local eval_log="${LOG_DIR}/eval-${iteration}-$(date +%Y%m%d-%H%M%S).log"
+  local eval_timeout="${RALPH_EVAL_TIMEOUT:-300}"  # 5 min default for evaluation
+
+  local EVAL_TIMEOUT_CMD=""
+  if command -v timeout >/dev/null 2>&1; then
+    EVAL_TIMEOUT_CMD="timeout $eval_timeout"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    EVAL_TIMEOUT_CMD="gtimeout $eval_timeout"
+  fi
+
+  set +e
+  if [ -n "$EVAL_TIMEOUT_CMD" ]; then
+    echo "$eval_prompt" | $EVAL_TIMEOUT_CMD claude -p --dangerously-skip-permissions --verbose --model sonnet --output-format stream-json 2>/dev/null \
+      | "$STREAM_PROCESSOR" --trace-file "$TRACE_FILE" > "$eval_log"
+  else
+    echo "$eval_prompt" | claude -p --dangerously-skip-permissions --verbose --model sonnet --output-format stream-json 2>/dev/null \
+      | "$STREAM_PROCESSOR" --trace-file "$TRACE_FILE" > "$eval_log"
+  fi
+  local eval_exit=$?
+  set -e
+
+  # Parse verdict
+  if [ -f "$EVAL_VERDICT_FILE" ]; then
+    local verdict
+    verdict=$(python3 -c "import json; print(json.load(open('${EVAL_VERDICT_FILE}'))['verdict'])" 2>/dev/null || echo "UNKNOWN")
+    local avg_score
+    avg_score=$(python3 -c "import json; print(json.load(open('${EVAL_VERDICT_FILE}'))['average'])" 2>/dev/null || echo "?")
+
+    echo "  Evaluator verdict: ${verdict} (avg score: ${avg_score})"
+    trace_event "eval_verdict" "verdict=${verdict}" "avg_score=${avg_score}" "task=${task_label}" "iter=${iteration}"
+
+    if [ "$verdict" = "ACCEPT" ]; then
+      return 0
+    elif [ "$verdict" = "REVISE" ]; then
+      local guidance
+      guidance=$(python3 -c "import json; v=json.load(open('${EVAL_VERDICT_FILE}')); print(v.get('revise_guidance','No guidance provided'))" 2>/dev/null || echo "Check eval summary")
+      echo "  Evaluator says REVISE: ${guidance:0:200}"
+      return 1
+    else
+      echo "  Evaluator returned unknown verdict: ${verdict}. Treating as ACCEPT."
+      return 0
+    fi
+  else
+    echo "  Evaluator did not produce a verdict file. Treating as ACCEPT (evaluation error, not blocking)."
+    trace_event "eval_error" "reason=no_verdict_file" "exit_code=${eval_exit}"
+    return 0
+  fi
 }
 
 # ── Progress dashboard writer ───────────────────────────────────────────
@@ -710,16 +842,47 @@ ${BRIEFING}
 
     # Verdict: keep or revert
     if [ "$GATE_PASSED" = true ]; then
-      echo "KEEP: Iteration ${ITERATION} passed all gates."
-      COMMITS_ADDED=$(git rev-list --count "$PRE_COMMIT"..HEAD)
-      printf "%s\tKEEP\t%s\tcommits=%s\t%s\n" "$JOURNAL_TS" "$TASK_LABEL" "$COMMITS_ADDED" "$POST_COMMIT" >> "$JOURNAL_FILE"
+      echo "KEEP: Iteration ${ITERATION} passed all mechanical gates."
       trace_event "gate" "gate=all" "passed=true"
-      # Capture commit details for the trace
-      COMMIT_MSG=$(git log --format="%s" -1 2>/dev/null || echo "")
-      DIFF_STAT=$(git diff --shortstat "$PRE_COMMIT"..HEAD 2>/dev/null || echo "")
-      FILES_CHANGED=$(git diff --name-only "$PRE_COMMIT"..HEAD 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "")
-      trace_event "verdict" "outcome=KEEP" "task=${TASK_LABEL}" "iter=${ITERATION}" "commit=${POST_COMMIT}" "commit_msg=${COMMIT_MSG}" "diff_stat=${DIFF_STAT}" "files_changed=${FILES_CHANGED}"
-      track_success
+
+      # ── Per-iteration evaluator (opt-in for edge-of-capability tasks) ──
+      EVAL_RESULT=0
+      if [ "$EVAL_PER_ITER" = "true" ] && [ -z "$ONCE_FLAG" ]; then
+        run_evaluator "$PRE_COMMIT" "$POST_COMMIT" "$TASK_LABEL" "$ITERATION" || EVAL_RESULT=$?
+      fi
+
+      if [ "$EVAL_RESULT" -eq 1 ]; then
+        # REVISE verdict — revert and feed guidance to next iteration
+        echo "REVERT (evaluator): Evaluation says REVISE. Rolling back to ${PRE_COMMIT:0:8}..."
+        # Save evaluation guidance for next iteration's briefing
+        REVERT_REASON_FILE="${LOG_DIR}/revert-${ITERATION}-reason.txt"
+        {
+          echo "REVERT_EVALUATION — Iteration ${ITERATION} — $(date)"
+          echo "Task: ${TASK_LABEL}"
+          echo "Evaluator verdict: REVISE"
+          echo "---"
+          if [ -f "$EVAL_SUMMARY_FILE" ]; then
+            head -40 "$EVAL_SUMMARY_FILE"
+          elif [ -f "$EVAL_VERDICT_FILE" ]; then
+            cat "$EVAL_VERDICT_FILE"
+          fi
+        } > "$REVERT_REASON_FILE"
+        git reset --hard "$PRE_COMMIT"
+        ITER_RESULT="reverted (evaluator)"
+        printf "%s\tREVERT_EVAL\t%s\t-\tEvaluator said REVISE\n" "$JOURNAL_TS" "$TASK_LABEL" >> "$JOURNAL_FILE"
+        trace_event "verdict" "outcome=REVERT_EVAL" "task=${TASK_LABEL}" "iter=${ITERATION}"
+        track_revert "$TASK_LABEL"
+      else
+        # ACCEPT or skipped — keep the commit
+        COMMITS_ADDED=$(git rev-list --count "$PRE_COMMIT"..HEAD)
+        printf "%s\tKEEP\t%s\tcommits=%s\t%s\n" "$JOURNAL_TS" "$TASK_LABEL" "$COMMITS_ADDED" "$POST_COMMIT" >> "$JOURNAL_FILE"
+        # Capture commit details for the trace
+        COMMIT_MSG=$(git log --format="%s" -1 2>/dev/null || echo "")
+        DIFF_STAT=$(git diff --shortstat "$PRE_COMMIT"..HEAD 2>/dev/null || echo "")
+        FILES_CHANGED=$(git diff --name-only "$PRE_COMMIT"..HEAD 2>/dev/null | tr '\n' ',' | sed 's/,$//' || echo "")
+        trace_event "verdict" "outcome=KEEP" "task=${TASK_LABEL}" "iter=${ITERATION}" "commit=${POST_COMMIT}" "commit_msg=${COMMIT_MSG}" "diff_stat=${DIFF_STAT}" "files_changed=${FILES_CHANGED}"
+        track_success
+      fi
     else
       echo "REVERT: Rolling back to ${PRE_COMMIT:0:8}..."
       git reset --hard "$PRE_COMMIT"
@@ -845,6 +1008,74 @@ if [ "$USING_WORKTREE" = true ]; then
     git branch -D "$WORKTREE_BRANCH" 2>/dev/null || true
     git worktree prune 2>/dev/null || true
     echo "Worktree and branch cleaned up (no changes to keep)."
+  fi
+fi
+
+# ── End-of-run evaluator pass ──────────────────────────────────────────
+# Single evaluator pass reviewing the FULL body of work, not per-iteration.
+# This is the default evaluation mode (per Anthropic harness design findings:
+# "moved the evaluator to a single pass at the end of the run").
+# The evaluator grades the entire diff from start-of-run to HEAD.
+
+if [ "$EVAL_END_OF_RUN" = "true" ] && [ "$MODE" = "build" ] && [ -z "$ONCE_FLAG" ] && [ -z "$WORKER_ID" ]; then
+  FINAL_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "none")
+  if [ "$COMMITS_AT_START_HASH" != "$FINAL_COMMIT" ] && [ "$FINAL_COMMIT" != "none" ]; then
+    echo ""
+    echo "━━━ End-of-run evaluation (reviewing full body of work) ━━━"
+
+    # Build end-of-run evaluator prompt with full-run context
+    ENDRUN_EVAL_PROMPT=$(cat "${PROMPT_DIR}/PROMPT_evaluate.md")
+    ENDRUN_EVAL_PROMPT="${ENDRUN_EVAL_PROMPT}
+
+---
+**Evaluation mode:** END-OF-RUN (reviewing all changes from this Ralph run, not a single iteration)
+**Pre-commit (run start):** ${COMMITS_AT_START_HASH}
+**Post-commit (run end):** ${FINAL_COMMIT}
+**Total iterations:** ${ITERATION}
+**Kept iterations:** ${KEPT_COUNT}
+**Reverted iterations:** ${REVERTED_COUNT}
+**Spec directory:** ${SPEC_DIR}
+**Contracts file:** ${CONTRACTS_FILE}
+**UI evaluation:** ${RALPH_EVALUATE_UI}
+**Verdict output:** ${EVAL_VERDICT_FILE}
+**Summary output:** ${EVAL_SUMMARY_FILE}
+
+**Important:** You are reviewing the ENTIRE run's output, not a single task. Grade the overall implementation against the full spec and all contracts. Your verdict does NOT trigger a revert — it produces a quality report for the human to review before merging.
+"
+
+    rm -f "$EVAL_VERDICT_FILE" "$EVAL_SUMMARY_FILE"
+    ENDRUN_EVAL_LOG="${LOG_DIR}/eval-endofrun-$(date +%Y%m%d-%H%M%S).log"
+    ENDRUN_EVAL_TIMEOUT="${RALPH_EVAL_TIMEOUT:-600}"  # 10 min for end-of-run (more to review)
+
+    ENDRUN_TIMEOUT_CMD=""
+    if command -v timeout >/dev/null 2>&1; then
+      ENDRUN_TIMEOUT_CMD="timeout $ENDRUN_EVAL_TIMEOUT"
+    elif command -v gtimeout >/dev/null 2>&1; then
+      ENDRUN_TIMEOUT_CMD="gtimeout $ENDRUN_EVAL_TIMEOUT"
+    fi
+
+    set +e
+    if [ -n "$ENDRUN_TIMEOUT_CMD" ]; then
+      echo "$ENDRUN_EVAL_PROMPT" | $ENDRUN_TIMEOUT_CMD claude -p --dangerously-skip-permissions --verbose --model sonnet --output-format stream-json 2>/dev/null \
+        | "$STREAM_PROCESSOR" --trace-file "$TRACE_FILE" > "$ENDRUN_EVAL_LOG"
+    else
+      echo "$ENDRUN_EVAL_PROMPT" | claude -p --dangerously-skip-permissions --verbose --model sonnet --output-format stream-json 2>/dev/null \
+        | "$STREAM_PROCESSOR" --trace-file "$TRACE_FILE" > "$ENDRUN_EVAL_LOG"
+    fi
+    set -e
+
+    if [ -f "$EVAL_VERDICT_FILE" ]; then
+      ENDRUN_VERDICT=$(python3 -c "import json; print(json.load(open('${EVAL_VERDICT_FILE}'))['verdict'])" 2>/dev/null || echo "UNKNOWN")
+      ENDRUN_AVG=$(python3 -c "import json; print(json.load(open('${EVAL_VERDICT_FILE}'))['average'])" 2>/dev/null || echo "?")
+      echo "End-of-run evaluation: ${ENDRUN_VERDICT} (avg score: ${ENDRUN_AVG})"
+      echo "Full report: ${EVAL_SUMMARY_FILE}"
+      trace_event "endrun_eval" "verdict=${ENDRUN_VERDICT}" "avg_score=${ENDRUN_AVG}"
+    else
+      echo "End-of-run evaluation did not produce a verdict (non-fatal)."
+      trace_event "endrun_eval" "verdict=error" "reason=no_verdict_file"
+    fi
+  else
+    echo "(No new commits in this run — skipping end-of-run evaluation)"
   fi
 fi
 

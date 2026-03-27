@@ -65,7 +65,18 @@ Write the harvest report to `.claude/ralph-logs/ralph-harvest-<slug>.md`. Do NOT
 
 If you identified conventions that should guide future development, append them to the relevant section of `.claude/AGENTS.md`. Only add patterns that are clearly established (appeared in 3+ commits or are architecturally significant).
 
-## Step 8: Write RALPH_OVERRIDES.md (Self-Improvement)
+## Step 8: Update Prompt Changelog
+
+If `references/PROMPT_CHANGELOG.md` exists in the plugin directory, read it. For any entries with "Observed effect: (pending)", fill them in based on this run's data:
+
+- Check the journal for patterns that correlate with prompt instructions
+- Check evaluator verdicts for scoring patterns
+- Note any behavioral drift (e.g., tasks getting larger over time despite size checks, evaluator consistently scoring high)
+- Add entries for any prompt steering effects you noticed during analysis
+
+Also add to the "Known Steering Effects" table if you discovered new cause-effect relationships between prompt wording and iteration behavior.
+
+## Step 9: Write RALPH_OVERRIDES.md (Self-Improvement)
 
 This is the most important step. Write (or update) `RALPH_OVERRIDES.md` **inside the spec directory** (i.e., the same directory as `IMPLEMENTATION_PLAN.md` — for example, `.claude/specs/<slug>/RALPH_OVERRIDES.md`). Do NOT write it to the project root. This file gets injected into every future Ralph iteration on this project — it is the mechanism by which Ralph improves across runs.
 
@@ -120,4 +131,5 @@ If `RALPH_OVERRIDES.md` already exists (from a previous run or human edits), **m
 - **Be specific.** "Use repository pattern" is useless. "All database access goes through `repo/` modules, never direct Ecto queries in contexts" is actionable.
 - **Be selective.** Only extract patterns worth keeping. Not everything Ralph did is a convention — some was just one-off implementation.
 - **Overrides are high-leverage.** Every line in RALPH_OVERRIDES.md gets injected into every future iteration. A bad rule wastes tokens and misleads. A good rule prevents an entire class of failures. Choose carefully.
-- **Exit when done.** Write the harvest report, update overrides, and exit.
+- **Update the prompt changelog.** Fill in observed effects for pending entries. Add new steering insights. This institutional knowledge compounds across runs.
+- **Exit when done.** Write the harvest report, update overrides, update prompt changelog, and exit.
