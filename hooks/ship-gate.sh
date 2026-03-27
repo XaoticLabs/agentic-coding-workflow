@@ -54,7 +54,10 @@ fi
 
 # Gate 3: PR title must come from --title flag using the first commit message
 # Extract the --title value from the command
-PR_TITLE=$(echo "$COMMAND" | grep -oP '(?<=--title ")[^"]*' || echo "$COMMAND" | grep -oP "(?<=--title ')[^']*" || echo "")
+PR_TITLE=$(echo "$COMMAND" | sed -n 's/.*--title "\([^"]*\)".*/\1/p')
+if [ -z "$PR_TITLE" ]; then
+  PR_TITLE=$(echo "$COMMAND" | sed -n "s/.*--title '\([^']*\)'.*/\1/p")
+fi
 
 if [ -z "$PR_TITLE" ]; then
   cat >&2 <<'EOF'
