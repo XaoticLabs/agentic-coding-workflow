@@ -18,7 +18,6 @@ done
 
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 WORKTREE_BASE="${REPO_ROOT}/.claude/worktrees"
-MESSAGE_DIR="${REPO_ROOT}/.claude/messages"
 
 # Find base branch
 if [ -z "$TARGET_BRANCH" ]; then
@@ -35,7 +34,6 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-CYAN='\033[0;36m'
 NC='\033[0m'
 
 clear_screen() {
@@ -72,28 +70,6 @@ get_worktree_status() {
   fi
 
   echo "${branch}|${last_commit}|${tests_status}|${ahead}|${claude_status}"
-}
-
-render_messages() {
-  if [ ! -d "$MESSAGE_DIR" ]; then
-    return
-  fi
-
-  local msg_files=$(find "$MESSAGE_DIR" -name "*.md" -newer "$MESSAGE_DIR/.last-read" 2>/dev/null || \
-                    find "$MESSAGE_DIR" -name "*.md" 2>/dev/null)
-
-  if [ -n "$msg_files" ]; then
-    echo ""
-    echo -e "${CYAN}━━━ Agent Messages ━━━${NC}"
-    echo "$msg_files" | while read -r f; do
-      [ -f "$f" ] || continue
-      local from=$(head -5 "$f" | grep "^from:" | sed 's/^from: //')
-      local subject=$(head -5 "$f" | grep "^subject:" | sed 's/^subject: //')
-      local time=$(stat -f "%Sm" -t "%H:%M" "$f" 2>/dev/null || date -r "$f" +%H:%M 2>/dev/null || echo "??:??")
-      echo -e "  ${YELLOW}[${time}]${NC} ${from:-agent}: ${subject:-<no subject>}"
-    done
-    touch "$MESSAGE_DIR/.last-read" 2>/dev/null || true
-  fi
 }
 
 # Main loop
@@ -135,9 +111,6 @@ while true; do
         "$name" "${branch:0:28}" "$tests_status" "$ahead" "$claude_status"
     done
   fi
-
-  # Show recent agent messages
-  render_messages
 
   echo ""
   echo -e "${BLUE}Press Ctrl-C to exit${NC}"

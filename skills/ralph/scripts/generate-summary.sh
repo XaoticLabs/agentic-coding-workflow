@@ -183,7 +183,7 @@ cat >> "$SUMMARY_FILE" <<EOF
 
 ## Next Step
 
-Run \`/ship\` to squash WIP commits, fill the PR template, and create a PR.
+Run \`/ship\` to fill the PR template and create a PR.
 \`/ship\` will auto-detect your project's PR template and fill it in properly.
 
 EOF

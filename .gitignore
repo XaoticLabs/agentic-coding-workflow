@@ -61,9 +61,12 @@ logs/
 # Git worktrees (parallel branch work)
 .claude/worktrees/
 
-# Runtime artifacts (plans, specs, checkpoints)
+# Runtime artifacts (plans, specs, checkpoints, logs)
 .claude/specs/
 .claude/plans/
+.claude/logs/
+.claude/expected-output.json
+.claude/security_logs/
 
 # Ralph runtime artifacts (journal is untracked — like autoresearch's results.tsv)
 .claude/ralph-journal.tsv
@@ -75,9 +78,3 @@ logs/
 .claude/ralph-harvest-*.md
 .claude/ralph-worker-done-*
 .claude/ralph-parallel-meta.json
-
-# Inter-agent messaging
-.claude/messages/
-
-# Auto-commit cooldown tracker
-.claude/.auto-commit-last

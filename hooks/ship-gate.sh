@@ -71,5 +71,28 @@ EOF
   exit 2
 fi
 
+# Gate 4: Credo must pass on changed Elixir files (if this is an Elixir project)
+if [ -f "$PROJECT_DIR/mix.exs" ]; then
+  # Get changed Elixir files on this branch vs base
+  BASE=$(git -C "$PROJECT_DIR" merge-base HEAD main 2>/dev/null || git -C "$PROJECT_DIR" merge-base HEAD master 2>/dev/null || echo "")
+  if [ -n "$BASE" ]; then
+    ELIXIR_FILES=$(git -C "$PROJECT_DIR" diff --name-only "$BASE"..HEAD -- '*.ex' '*.exs' 2>/dev/null | while read -r f; do [ -f "$PROJECT_DIR/$f" ] && echo "$f"; done)
+    if [ -n "$ELIXIR_FILES" ]; then
+      CREDO_OUTPUT=$(cd "$PROJECT_DIR" && mix credo --strict $ELIXIR_FILES 2>&1)
+      CREDO_EXIT=$?
+      if [ $CREDO_EXIT -ne 0 ]; then
+        cat >&2 <<EOF
+BLOCKED: Credo found issues in changed files. Fix these before creating the PR.
+
+$CREDO_OUTPUT
+
+Run \`mix credo --strict\` on the changed files and fix all issues, then retry.
+EOF
+        exit 2
+      fi
+    fi
+  fi
+fi
+
 # All gates passed
 exit 0

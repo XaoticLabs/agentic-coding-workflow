@@ -67,7 +67,7 @@ Also read `.claude/specs/<slug>/IMPLEMENTATION_PLAN.md` and display:
 
 **If the plan status is COMPLETE**, suggest next steps:
 - `/agentic-coding-workflow:review --spec` to review the changes
-- `/agentic-coding-workflow:ship` to squash WIP commits, fill the PR template, and create a PR
+- `/agentic-coding-workflow:ship` to fill the PR template and create a PR
 
 Exit after displaying.
 

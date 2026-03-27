@@ -173,5 +173,5 @@ Clean up when done: /worktree-cleanup
 
 1. `/agentic-coding-workflow:git-worktree` status — check progress across all panes
 2. `/agentic-coding-workflow:reunify` — merge all parallel branches back to parent with test gates and conflict resolution
-3. `/agentic-coding-workflow:ship` — squash WIP commits, push, and create a PR
+3. `/agentic-coding-workflow:ship` — push and create a PR
 4. `/agentic-coding-workflow:git-worktree` cleanup — remove worktrees and prune refs (or let `/agentic-coding-workflow:reunify` handle it)

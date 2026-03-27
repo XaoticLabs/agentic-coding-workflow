@@ -8,7 +8,7 @@ effort: low
 
 # Dashboard — Monitor Parallel Work
 
-Launches a live dashboard in a tmux pane that monitors all active worktrees, shows Claude activity, and displays inter-agent messages.
+Launches a live dashboard in a tmux pane that monitors all active worktrees and shows Claude activity.
 
 ## Input
 

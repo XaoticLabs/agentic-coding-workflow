@@ -105,7 +105,7 @@ The `/agentic-coding-workflow:update-rules` command helps you build these up ove
 7. `/agentic-coding-workflow:reunify` — Merge parallel branches back (if you used `/agentic-coding-workflow:parallel`)
 8. `/agentic-coding-workflow:test` — Run the test suite
 9. `/agentic-coding-workflow:review --spec` — Make sure it matches the spec
-10. `/agentic-coding-workflow:ship` — Squash WIP commits, fill the PR template, and create a PR
+10. `/agentic-coding-workflow:ship` — Fill the PR template and create a PR
 
 ### Autonomous (Ralph loop)
 
@@ -120,7 +120,7 @@ Best when the spec is solid and you'd rather review a finished branch than babys
 7. Go do something else. Check back with `/agentic-coding-workflow:ralph feature-name --status` or read `.claude/ralph-status.md`
 8. Steer mid-loop by writing instructions to `.claude/ralph-inject.md`
 9. `/agentic-coding-workflow:ralph feature-name --harvest` — After completion, extract reusable patterns and conventions
-10. `/agentic-coding-workflow:review --spec` → `/agentic-coding-workflow:ship` — Review, squash WIP commits, fill the PR template, and create a PR
+10. `/agentic-coding-workflow:review --spec` → `/agentic-coding-workflow:ship` — Review, fill the PR template, and create a PR
 
 For greenfield work, add `--clean-room` to skip codebase search. For large features, `/agentic-coding-workflow:ralph feature-name --parallel 3` splits work across worktrees — three independent Claude instances working through dependency-ordered tasks simultaneously.
 

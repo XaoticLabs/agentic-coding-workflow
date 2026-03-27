@@ -12,7 +12,7 @@ effort: medium
 
 # Ship — From Approved Code to Merged PR
 
-Takes the current branch from approved implementation to a clean PR in one step: squashes WIP commits, pushes, creates a PR with a generated description, and reports the URL.
+Takes the current branch from approved implementation to a clean PR in one step: pushes, creates a PR with a generated description, and reports the URL.
 
 ## Input
 
@@ -61,48 +61,7 @@ git status --porcelain
 
 **If zero commits ahead of base:** Stop with "No commits to ship. Nothing to do."
 
-### Phase 2: Squash WIP Commits (unless --no-squash)
-
-Separate commits into WIP and intentional:
-
-```bash
-# List all commits
-git log --oneline "${BASE}..HEAD"
-```
-
-Categorize:
-- **WIP commits:** messages matching `wip:`, `auto-save`, `wip: auto-save`
-- **Intentional commits:** everything else
-
-**If no WIP commits found:** Skip squashing — commits are already clean.
-
-**If WIP commits exist:**
-
-1. Create a backup branch:
-```bash
-git branch "backup/${BRANCH}-$(date +%Y%m%d-%H%M%S)"
-```
-
-2. Analyze all changed files and group them logically:
-```bash
-git diff --name-only "${BASE}...HEAD" | sort
-```
-
-3. Group changes by logical unit (feature code, tests, config/infra, refactoring).
-
-4. Show the user the proposed grouping and confirm via AskUserQuestion. Keep it brief — suggest groups, let them adjust.
-
-5. Soft reset and re-commit in logical groups:
-```bash
-git reset --soft "${BASE}"
-git reset HEAD .
-
-# For each group:
-git add <files-in-group>
-git commit -m "<group description>"
-```
-
-### Phase 3: Find Context for PR Description
+### Phase 2: Find Context for PR Description
 
 **Auto-detect spec/plan/ralph summary:**
 - If spec provided in $ARGUMENTS, use it
@@ -241,6 +200,11 @@ gh pr view "${BRANCH}" --json url --jq '.url'
 ```
 Report the existing PR URL instead.
 
+**After the PR is successfully created (or existing PR found):**
+```bash
+rm -f .claude/pr-description.md
+```
+
 ### Phase 7: Report
 
 ```
@@ -251,7 +215,6 @@ Commits: 3 (squashed from 14)
 PR: https://github.com/org/repo/pull/123
 
 Backup branch: backup/feature/batch-analysis-20260325-143200
-PR description: .claude/pr-description.md
 
 Next steps:
   gh pr view 123 --web     # Open in browser

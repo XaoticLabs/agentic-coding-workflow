@@ -25,7 +25,7 @@ $ARGUMENTS — Determines the review mode:
 | Input | Mode | What happens |
 |-------|------|-------------|
 | `--plan [path\|slug]` | Plan review | Staff engineer critique of a plan document |
-| `--prep [branch]` | PR prep | Squash WIP commits, generate PR description |
+| `--prep [branch]` | PR prep | Clean up commits, generate PR description |
 | `--spec <spec\|slug\|ticket\|description>` | Implementation review | Review code against spec/ticket/criteria |
 | `<branch> [branch2...]` | PR code review | Language-specific code review in worktree |
 | _(empty)_ | Auto-detect | Check for specs first, fall back to current branch review |
@@ -181,7 +181,7 @@ This is read-only — no files are written.
 
 ## Mode: PR Prep
 
-Squash WIP commits into clean logical groups and generate PR description.
+Clean up commits into logical groups and generate PR description.
 
 ### 1. Identify Branch
 
@@ -192,11 +192,7 @@ git log --oneline "${BASE}..HEAD"
 
 If on main/master, stop and tell user to switch to a feature branch.
 
-### 2. Analyze Commits
-
-Separate into WIP commits (messages starting with `wip:` or `auto-save`) and intentional commits. Show the breakdown.
-
-### 3. Group Changes Logically
+### 2. Group Changes Logically
 
 ```bash
 git diff --name-only "${BASE}...HEAD" | sort
@@ -204,7 +200,7 @@ git diff --name-only "${BASE}...HEAD" | sort
 
 Suggest groups (feature code, tests, config/infra, refactoring). Use AskUserQuestion to confirm groupings.
 
-### 4. Interactive Rebase
+### 3. Interactive Rebase
 
 Create backup branch first:
 ```bash
@@ -213,7 +209,7 @@ git branch "backup/$(git symbolic-ref --short HEAD)-$(date +%Y%m%d-%H%M%S)"
 
 Then soft reset and re-commit in logical groups.
 
-### 5. Generate PR Description
+### 4. Generate PR Description
 
 Write to `.claude/pr-description.md` with Summary, Changes, Test plan, Notes sections.
 

@@ -5,34 +5,36 @@
 # ///
 
 """
-Subagent Permission Router - Claude Code Hook
+Permission Router - Claude Code Hook
 
-Auto-approves safe read-only operations for subagents so they don't get
-blocked on routine permissions. Primary instances use normal interactive
-permissions since the user is watching.
+Auto-approves safe operations to reduce permission prompt fatigue:
 
-This runs as a PreToolUse hook. It checks if the current session is a
-subagent (via session context) and if the tool being used is read-only.
-Safe tools are allowed through; everything else follows normal permission flow.
+1. Primary instances: Read, Glob, Grep are always auto-approved (read-only, no side effects).
+   Safe bash commands (ls, git log, etc.) are also auto-approved.
+2. Subagents: Same as above, plus Agent tool (subagent spawning for research).
+
+Everything else follows normal permission flow — Write, Edit, Bash (non-read-only),
+and other tools still require user approval for primary instances.
 """
 
 import json
 import sys
 
-# Tools that are always safe for subagents — read-only, no side effects
-SAFE_TOOLS = {
+# Tools that are always safe — read-only, no side effects
+# Auto-approved for BOTH primary instances and subagents
+ALWAYS_SAFE_TOOLS = {
     "Read",
     "Glob",
     "Grep",
+    "WebSearch",
+}
+
+# Additional tools safe only for subagents (not primary instances)
+SUBAGENT_EXTRA_SAFE_TOOLS = {
     "Agent",      # Subagents can spawn their own subagents for research
 }
 
-# Tools that are conditionally safe (need input inspection)
-CONDITIONAL_TOOLS = {
-    "Bash",       # Safe if the command is read-only (git log, git diff, etc.)
-}
-
-# Read-only bash command prefixes that subagents can safely run
+# Read-only bash command prefixes safe for auto-approval
 SAFE_BASH_PREFIXES = [
     "git log",
     "git diff",
@@ -42,13 +44,36 @@ SAFE_BASH_PREFIXES = [
     "git status",
     "git rev-parse",
     "git worktree list",
+    "git merge-base",
+    "git rev-list",
+    "git remote",
+    "git tag",
     "ls ",
+    "ls\n",
     "wc ",
     "file ",
     "which ",
     "command -v",
     "test ",
     "[ ",
+    "head ",
+    "tail ",
+    "cat ",
+    "find ",
+    "basename ",
+    "dirname ",
+    "realpath ",
+    "date",
+    "echo ",
+    "printf ",
+    "stat ",
+    "du ",
+    "df ",
+    "pwd",
+    "whoami",
+    "uname",
+    "env ",
+    "printenv",
 ]
 
 
@@ -71,7 +96,7 @@ def passthrough():
 
 
 def is_safe_bash_command(command: str) -> bool:
-    """Check if a bash command is read-only and safe for subagents."""
+    """Check if a bash command is read-only and safe for auto-approval."""
     command = command.strip()
     return any(command.startswith(prefix) for prefix in SAFE_BASH_PREFIXES)
 
@@ -82,26 +107,25 @@ def main():
 
         tool_name = input_data.get("tool_name", "")
         tool_input = input_data.get("tool_input", {})
-
-        # Check if this is a subagent context
         is_subagent = input_data.get("is_subagent", False)
 
-        if not is_subagent:
-            # Primary instance — let normal permission flow handle it
-            passthrough()
+        # Always-safe tools — auto-approve for everyone
+        if tool_name in ALWAYS_SAFE_TOOLS:
+            context = "subagent" if is_subagent else "primary"
+            allow(f"Read-only tool '{tool_name}' auto-approved ({context})")
 
-        # Subagent with a safe tool — auto-approve
-        if tool_name in SAFE_TOOLS:
-            allow(f"Safe read-only tool '{tool_name}' auto-approved for subagent")
+        # Subagent-only extra safe tools
+        if is_subagent and tool_name in SUBAGENT_EXTRA_SAFE_TOOLS:
+            allow(f"Safe tool '{tool_name}' auto-approved for subagent")
 
-        # Subagent with a conditionally safe tool
-        if tool_name in CONDITIONAL_TOOLS:
-            if tool_name == "Bash":
-                command = tool_input.get("command", "")
-                if is_safe_bash_command(command):
-                    allow(f"Safe read-only bash command auto-approved for subagent")
+        # Safe bash commands — auto-approve for everyone
+        if tool_name == "Bash":
+            command = tool_input.get("command", "")
+            if is_safe_bash_command(command):
+                context = "subagent" if is_subagent else "primary"
+                allow(f"Read-only bash command auto-approved ({context})")
 
-        # Everything else — let normal permission flow decide
+        # Everything else — normal permission flow
         passthrough()
 
     except json.JSONDecodeError:

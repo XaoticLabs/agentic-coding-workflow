@@ -144,6 +144,17 @@ For each atomic task, write a complete specification:
 - [ ] [Specific, verifiable criterion 2]
 - [ ] [Test coverage criterion]
 
+> **Acceptance criteria quality rules** — every criterion must be:
+> - **Observable:** An evaluator can verify it by reading code or running a command
+> - **Binary:** It either passes or fails — no "somewhat meets" allowed
+> - **Scoped:** It references specific files, functions, or behaviors — not general qualities
+>
+> Bad: "Authentication should work properly"
+> Good: "POST /api/login with valid credentials returns 200 with JSON body containing `token` (string) and `expires_at` (ISO 8601 timestamp)"
+>
+> Bad: "Tests should cover the feature"
+> Good: "test/auth/login_test.exs includes tests for: valid login, invalid password (401), missing email (422)"
+
 **Testing requirements:**
 - Unit tests for: [specific functions/modules]
 - Integration tests for: [specific flows]
@@ -158,6 +169,38 @@ For each atomic task, write a complete specification:
 ```bash
 mkdir -p .claude/specs
 ```
+
+**Register output validation.** Before writing the spec, create an expectations file so the stop hook validates the output quality. Write this JSON to `.claude/expected-output.json`:
+```json
+{
+    "source": "write-spec",
+    "rules": [
+        {
+            "type": "file_exists",
+            "path": ".claude/specs/<slug>-spec.md"
+        },
+        {
+            "type": "file_contains",
+            "path": ".claude/specs/<slug>-spec.md",
+            "sections": [
+                "## Overview",
+                "## Technical Context",
+                "## Implementation Tasks",
+                "### Critical Path",
+                "**Acceptance criteria:**",
+                "## Testing Strategy",
+                "## Rollout Considerations"
+            ]
+        },
+        {
+            "type": "file_min_lines",
+            "path": ".claude/specs/<slug>-spec.md",
+            "min_lines": 80
+        }
+    ]
+}
+```
+Replace `<slug>` with the actual slug in the JSON.
 
 **Derive the slug** from the input plan filename. If the plan file has a ticket ID prefix (e.g., `AI-1234-auth-feature.md`), preserve it in the spec slug. The slug should match the plan's slug exactly so all artifacts share the same naming convention.
 
@@ -263,6 +306,28 @@ After generating the monolithic spec (Phase 7), create a Ralph-compatible direct
 ```bash
 mkdir -p .claude/specs/<slug>
 ```
+
+**Update output validation.** Read the existing `.claude/expected-output.json` and append Ralph-specific rules:
+```json
+{
+    "type": "file_exists",
+    "path": ".claude/specs/<slug>/IMPLEMENTATION_PLAN.md"
+},
+{
+    "type": "file_contains",
+    "path": ".claude/specs/<slug>/IMPLEMENTATION_PLAN.md",
+    "sections": ["## Status:", "## Tasks", "**Acceptance criteria:**"]
+},
+{
+    "type": "dir_files_contain",
+    "path": ".claude/specs/<slug>/",
+    "glob": "*.md",
+    "exclude": ["IMPLEMENTATION_PLAN.md"],
+    "sections": ["## Acceptance Criteria"],
+    "min_files": 1
+}
+```
+Write the updated JSON back. This ensures the Ralph artifacts are validated on stop — including that every individual topic spec file contains an `## Acceptance Criteria` section.
 
 **Split into topic files:**
 

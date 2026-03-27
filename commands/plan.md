@@ -155,6 +155,41 @@ When all items pass, tell the user: "The plan is ready to write. Shall I generat
 mkdir -p <target-project-path>/.claude/plans
 ```
 
+**Register output validation.** Before writing the plan, create an expectations file so the stop hook validates the output quality. Write this JSON to `<target-project-path>/.claude/expected-output.json`:
+```json
+{
+    "source": "plan",
+    "rules": [
+        {
+            "type": "file_exists",
+            "path": ".claude/plans/<slug>.md"
+        },
+        {
+            "type": "file_contains",
+            "path": ".claude/plans/<slug>.md",
+            "sections": [
+                "## Problem Statement",
+                "## Goals",
+                "## Non-Goals",
+                "## Proposed Solution",
+                "## Architecture",
+                "## Implementation Approach",
+                "## Edge Cases & Decisions",
+                "## Security Considerations",
+                "## Failure Modes & Risks",
+                "## Alternatives Considered"
+            ]
+        },
+        {
+            "type": "file_min_lines",
+            "path": ".claude/plans/<slug>.md",
+            "min_lines": 50
+        }
+    ]
+}
+```
+Replace `<slug>` with the actual slug in the JSON.
+
 **Generate a slug** from the feature name (lowercase, hyphens, no special chars). **If the input was a ticket ID** (e.g., `AI-1234`), prefix the slug with the ticket ID: `AI-1234-feature-name`. This ticket-prefixed slug becomes the canonical name for all downstream artifacts (specs, worktrees, branches). If the input was a description string with no ticket, use just the feature name slug.
 
 **Write the document** to `<target-project-path>/.claude/plans/<slug>.md` using the template below.
