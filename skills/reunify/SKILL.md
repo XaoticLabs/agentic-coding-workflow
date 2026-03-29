@@ -95,7 +95,7 @@ For each branch in the recommended order:
 3. **If merge conflicts:**
    - Show the conflicted files
    - Use AskUserQuestion with options:
-     - "Auto-resolve with Claude" -- spawn a subagent with the conflict resolution prompt from `${CLAUDE_PLUGIN_ROOT}/skills/reunify/references/PROMPT_resolve_conflict.md`
+     - "Auto-resolve with Claude" -- spawn a subagent with the conflict resolution prompt from `${CLAUDE_PLUGIN_ROOT}/scripts/lib/PROMPT_resolve.md` (shared resolve prompt; falls back to `${CLAUDE_PLUGIN_ROOT}/skills/reunify/references/PROMPT_resolve_conflict.md` if not found)
      - "I'll resolve manually, then tell me to continue"
      - "Skip this branch for now"
      - "Abort reunification and rollback"
