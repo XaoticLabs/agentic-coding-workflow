@@ -42,13 +42,13 @@ tmux split-window -h "claude -p 'Generate unit tests' > /tmp/tests-output.txt 2>
 ### Coordinated Multi-Agent Launch
 
 ```bash
-tmux new-session -d -s agents
-tmux send-keys -t agents "claude -p 'Work on frontend component'" Enter
-tmux split-window -h -t agents
-tmux send-keys -t agents "claude -p 'Work on backend API'" Enter
-tmux split-window -v -t agents
-tmux send-keys -t agents "claude -p 'Write integration tests'" Enter
-tmux attach-session -t agents
+# Create a new tab with panes for each agent
+tmux new-window -n agents
+tmux send-keys -t ":agents" "claude -p 'Work on frontend component'" Enter
+tmux split-window -h -t ":agents"
+tmux send-keys -t ":agents" "claude -p 'Work on backend API'" Enter
+tmux split-window -v -t ":agents"
+tmux send-keys -t ":agents" "claude -p 'Write integration tests'" Enter
 ```
 
 ### Monitor Agent Progress
@@ -64,7 +64,9 @@ done'
 
 ```bash
 if [ -n "$TMUX" ]; then
-  tmux split-window -h "claude -p 'task'"
+  # Prefer new window (tab) for independent tasks, split for related work
+  tmux new-window -n work "claude -p 'task'"         # new tab
+  # tmux split-window -h "claude -p 'task'"           # or split current pane
 else
   tmux new-session -d -s work "claude -p 'task'"
   tmux attach-session -t work
@@ -79,14 +81,12 @@ For advanced coordination patterns (map-reduce, supervisor, pipeline, error hand
 
 ```bash
 files=("src/api.ts" "src/utils.ts" "src/types.ts")
-tmux new-session -d -s review
+tmux new-window -n review
 
 for i in "${!files[@]}"; do
-  [ $i -gt 0 ] && tmux split-window -h -t review && tmux select-layout -t review tiled
-  tmux send-keys -t review "claude -p 'Review ${files[$i]} for bugs'" Enter
+  [ $i -gt 0 ] && tmux split-window -h -t ":review" && tmux select-layout -t ":review" tiled
+  tmux send-keys -t ":review" "claude -p 'Review ${files[$i]} for bugs'" Enter
 done
-
-tmux attach-session -t review
 ```
 
 ## Helper Scripts

@@ -43,11 +43,8 @@ command -v claude >/dev/null 2>&1 || echo "CLAUDE_NOT_FOUND"
 [ -n "$TMUX" ] || echo "NOT_IN_TMUX"
 ```
 
-If not in tmux, create a new session first:
-```bash
-SESSION_NAME="parallel-$(date +%s)"
-tmux new-session -d -s "$SESSION_NAME"
-```
+If not in tmux, tell the user to start tmux first:
+> You need to be in a tmux session. Run: `tmux new-session -s work`
 
 ### 2. Parse Tasks and Assign by File Affinity
 
@@ -108,18 +105,18 @@ fi
 ### 4. Set Up Tmux Layout
 
 ```bash
-SESSION_NAME="parallel-$(basename "$REPO_ROOT")"
+WINDOW_NAME="parallel-$(basename "$REPO_ROOT")"
 
-# Create session with first pane pointing at worktree 1
-tmux new-session -d -s "$SESSION_NAME" -c "${WORKTREE_BASE}/task-1"
+# Create a new window (tab) with first pane pointing at worktree 1
+tmux new-window -n "$WINDOW_NAME" -c "${WORKTREE_BASE}/task-1"
 
 # Add panes for remaining worktrees
 for i in $(seq 2 $N); do
-  tmux split-window -t "$SESSION_NAME" -c "${WORKTREE_BASE}/task-${i}"
+  tmux split-window -t ":$WINDOW_NAME" -c "${WORKTREE_BASE}/task-${i}"
 done
 
 # Apply tiled layout for even distribution
-tmux select-layout -t "$SESSION_NAME" tiled
+tmux select-layout -t ":$WINDOW_NAME" tiled
 ```
 
 ### 5. Launch Claude in Each Pane
@@ -128,19 +125,19 @@ For each pane, send the Claude command with the assigned task(s):
 
 ```bash
 # If tasks were assigned by partition or round-robin, include specific task numbers
-tmux send-keys -t "${SESSION_NAME}:0.${pane_index}" \
+tmux send-keys -t ":${WINDOW_NAME}.${pane_index}" \
   "claude -p '/agentic-coding-workflow:implement ${SPEC_PATH} ${TASK_NUMBERS}'" Enter
 ```
 
 If a spec file was provided, include it as context:
 ```bash
-tmux send-keys -t "${SESSION_NAME}:0.${pane_index}" \
+tmux send-keys -t ":${WINDOW_NAME}.${pane_index}" \
   "claude --context '${SPEC_FILE}' -p 'Implement tasks ${ASSIGNED_TASKS} from the spec. Work through them sequentially.'" Enter
 ```
 
 For inline task descriptions (no spec):
 ```bash
-tmux send-keys -t "${SESSION_NAME}:0.${pane_index}" \
+tmux send-keys -t ":${WINDOW_NAME}.${pane_index}" \
   "claude -p '${TASK_PROMPT}'" Enter
 ```
 
@@ -149,7 +146,7 @@ tmux send-keys -t "${SESSION_NAME}:0.${pane_index}" \
 ```
 Parallel sessions launched!
 
-Session: parallel-myapp
+Tab: parallel-myapp
 Layout: 3 panes (tiled)
 
 | Pane | Worktree                        | Branch                      | Task                    |
@@ -158,7 +155,7 @@ Layout: 3 panes (tiled)
 | 1    | .claude/worktrees/task-2        | parallel/20260320/task-2    | Write API tests         |
 | 2    | .claude/worktrees/task-3        | parallel/20260320/task-3    | Refactor database layer |
 
-Switch to session: tmux attach -t parallel-myapp
+Switch to tab: Ctrl-B n/p or Ctrl-B <number>
 Monitor status: /worktree-status
 Clean up when done: /worktree-cleanup
 ```

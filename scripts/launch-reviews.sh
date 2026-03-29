@@ -69,7 +69,7 @@ if ! command -v tmux >/dev/null 2>&1; then
   exit 1
 fi
 
-SESSION_NAME="pr-review-$(date +%s)"
+WORKSPACE_NAME="pr-review-$(date +%s)"
 FIRST=true
 
 for i in "${!BRANCHES[@]}"; do
@@ -80,23 +80,30 @@ for i in "${!BRANCHES[@]}"; do
   CMD="bash '${REVIEW_SCRIPT}' '${REPO_ROOT}' '${WORKTREE_PATH}' '${BRANCH}' '${LANGUAGE}' '${PR_NUM}'; echo '--- Review complete. Press enter to close ---'; read"
 
   if [ "$FIRST" = true ]; then
-    tmux new-session -d -s "$SESSION_NAME" -n "reviews" "$CMD"
+    if [ -n "${TMUX:-}" ]; then
+      # In tmux — create a window (tab)
+      tmux new-window -n "$WORKSPACE_NAME" "$CMD"
+      TMUX_TARGET="$(tmux display-message -p '#{session_name}'):${WORKSPACE_NAME}"
+    else
+      # Not in tmux — create a session
+      tmux new-session -d -s "$WORKSPACE_NAME" -n "reviews" "$CMD"
+      TMUX_TARGET="$WORKSPACE_NAME"
+    fi
     FIRST=false
   else
-    tmux split-window -t "$SESSION_NAME" -h "$CMD"
-    tmux select-layout -t "$SESSION_NAME" tiled
+    tmux split-window -t "$TMUX_TARGET" -h "$CMD"
+    tmux select-layout -t "$TMUX_TARGET" tiled
   fi
 done
 
 echo ""
-echo "=== Reviews launched in tmux session: ${SESSION_NAME} ==="
-echo "  Branches: ${BRANCHES[*]}"
-echo "  Attach:   tmux attach -t ${SESSION_NAME}"
-echo ""
-
-# Attach if not already inside tmux
-if [ -z "${TMUX:-}" ]; then
-  tmux attach-session -t "$SESSION_NAME"
+if [ -n "${TMUX:-}" ]; then
+  echo "=== Reviews launched in tab: ${WORKSPACE_NAME} ==="
+  echo "  Branches: ${BRANCHES[*]}"
+  echo "  Switch:   Ctrl-B n/p or Ctrl-B <number>"
 else
-  echo "(Already inside tmux — switch with: tmux switch-client -t ${SESSION_NAME})"
+  echo "=== Reviews launched in session: ${WORKSPACE_NAME} ==="
+  echo "  Branches: ${BRANCHES[*]}"
+  echo "  Attach:   tmux attach -t ${WORKSPACE_NAME}"
+  tmux attach-session -t "$WORKSPACE_NAME"
 fi
