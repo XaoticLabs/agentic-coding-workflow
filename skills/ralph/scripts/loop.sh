@@ -30,19 +30,36 @@ done
 
 PLAN_FILE="${SPEC_DIR}/IMPLEMENTATION_PLAN.md"
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
-LOG_DIR="${PROJECT_DIR}/.claude/ralph-logs"
-STOP_SENTINEL="${PROJECT_DIR}/.claude/ralph-stop"
-STATUS_FILE="${PROJECT_DIR}/.claude/ralph-status.md"
-INJECT_FILE="${PROJECT_DIR}/.claude/ralph-inject.md"
-PROGRESS_FILE="${PROJECT_DIR}/.claude/ralph-progress.md"
-JOURNAL_FILE="${PROJECT_DIR}/.claude/ralph-journal.tsv"
-READONLY_FILE="${SPEC_DIR}/RALPH_READONLY"
-OVERRIDES_FILE="${SPEC_DIR}/RALPH_OVERRIDES.md"
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 PROMPT_DIR="${SCRIPT_DIR}/../references"
 
 SLUG=$(basename "$SPEC_DIR")
 STREAM_PROCESSOR="${SCRIPT_DIR}/stream-processor.py"
+
+# ── Artifact paths (simplified model) ─────────────────────────────────
+# All ralph artifacts live under .claude/ralph/<slug>/
+# Per-run artifacts go in .claude/ralph/<slug>/runs/<timestamp>/
+# Journal appends across runs at .claude/ralph/<slug>/journal.tsv
+RALPH_BASE="${PROJECT_DIR}/.claude/ralph/${SLUG}"
+RUN_TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+RUN_DIR="${RALPH_BASE}/runs/${RUN_TIMESTAMP}"
+LOG_DIR="${RUN_DIR}"
+STOP_SENTINEL="${PROJECT_DIR}/.claude/ralph/stop"
+STATUS_FILE="${PROJECT_DIR}/.claude/ralph/status.md"
+INJECT_FILE="${PROJECT_DIR}/.claude/ralph/inject.md"
+PROGRESS_FILE="${PROJECT_DIR}/.claude/ralph/progress.md"
+JOURNAL_FILE="${RALPH_BASE}/journal.tsv"
+READONLY_FILE="${SPEC_DIR}/RALPH_READONLY"
+OVERRIDES_FILE="${SPEC_DIR}/RALPH_OVERRIDES.md"
+
+# Source shared primitives (for ensure_worktrees_gitignored, detect_test_command, etc.)
+_LIB_DIR="${SCRIPT_DIR}/../../../scripts/lib"
+if [ -f "${_LIB_DIR}/parallel-primitives.sh" ]; then
+  source "${_LIB_DIR}/parallel-primitives.sh"
+else
+  PLUGIN_LIB="${CLAUDE_PLUGIN_ROOT:-${SCRIPT_DIR}/../../..}/scripts/lib/parallel-primitives.sh"
+  [ -f "$PLUGIN_LIB" ] && source "$PLUGIN_LIB"
+fi
 
 # ── Evaluator configuration ──────────────────────────────────────────
 # Default: single evaluator pass at END of run (reviews full body of work).
@@ -52,8 +69,8 @@ STREAM_PROCESSOR="${SCRIPT_DIR}/stream-processor.py"
 # model can do reliably solo. For tasks within the model's comfort zone,
 # per-iteration evaluation is unnecessary overhead. For tasks at the edge,
 # it gives real lift. (See: Anthropic harness design article)
-EVAL_VERDICT_FILE="${PROJECT_DIR}/.claude/ralph-eval-verdict.json"
-EVAL_SUMMARY_FILE="${PROJECT_DIR}/.claude/ralph-eval-summary.md"
+EVAL_VERDICT_FILE="${RUN_DIR}/eval-verdict.json"
+EVAL_SUMMARY_FILE="${RUN_DIR}/eval-summary.md"
 # Contracts removed — acceptance criteria now live inline in IMPLEMENTATION_PLAN.md
 RALPH_EVALUATE_UI="${RALPH_EVALUATE_UI:-false}"
 # Per-iteration evaluation (opt-in for hard tasks)
@@ -62,10 +79,15 @@ EVAL_DIFF_THRESHOLD="${RALPH_EVAL_DIFF_THRESHOLD:-5}"    # Files changed to trig
 # End-of-run evaluation (default: on)
 EVAL_END_OF_RUN="${RALPH_EVAL_END_OF_RUN:-true}"         # Run evaluator once at end of run
 
-mkdir -p "$LOG_DIR"
+mkdir -p "$RUN_DIR" || { echo "ERROR: Failed to create run directory: ${RUN_DIR}" >&2; exit 1; }
+mkdir -p "$RALPH_BASE" || { echo "ERROR: Failed to create ralph base: ${RALPH_BASE}" >&2; exit 1; }
+if [ ! -w "$RUN_DIR" ]; then
+  echo "ERROR: Run directory is not writable: ${RUN_DIR}" >&2
+  exit 1
+fi
 
 # ── Trace file (single structured log for the run) ───────────────────
-TRACE_FILE="${LOG_DIR}/${SLUG}-trace.jsonl"
+TRACE_FILE="${RUN_DIR}/trace.jsonl"
 
 # ── Trace event helper ────────────────────────────────────────────────
 # Appends a single JSON line to the trace file.
@@ -201,9 +223,7 @@ if [ -z "${RALPH_WORKER_ID:-}" ] && [[ "$MODE" == "build" || "$MODE" == "reconci
   WORKTREE_PATH="${WORKTREE_BASE}/${SLUG}"
 
   # Ensure .claude/worktrees/ is gitignored
-  if ! grep -q '\.claude/worktrees/' "${REPO_ROOT}/.gitignore" 2>/dev/null; then
-    echo -e '\n# Git worktrees (parallel branch work)\n.claude/worktrees/' >> "${REPO_ROOT}/.gitignore"
-  fi
+  ensure_worktrees_gitignored "$REPO_ROOT"
 
   # Remove stale worktree if it exists
   if [ -d "$WORKTREE_PATH" ]; then
@@ -222,32 +242,42 @@ if [ -z "${RALPH_WORKER_ID:-}" ] && [[ "$MODE" == "build" || "$MODE" == "reconci
 
   # Copy spec directory and supporting files into worktree
   mkdir -p "${WORKTREE_PATH}/.claude/specs/"
-  cp -r "$SPEC_DIR" "${WORKTREE_PATH}/.claude/specs/${SLUG}/"
-  mkdir -p "${WORKTREE_PATH}/.claude/ralph-logs"
+  cp -r "$SPEC_DIR" "${WORKTREE_PATH}/.claude/specs/${SLUG}/" || { echo "ERROR: Failed to copy spec directory to worktree" >&2; exit 1; }
+  if [ ! -f "${WORKTREE_PATH}/.claude/specs/${SLUG}/IMPLEMENTATION_PLAN.md" ]; then
+    echo "ERROR: Plan file missing in worktree after copy: ${WORKTREE_PATH}/.claude/specs/${SLUG}/IMPLEMENTATION_PLAN.md" >&2
+    exit 1
+  fi
+  mkdir -p "${WORKTREE_PATH}/.claude/ralph/${SLUG}/runs/${RUN_TIMESTAMP}"
   [ -f "${PROJECT_DIR}/.claude/AGENTS.md" ] && cp "${PROJECT_DIR}/.claude/AGENTS.md" "${WORKTREE_PATH}/.claude/"
 
   # Switch into worktree and re-point all path variables
-  cd "$WORKTREE_PATH"
+  if [ ! -d "$WORKTREE_PATH" ]; then
+    echo "ERROR: Worktree directory does not exist: ${WORKTREE_PATH}" >&2
+    exit 1
+  fi
+  cd "$WORKTREE_PATH" || { echo "ERROR: Failed to cd into worktree: ${WORKTREE_PATH}" >&2; exit 1; }
   PROJECT_DIR="$WORKTREE_PATH"
   SPEC_DIR=".claude/specs/${SLUG}"
   PLAN_FILE="${SPEC_DIR}/IMPLEMENTATION_PLAN.md"
-  LOG_DIR="${PROJECT_DIR}/.claude/ralph-logs"
-  STOP_SENTINEL="${PROJECT_DIR}/.claude/ralph-stop"
-  STATUS_FILE="${PROJECT_DIR}/.claude/ralph-status.md"
-  INJECT_FILE="${PROJECT_DIR}/.claude/ralph-inject.md"
-  PROGRESS_FILE="${PROJECT_DIR}/.claude/ralph-progress.md"
-  JOURNAL_FILE="${PROJECT_DIR}/.claude/ralph-journal.tsv"
+  RALPH_BASE="${PROJECT_DIR}/.claude/ralph/${SLUG}"
+  RUN_DIR="${RALPH_BASE}/runs/${RUN_TIMESTAMP}"
+  LOG_DIR="${RUN_DIR}"
+  STOP_SENTINEL="${PROJECT_DIR}/.claude/ralph/stop"
+  STATUS_FILE="${PROJECT_DIR}/.claude/ralph/status.md"
+  INJECT_FILE="${PROJECT_DIR}/.claude/ralph/inject.md"
+  PROGRESS_FILE="${PROJECT_DIR}/.claude/ralph/progress.md"
+  JOURNAL_FILE="${RALPH_BASE}/journal.tsv"
   READONLY_FILE="${SPEC_DIR}/RALPH_READONLY"
   OVERRIDES_FILE="${SPEC_DIR}/RALPH_OVERRIDES.md"
-  EVAL_VERDICT_FILE="${PROJECT_DIR}/.claude/ralph-eval-verdict.json"
-  EVAL_SUMMARY_FILE="${PROJECT_DIR}/.claude/ralph-eval-summary.md"
-  # Contracts removed — acceptance criteria now live inline in IMPLEMENTATION_PLAN.md
+  EVAL_VERDICT_FILE="${RUN_DIR}/eval-verdict.json"
+  EVAL_SUMMARY_FILE="${RUN_DIR}/eval-summary.md"
 
-  # Re-initialize journal and trace in worktree
+  # Re-initialize run dir and journal in worktree
+  mkdir -p "$RUN_DIR"
   if [ ! -f "$JOURNAL_FILE" ]; then
     printf "timestamp\toutcome\ttask\tmetric\tnotes\n" > "$JOURNAL_FILE"
   fi
-  TRACE_FILE="${LOG_DIR}/${SLUG}-trace.jsonl"
+  TRACE_FILE="${RUN_DIR}/trace.jsonl"
 
   USING_WORKTREE=true
 
@@ -472,7 +502,7 @@ write_status() {
 
 ## Recent Iterations
 
-$(tail -20 "${LOG_DIR}/ralph-iterations.log" 2>/dev/null || echo "(no iteration log yet)")
+$(tail -20 "$JOURNAL_FILE" 2>/dev/null || echo "(no journal entries yet)")
 EOF
 }
 
@@ -484,9 +514,8 @@ START_TIME=$(date +%s)
 # Trace: run start
 trace_event "run_start" "slug=${SLUG}" "mode=${MODE}" "max_iters=${MAX_ITERATIONS}"
 
-# Append to iteration log (preserve history across restarts) — legacy, kept during migration
-echo "" >> "${LOG_DIR}/ralph-iterations.log" 2>/dev/null || true
-echo "# Ralph Run — $(date)" >> "${LOG_DIR}/ralph-iterations.log"
+# Run start marker in journal (if this is a fresh journal)
+echo "# Ralph Run — $(date) — ${MODE} mode" >> "${RUN_DIR}/orchestrator.log" 2>/dev/null || true
 
 while :; do
   ITERATION=$((ITERATION + 1))
@@ -528,7 +557,7 @@ while :; do
         echo "⚠ STRUGGLE DETECTED: Task '${CURRENT_TASK}' has been attempted ${SAME_TASK_COUNT} times."
         echo "  Ralph may be stuck. Stopping to prevent token waste."
         echo "  Review logs and consider breaking the task down or adding context."
-        echo "${ITERATION} | $(date +%H:%M:%S) | STRUGGLE_STOP | ${CURRENT_TASK}" >> "${LOG_DIR}/ralph-iterations.log"
+        echo "${ITERATION} | $(date +%H:%M:%S) | STRUGGLE_STOP | ${CURRENT_TASK}" >> "${RUN_DIR}/orchestrator.log"
         write_status "$ITERATION" "$CURRENT_TASK" "STRUGGLE_STOP"
         break
       fi
@@ -542,7 +571,7 @@ while :; do
 
   # ── Circuit breaker ─────────────────────────────────────────────────
   if ! check_circuit_breaker "$ITERATION"; then
-    echo "${ITERATION} | $(date +%H:%M:%S) | HARD_CIRCUIT_BREAK | low commit ratio + consecutive reverts" >> "${LOG_DIR}/ralph-iterations.log"
+    echo "${ITERATION} | $(date +%H:%M:%S) | HARD_CIRCUIT_BREAK | low commit ratio + consecutive reverts" >> "${RUN_DIR}/orchestrator.log"
     printf "%s\tHARD_CIRCUIT_BREAK\t-\treverts=%s\tConsecutive reverts on: %s\n" \
       "$(date +"%Y-%m-%dT%H:%M:%S")" "$CONSECUTIVE_REVERTS" "$CONSECUTIVE_REVERT_TASKS" >> "$JOURNAL_FILE"
     trace_event "circuit_break" "type_detail=hard" "reason=${CONSECUTIVE_REVERTS} consecutive reverts" "tasks=${CONSECUTIVE_REVERT_TASKS}"
@@ -658,12 +687,20 @@ ${BRIEFING}
     fi
   fi
 
+  # Re-check stop sentinel immediately before launching Claude (prompt build can take time)
+  if [ -f "$STOP_SENTINEL" ] || [ -f "$MAIN_STOP_SENTINEL" ]; then
+    echo "Stop sentinel found before Claude invocation. Exiting gracefully."
+    rm -f "$STOP_SENTINEL" "$MAIN_STOP_SENTINEL" 2>/dev/null || true
+    break
+  fi
+
   # Run Claude piped through the stream processor:
   #   claude stdout (stream-json) -> processor stdin
   #   processor stdout (text)     -> LOG_FILE
   #   processor stderr (display)  -> terminal (tmux pane)
   #   processor also appends tool_call events to TRACE_FILE
   set +e
+  set -o pipefail
   if [ -n "$TIMEOUT_CMD" ]; then
     echo "$PROMPT" | $TIMEOUT_CMD $CLAUDE_CMD 2>/dev/null \
       | "$STREAM_PROCESSOR" --trace-file "$TRACE_FILE" > "$LOG_FILE"
@@ -671,7 +708,13 @@ ${BRIEFING}
     echo "$PROMPT" | $CLAUDE_CMD 2>/dev/null \
       | "$STREAM_PROCESSOR" --trace-file "$TRACE_FILE" > "$LOG_FILE"
   fi
-  CLAUDE_EXIT=${PIPESTATUS[0]}
+  PIPELINE_STATUS=("${PIPESTATUS[@]}")
+  set +o pipefail
+  CLAUDE_EXIT=${PIPELINE_STATUS[0]}
+  PROCESSOR_EXIT=${PIPELINE_STATUS[1]:-0}
+  if [ "$PROCESSOR_EXIT" -ne 0 ]; then
+    echo "WARNING: Stream processor exited with code ${PROCESSOR_EXIT} — log output may be incomplete." >&2
+  fi
   set -e
 
   if [ "$CLAUDE_EXIT" -eq 0 ]; then
@@ -742,6 +785,12 @@ ${BRIEFING}
       if [ -f "$AGENTS_FILE" ]; then
         TEST_CMD=$(grep -A1 '| Test' "$AGENTS_FILE" 2>/dev/null | tail -1 | sed 's/.*| `\(.*\)`.*/\1/' | sed 's/|//g' | xargs || true)
         LINT_CMD=$(grep -A1 '| Lint' "$AGENTS_FILE" 2>/dev/null | tail -1 | sed 's/.*| `\(.*\)`.*/\1/' | sed 's/|//g' | xargs || true)
+      fi
+      if [ -z "$TEST_CMD" ]; then
+        echo "WARNING: No test command found in AGENTS.md — external test gate will be skipped." >&2
+      fi
+      if [ -z "$LINT_CMD" ]; then
+        echo "WARNING: No lint command found in AGENTS.md — external lint gate will be skipped." >&2
       fi
 
       # Load gate ignore patterns from RALPH_OVERRIDES.md
@@ -878,7 +927,14 @@ ${BRIEFING}
       fi
     else
       echo "REVERT: Rolling back to ${PRE_COMMIT:0:8}..."
-      git reset --hard "$PRE_COMMIT"
+      if [ -z "$PRE_COMMIT" ] || [ "$PRE_COMMIT" = "none" ]; then
+        echo "ERROR: Cannot revert — PRE_COMMIT is unset or invalid (${PRE_COMMIT}). Manual intervention required." >&2
+        trace_event "verdict" "outcome=REVERT_FAILED" "reason=invalid_pre_commit" "task=${TASK_LABEL}" "iter=${ITERATION}"
+      elif ! git reset --hard "$PRE_COMMIT" 2>&1; then
+        echo "ERROR: git reset --hard failed — branch may be in an inconsistent state. Manual intervention required." >&2
+        trace_event "verdict" "outcome=REVERT_FAILED" "reason=reset_failed" "task=${TASK_LABEL}" "iter=${ITERATION}"
+        exit 1
+      fi
       ITER_RESULT="reverted"
       trace_event "verdict" "outcome=REVERT" "task=${TASK_LABEL}" "iter=${ITERATION}"
       track_revert "$TASK_LABEL"
@@ -904,7 +960,7 @@ ${BRIEFING}
   fi
 
   # Log iteration (legacy + trace)
-  echo "${ITERATION} | $(date +%H:%M:%S) | ${ITER_RESULT} | ${CURRENT_TASK:-plan}" >> "${LOG_DIR}/ralph-iterations.log"
+  echo "${ITERATION} | $(date +%H:%M:%S) | ${ITER_RESULT} | ${CURRENT_TASK:-plan}" >> "${RUN_DIR}/orchestrator.log"
   ITER_DURATION=$(( $(date +%s) - ITER_START_TIME ))
   trace_event "iteration_end" "iter=${ITERATION}" "outcome=${ITER_RESULT}" "commit=${POST_COMMIT:-none}" "duration_s=${ITER_DURATION}"
 
@@ -939,9 +995,9 @@ trace_event "run_end" "total_iters=${ITERATION}" "kept=${KEPT_COUNT}" "reverted=
 
 echo ""
 echo "━━━ Ralph loop finished after ${ITERATION} iterations ━━━"
-echo "Logs:  ${LOG_DIR}/"
+echo "Run:   ${RUN_DIR}/"
 echo "Trace: ${TRACE_FILE}"
-echo "Status: ${STATUS_FILE}"
+echo "Journal: ${JOURNAL_FILE}"
 echo "View:  trace-viewer.py ${TRACE_FILE} [--view timeline|summary|tools|reverts]"
 
 # Show final plan status
@@ -955,10 +1011,23 @@ fi
 if [ "$USING_WORKTREE" = true ]; then
   echo ""
 
-  # Copy trace and logs back to main project before potential cleanup
-  mkdir -p "${MAIN_PROJECT_DIR}/.claude/ralph-logs"
-  cp "$TRACE_FILE" "${MAIN_PROJECT_DIR}/.claude/ralph-logs/" 2>/dev/null || true
-  [ -f "$JOURNAL_FILE" ] && cp "$JOURNAL_FILE" "${MAIN_PROJECT_DIR}/.claude/" 2>/dev/null || true
+  # Copy run artifacts back to main project before potential cleanup
+  MAIN_RUN_DIR="${MAIN_PROJECT_DIR}/.claude/ralph/${SLUG}/runs/${RUN_TIMESTAMP}"
+  mkdir -p "$MAIN_RUN_DIR"
+  cp "$TRACE_FILE" "$MAIN_RUN_DIR/" 2>/dev/null || true
+  [ -f "${RUN_DIR}/eval-verdict.json" ] && cp "${RUN_DIR}/eval-verdict.json" "$MAIN_RUN_DIR/" 2>/dev/null || true
+  [ -f "${RUN_DIR}/eval-summary.md" ] && cp "${RUN_DIR}/eval-summary.md" "$MAIN_RUN_DIR/" 2>/dev/null || true
+  [ -f "${RUN_DIR}/orchestrator.log" ] && cp "${RUN_DIR}/orchestrator.log" "$MAIN_RUN_DIR/" 2>/dev/null || true
+  # Append worktree journal to main persistent journal
+  MAIN_JOURNAL="${MAIN_PROJECT_DIR}/.claude/ralph/${SLUG}/journal.tsv"
+  mkdir -p "$(dirname "$MAIN_JOURNAL")"
+  if [ -f "$JOURNAL_FILE" ]; then
+    if [ ! -f "$MAIN_JOURNAL" ]; then
+      cp "$JOURNAL_FILE" "$MAIN_JOURNAL"
+    else
+      tail -n +2 "$JOURNAL_FILE" >> "$MAIN_JOURNAL"  # skip header, append data
+    fi
+  fi
 
   BRANCH_COMMITS=$(git rev-list --count "${TARGET_BRANCH}..HEAD" 2>/dev/null || echo "0")
 
@@ -1057,8 +1126,11 @@ if [ "$EVAL_END_OF_RUN" = "true" ] && [ "$MODE" = "build" ] && [ -z "$ONCE_FLAG"
     set -e
 
     if [ -f "$EVAL_VERDICT_FILE" ]; then
-      ENDRUN_VERDICT=$(python3 -c "import json; print(json.load(open('${EVAL_VERDICT_FILE}'))['verdict'])" 2>/dev/null || echo "UNKNOWN")
-      ENDRUN_AVG=$(python3 -c "import json; print(json.load(open('${EVAL_VERDICT_FILE}'))['average'])" 2>/dev/null || echo "?")
+      ENDRUN_VERDICT=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['verdict'])" "$EVAL_VERDICT_FILE" 2>/dev/null || echo "UNKNOWN")
+      ENDRUN_AVG=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['average'])" "$EVAL_VERDICT_FILE" 2>/dev/null || echo "?")
+      if [ "$ENDRUN_VERDICT" = "UNKNOWN" ] || [ "$ENDRUN_AVG" = "?" ]; then
+        echo "WARNING: Eval verdict file exists but could not be parsed — check ${EVAL_VERDICT_FILE}" >&2
+      fi
       echo "End-of-run evaluation: ${ENDRUN_VERDICT} (avg score: ${ENDRUN_AVG})"
       echo "Full report: ${EVAL_SUMMARY_FILE}"
       trace_event "endrun_eval" "verdict=${ENDRUN_VERDICT}" "avg_score=${ENDRUN_AVG}"
@@ -1082,7 +1154,7 @@ if [ "$AUTO_HARVEST" = "true" ] && [ "$MODE" = "build" ] && [ -z "$ONCE_FLAG" ] 
     SHOULD_HARVEST=true
     echo ""
     echo "━━━ Auto-harvesting (plan complete) ━━━"
-  elif [ "$CONSECUTIVE_REVERTS" -ge 3 ] || grep -q 'CIRCUIT_BREAK\|STRUGGLE_STOP' "${LOG_DIR}/ralph-iterations.log" 2>/dev/null; then
+  elif [ "$CONSECUTIVE_REVERTS" -ge 3 ] || grep -q 'CIRCUIT_BREAK\|STRUGGLE_STOP' "${RUN_DIR}/orchestrator.log" 2>/dev/null; then
     SHOULD_HARVEST=true
     echo ""
     echo "━━━ Auto-harvesting (loop stopped early — capturing failure patterns) ━━━"

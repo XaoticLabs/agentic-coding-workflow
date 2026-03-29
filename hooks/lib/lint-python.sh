@@ -38,8 +38,8 @@ if [ $pyright_exit -ne 0 ]; then
   has_code_errors=true
 fi
 
-# Tests — skip if infra probe already failed
-if [ "$skip_tests" = true ]; then
+# Tests — skip if Python-specific infra probe failed
+if [ "${SKIP_TESTS_PYTHON:-false}" = true ]; then
   output+="=== pytest ===\nSkipped — infrastructure not available (${infra_warnings%%, })\n\n"
   return 0 2>/dev/null || exit 0
 fi

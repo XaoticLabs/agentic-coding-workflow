@@ -31,17 +31,30 @@ Parse the task list. Identify:
 - Tasks marked `[x]` — already done, skip. **But verify:** if a task says "Completed in <hash>", run `git log --oneline -1 <hash>` to confirm the commit exists on the current branch. If the commit is missing/orphaned, the task was reverted by a previous run — re-mark it `[ ]` and treat it as a candidate.
 - Tasks marked `[ ]` with all dependencies met (deps are done or "none") — candidates
 
+### Parallel Worker Task Assignments
+
+**Check if `.claude/ralph-assigned-tasks` exists.** If it does, you are a parallel worker with a strict scope:
+
+1. Read the file — it contains comma-separated task numbers (e.g., `1,3`)
+2. **ONLY work on tasks listed in that file.** Do not touch, implement, or pick up ANY other task, even if it appears incomplete in the plan. Another worker owns it.
+3. **If ALL your assigned tasks are already marked `[x]` in the plan**, set `## Status: COMPLETE` at the top of the plan and exit immediately. Do NOT look for other work — your job is done.
+4. When evaluating which assigned task to pick, only consider tasks from your assigned list that are marked `[ ]` with dependencies met.
+
+**This is a hard constraint, not a preference.** Picking up an unassigned task causes merge conflicts and wasted work.
+
+If the file does not exist, you are in single-track mode and may pick any eligible task.
+
 **Ultrathink about task selection.** This is the highest-leverage decision in the iteration. Evaluate candidates by:
 1. **Risk first** — architectural decisions, integration points, and unknown unknowns before standard features
 2. **Dependencies** — unblock other tasks before isolated work
 3. **Priority** — HIGH > MEDIUM > LOW
 4. **Within a tier** — smaller tasks first for faster feedback
 
-Pick the single best candidate.
+Pick the single best candidate from your assigned tasks (or all candidates if single-track).
 
 **Simplicity tiebreaker:** When two candidates are close in priority, prefer the one that requires fewer files and fewer lines of change. A task you can solve by deleting code is always preferred over one that adds code.
 
-If ALL tasks are `[x]`, set `## Status: COMPLETE` at the top of the plan and exit immediately.
+If ALL tasks are `[x]` (or all your assigned tasks if parallel), set `## Status: COMPLETE` at the top of the plan and exit immediately.
 
 ## Step 3: Search Before Implementing
 
