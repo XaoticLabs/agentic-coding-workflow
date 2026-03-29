@@ -60,31 +60,41 @@ if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
   fi
 fi
 
-# Create session
-echo "Creating session '$SESSION_NAME' with $PANE_COUNT panes..."
-tmux new-session -d -s "$SESSION_NAME"
-
-# Create additional panes
-for ((i = 1; i < PANE_COUNT; i++)); do
-  if [ $((i % 2)) -eq 1 ]; then
-    tmux split-window -h -t "$SESSION_NAME"
-  else
-    tmux split-window -v -t "$SESSION_NAME"
-  fi
-done
-
-# Apply layout
-tmux select-layout -t "$SESSION_NAME" "$LAYOUT"
-
-# Select first pane
-tmux select-pane -t "$SESSION_NAME:0.0"
-
-success "Workspace '$SESSION_NAME' created with $PANE_COUNT panes ($LAYOUT layout)"
-
-# Attach or print info based on context
+# Create workspace — window (tab) if in tmux, session if not
 if [ -n "$TMUX" ]; then
-  echo "Already in tmux. Switch with: tmux switch-client -t $SESSION_NAME"
+  echo "Creating tab '$SESSION_NAME' with $PANE_COUNT panes..."
+  tmux new-window -n "$SESSION_NAME"
+  TMUX_TARGET="$(tmux display-message -p '#{session_name}'):${SESSION_NAME}"
+
+  for ((i = 1; i < PANE_COUNT; i++)); do
+    if [ $((i % 2)) -eq 1 ]; then
+      tmux split-window -h -t "$TMUX_TARGET"
+    else
+      tmux split-window -v -t "$TMUX_TARGET"
+    fi
+  done
+
+  tmux select-layout -t "$TMUX_TARGET" "$LAYOUT"
+  tmux select-pane -t "$TMUX_TARGET.0"
+
+  success "Tab '$SESSION_NAME' created with $PANE_COUNT panes ($LAYOUT layout)"
+  echo "Switch tabs: Ctrl-B n/p or Ctrl-B <number>"
 else
+  echo "Creating session '$SESSION_NAME' with $PANE_COUNT panes..."
+  tmux new-session -d -s "$SESSION_NAME"
+
+  for ((i = 1; i < PANE_COUNT; i++)); do
+    if [ $((i % 2)) -eq 1 ]; then
+      tmux split-window -h -t "$SESSION_NAME"
+    else
+      tmux split-window -v -t "$SESSION_NAME"
+    fi
+  done
+
+  tmux select-layout -t "$SESSION_NAME" "$LAYOUT"
+  tmux select-pane -t "$SESSION_NAME:0.0"
+
+  success "Session '$SESSION_NAME' created with $PANE_COUNT panes ($LAYOUT layout)"
   echo "Attaching to session..."
   exec tmux attach-session -t "$SESSION_NAME"
 fi

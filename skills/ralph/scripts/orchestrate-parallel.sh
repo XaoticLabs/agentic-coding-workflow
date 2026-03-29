@@ -267,13 +267,13 @@ LAUNCHER_EOF
     chmod +x "$LAUNCHER"
 
     if [ "$idx" -eq 0 ]; then
-      create_tmux_session "$SESSION_NAME" "$WORKTREE_PATH" "$LAUNCHER"
+      TMUX_TARGET=$(create_tmux_session "$SESSION_NAME" "$WORKTREE_PATH" "$LAUNCHER")
     else
-      add_tmux_pane "$SESSION_NAME" "$WORKTREE_PATH" "$LAUNCHER"
+      add_tmux_pane "$TMUX_TARGET" "$WORKTREE_PATH" "$LAUNCHER"
     fi
   done
 
-  tmux select-layout -t "$SESSION_NAME" tiled
+  tmux select-layout -t "$TMUX_TARGET" tiled
   echo "Workers in tmux session: ${SESSION_NAME}"
 
   # ── Poll for completion ───────────────────────────────────────────

@@ -67,7 +67,7 @@ git status --porcelain
 - If spec provided in $ARGUMENTS, use it
 - Otherwise, look for specs matching the branch name in `.claude/specs/`
 - Also check `.claude/plans/` for a corresponding plan
-- Check for Ralph summary: if the branch matches `ralph/<slug>`, read `.claude/ralph-logs/ralph-summary-<slug>.md` for run metrics and context
+- Check for Ralph summary: read `.claude/ralph-logs/ralph-summary-<slug>.md` if it exists for run metrics and context
 
 **Gather context:**
 ```bash

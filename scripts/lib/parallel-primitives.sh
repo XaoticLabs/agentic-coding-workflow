@@ -90,35 +90,50 @@ cleanup_worker_worktree() {
 
 # ── Tmux management ───────────────────────────────────────────────────
 
-# Create a tmux session with the first pane.
-# Args: <session-name> <working-dir> <command>
+# Create a tmux workspace with the first pane.
+# If already inside tmux, creates a new window (tab) in the current session.
+# Otherwise creates a new detached session.
+# Args: <name> <working-dir> <command>
+# Stdout: the tmux target to use for add_tmux_pane and select-layout
 create_tmux_session() {
-  local session_name="$1"
+  local name="$1"
   local working_dir="$2"
   local command="$3"
 
-  # Kill existing session if present
-  tmux kill-session -t "$session_name" 2>/dev/null || true
-
-  tmux new-session -d -s "$session_name" -c "$working_dir" "$command"
+  if [ -n "${TMUX:-}" ]; then
+    # Already in tmux — create a window (tab) in the current session
+    tmux new-window -n "$name" -c "$working_dir" "$command"
+    echo "$(tmux display-message -p '#{session_name}'):${name}"
+  else
+    # Not in tmux — create a detached session
+    tmux kill-session -t "$name" 2>/dev/null || true
+    tmux new-session -d -s "$name" -c "$working_dir" "$command"
+    echo "$name"
+  fi
 }
 
-# Add a pane to an existing tmux session.
-# Args: <session-name> <working-dir> <command>
+# Add a pane to an existing tmux workspace.
+# Args: <target> <working-dir> <command>
+# <target> should be the value returned by create_tmux_session
 add_tmux_pane() {
-  local session_name="$1"
+  local target="$1"
   local working_dir="$2"
   local command="$3"
 
-  tmux split-window -t "$session_name" -c "$working_dir" "$command"
+  tmux split-window -t "$target" -c "$working_dir" "$command"
 }
 
-# Safely kill a tmux session.
-# Args: <session-name>
-kill_session_safe() {
-  local session_name="$1"
-  tmux kill-session -t "$session_name" 2>/dev/null || true
+# Safely kill a tmux workspace (tries window first, then session).
+# Args: <name>
+kill_workspace_safe() {
+  local name="$1"
+  # Try as a window name first (for when created inside tmux)
+  tmux kill-window -t ":${name}" 2>/dev/null || \
+    tmux kill-session -t "$name" 2>/dev/null || true
 }
+
+# Backward compat alias
+kill_session_safe() { kill_workspace_safe "$@"; }
 
 # ── Test/lint detection ───────────────────────────────────────────────
 

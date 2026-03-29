@@ -33,7 +33,7 @@ SCRIPT="${CLAUDE_PLUGIN_ROOT}/scripts/dashboard.sh"
 ```
 
 If not in tmux, tell the user:
-> You need to be in a tmux session. Run: `tmux new-session -s work`
+> You need to be in tmux. Run: `tmux new-session -s work`
 
 ### Phase 2: Launch Dashboard Pane
 

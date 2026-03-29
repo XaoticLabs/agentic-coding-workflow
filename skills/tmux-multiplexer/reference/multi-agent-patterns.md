@@ -13,6 +13,9 @@ Advanced patterns for orchestrating multiple Claude Code instances.
 
 ## 1. Parallel Execution Patterns
 
+> **Convention:** All patterns use windows (tabs) + panes within the current tmux session.
+> If not already in tmux, create a session first: `tmux new-session -s work`
+
 ### 1.1 File-Parallel Review
 
 Each agent reviews a different file independently.
@@ -22,20 +25,19 @@ Each agent reviews a different file independently.
 # parallel-review.sh - Review multiple files in parallel
 
 files=("$@")
-session="review-$$"
+name="review-$$"
 
-tmux new-session -d -s "$session"
+tmux new-window -n "$name"
 
 for i in "${!files[@]}"; do
   file="${files[$i]}"
-  [ $i -gt 0 ] && tmux split-window -t "$session"
-  tmux send-keys -t "$session" "claude -p 'Review $file for bugs, security issues, and improvements' > /tmp/review-$i.md" Enter
-  tmux select-layout -t "$session" tiled
+  [ $i -gt 0 ] && tmux split-window -t ":$name"
+  tmux send-keys -t ":$name" "claude -p 'Review $file for bugs, security issues, and improvements' > /tmp/review-$i.md" Enter
+  tmux select-layout -t ":$name" tiled
 done
 
-echo "Reviews started in session: $session"
+echo "Reviews started in tab: $name"
 echo "Results will be in /tmp/review-*.md"
-tmux attach -t "$session"
 ```
 
 ### 1.2 Test Matrix
@@ -47,18 +49,17 @@ Run tests across different configurations.
 # test-matrix.sh - Run tests with different configs
 
 configs=("node16" "node18" "node20")
-session="test-matrix"
+name="test-matrix"
 
-tmux new-session -d -s "$session"
+tmux new-window -n "$name"
 
 for i in "${!configs[@]}"; do
   config="${configs[$i]}"
-  [ $i -gt 0 ] && tmux split-window -v -t "$session"
-  tmux send-keys -t "$session" "NODE_VERSION=$config npm test 2>&1 | tee /tmp/test-$config.log" Enter
+  [ $i -gt 0 ] && tmux split-window -v -t ":$name"
+  tmux send-keys -t ":$name" "NODE_VERSION=$config npm test 2>&1 | tee /tmp/test-$config.log" Enter
 done
 
-tmux select-layout -t "$session" even-vertical
-tmux attach -t "$session"
+tmux select-layout -t ":$name" even-vertical
 ```
 
 ### 1.3 Research Squad
@@ -75,17 +76,15 @@ topics=(
   "API rate limiting strategies"
 )
 
-session="research"
-tmux new-session -d -s "$session"
+name="research"
+tmux new-window -n "$name"
 
 for i in "${!topics[@]}"; do
-  [ $i -gt 0 ] && tmux split-window -h -t "$session"
+  [ $i -gt 0 ] && tmux split-window -h -t ":$name"
   topic="${topics[$i]}"
-  tmux send-keys -t "$session" "claude -p 'Research: $topic. Provide actionable recommendations.' > /tmp/research-$i.md" Enter
-  tmux select-layout -t "$session" tiled
+  tmux send-keys -t ":$name" "claude -p 'Research: $topic. Provide actionable recommendations.' > /tmp/research-$i.md" Enter
+  tmux select-layout -t ":$name" tiled
 done
-
-tmux attach -t "$session"
 ```
 
 ---
@@ -94,36 +93,33 @@ tmux attach -t "$session"
 
 ### 2.1 Sequential Processing
 
-Output of one stage feeds into the next.
+Output of one stage feeds into the next. Uses separate windows (tabs) for each stage.
 
 ```bash
 #!/bin/bash
 # sequential-pipeline.sh
 
-session="pipeline"
-tmux new-session -d -s "$session" -n "stage1"
-
 # Stage 1: Generate code
-tmux send-keys -t "$session" "claude -p 'Generate a REST API handler for user registration' > /tmp/stage1.ts" Enter
+tmux new-window -n "stage1"
+tmux send-keys -t ":stage1" "claude -p 'Generate a REST API handler for user registration' > /tmp/stage1.ts" Enter
 
 # Wait for stage 1
 sleep 2
 while pgrep -f "claude.*stage1" >/dev/null; do sleep 1; done
 
 # Stage 2: Review the generated code
-tmux new-window -t "$session" -n "stage2"
-tmux send-keys -t "$session:stage2" "claude --context /tmp/stage1.ts -p 'Review this code and suggest improvements' > /tmp/stage2.md" Enter
+tmux new-window -n "stage2"
+tmux send-keys -t ":stage2" "claude --context /tmp/stage1.ts -p 'Review this code and suggest improvements' > /tmp/stage2.md" Enter
 
 # Wait for stage 2
 sleep 2
 while pgrep -f "claude.*stage2" >/dev/null; do sleep 1; done
 
 # Stage 3: Generate tests
-tmux new-window -t "$session" -n "stage3"
-tmux send-keys -t "$session:stage3" "claude --context /tmp/stage1.ts -p 'Generate comprehensive unit tests for this code' > /tmp/stage3.ts" Enter
+tmux new-window -n "stage3"
+tmux send-keys -t ":stage3" "claude --context /tmp/stage1.ts -p 'Generate comprehensive unit tests for this code' > /tmp/stage3.ts" Enter
 
-tmux select-window -t "$session:stage1"
-tmux attach -t "$session"
+tmux select-window -t ":stage1"
 ```
 
 ### 2.2 Build Pipeline with Gates
@@ -134,22 +130,21 @@ Each stage must pass before proceeding.
 #!/bin/bash
 # build-pipeline.sh
 
-session="build"
-tmux new-session -d -s "$session"
+name="build"
+tmux new-window -n "$name"
 
 # Run lint
-tmux send-keys -t "$session" 'npm run lint && echo "LINT_PASS" || echo "LINT_FAIL"' Enter
-tmux split-window -v -t "$session"
+tmux send-keys -t ":$name" 'npm run lint && echo "LINT_PASS" || echo "LINT_FAIL"' Enter
+tmux split-window -v -t ":$name"
 
 # Run type check
-tmux send-keys -t "$session" 'npm run typecheck && echo "TYPES_PASS" || echo "TYPES_FAIL"' Enter
-tmux split-window -v -t "$session"
+tmux send-keys -t ":$name" 'npm run typecheck && echo "TYPES_PASS" || echo "TYPES_FAIL"' Enter
+tmux split-window -v -t ":$name"
 
 # Run tests
-tmux send-keys -t "$session" 'npm test && echo "TESTS_PASS" || echo "TESTS_FAIL"' Enter
+tmux send-keys -t ":$name" 'npm test && echo "TESTS_PASS" || echo "TESTS_FAIL"' Enter
 
-tmux select-layout -t "$session" even-vertical
-tmux attach -t "$session"
+tmux select-layout -t ":$name" even-vertical
 ```
 
 ---
@@ -165,22 +160,22 @@ Analyze components, then synthesize findings.
 # analyze-components.sh
 
 components=(src/components/*.tsx)
-session="analyze"
+name="analyze"
 
-tmux new-session -d -s "$session"
+tmux new-window -n "$name"
 
 # Map phase: analyze each component
 for i in "${!components[@]}"; do
   comp="${components[$i]}"
-  [ $i -gt 0 ] && tmux split-window -t "$session"
-  tmux send-keys -t "$session" "claude -p 'Analyze $comp for accessibility issues' > /tmp/a11y-$i.md" Enter
-  tmux select-layout -t "$session" tiled
+  [ $i -gt 0 ] && tmux split-window -t ":$name"
+  tmux send-keys -t ":$name" "claude -p 'Analyze $comp for accessibility issues' > /tmp/a11y-$i.md" Enter
+  tmux select-layout -t ":$name" tiled
 
   # Limit concurrent panes
   [ $((i % 4)) -eq 3 ] && sleep 30
 done
 
-# Reduce phase will be manual or in another session
+# Reduce phase will be manual or in another tab
 echo "After completion, synthesize with:"
 echo "claude -p 'Synthesize these accessibility findings' --context /tmp/a11y-*.md"
 ```
@@ -195,18 +190,16 @@ Search different parts of codebase, combine results.
 
 dirs=("src/api" "src/components" "src/utils" "src/hooks")
 pattern="$1"
-session="search"
+name="search"
 
-tmux new-session -d -s "$session"
+tmux new-window -n "$name"
 
 for i in "${!dirs[@]}"; do
   dir="${dirs[$i]}"
-  [ $i -gt 0 ] && tmux split-window -h -t "$session"
-  tmux send-keys -t "$session" "grep -r '$pattern' $dir > /tmp/search-$i.txt 2>&1; echo '=== Done: $dir ==='" Enter
-  tmux select-layout -t "$session" tiled
+  [ $i -gt 0 ] && tmux split-window -h -t ":$name"
+  tmux send-keys -t ":$name" "grep -r '$pattern' $dir > /tmp/search-$i.txt 2>&1; echo '=== Done: $dir ==='" Enter
+  tmux select-layout -t ":$name" tiled
 done
-
-tmux attach -t "$session"
 ```
 
 ---
@@ -221,26 +214,24 @@ One pane monitors and coordinates others.
 #!/bin/bash
 # orchestrator.sh
 
-session="orchestrated"
-tmux new-session -d -s "$session" -n "control"
+name="orchestrated"
+tmux new-window -n "$name"
 
 # Control pane stays in bash for monitoring
-tmux send-keys -t "$session" "echo 'Control pane - monitor workers here'" Enter
+tmux send-keys -t ":$name" "echo 'Control pane - monitor workers here'" Enter
 
 # Worker panes
-tmux split-window -h -t "$session"
-tmux send-keys -t "$session" "claude -p 'Implement feature A'" Enter
+tmux split-window -h -t ":$name"
+tmux send-keys -t ":$name" "claude -p 'Implement feature A'" Enter
 
-tmux split-window -v -t "$session"
-tmux send-keys -t "$session" "claude -p 'Implement feature B'" Enter
+tmux split-window -v -t ":$name"
+tmux send-keys -t ":$name" "claude -p 'Implement feature B'" Enter
 
 # Select control pane
-tmux select-pane -t "$session:0.0"
+tmux select-pane -t ":$name.0"
 
 # In control pane, you can run monitoring commands:
 # watch -n 5 'for p in 1 2; do echo "=== Pane $p ==="; tmux capture-pane -t $p -p | tail -5; done'
-
-tmux attach -t "$session"
 ```
 
 ### 4.2 Health Monitor
@@ -413,9 +404,9 @@ echo "}"
 ## Best Practices
 
 1. **Limit concurrency**: 4-6 agents max to avoid resource exhaustion
-2. **Use named sessions**: Easy cleanup and identification
-3. **Capture output**: Always save results before killing sessions
+2. **Use named windows (tabs)**: Easy cleanup and identification — visible in status bar
+3. **Capture output**: Always save results before killing windows
 4. **Handle failures**: Implement retry/timeout for unreliable tasks
-5. **Clean up**: Kill sessions when done to free resources
+5. **Clean up**: Kill windows when done to free resources (`tmux kill-window -t :name`)
 6. **Monitor progress**: Use a control pane or watch commands
-7. **Test locally first**: Verify tmux commands before scripting
+7. **Windows over sessions**: Create new windows (tabs), not sessions — keeps everything in one place

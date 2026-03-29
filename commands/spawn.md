@@ -54,12 +54,8 @@ command -v claude >/dev/null 2>&1 || echo "CLAUDE_NOT_FOUND"
 [ -n "$TMUX" ] || echo "NOT_IN_TMUX"
 ```
 
-If not in tmux, inform the user and offer to create a session:
-```bash
-SESSION_NAME="spawn-$(date +%s)"
-tmux new-session -d -s "$SESSION_NAME"
-tmux attach -t "$SESSION_NAME"
-```
+If not in tmux, tell the user:
+> You need to be in a tmux session. Run: `tmux new-session -s work`
 
 ### Phase 3: Set Up Working Directory
 

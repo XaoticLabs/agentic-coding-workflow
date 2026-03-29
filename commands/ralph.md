@@ -60,7 +60,7 @@ First check if `.claude/ralph/status.md` exists — if so, display it (this is t
 Check orchestrator process status:
 - If `.claude/ralph/<slug>/orchestrator.pid` exists, read the PID and check if it's alive: `kill -0 <pid> 2>/dev/null`
 - Report: "Orchestrator: RUNNING (PID: <pid>)" or "Orchestrator: NOT RUNNING"
-- Check for worker tmux session: `tmux has-session -t ralph-<slug> 2>/dev/null` and report active/inactive
+- Check for worker tmux window/session: `tmux has-session -t ralph-<slug> 2>/dev/null || tmux list-windows -F '#{window_name}' | grep -q ralph-<slug>` and report active/inactive
 - Check `.claude/ralph/<slug>/runs/` for recent run directories
 
 Also read `.claude/specs/<slug>/IMPLEMENTATION_PLAN.md` and display:
@@ -156,10 +156,17 @@ Report what happened and suggest next steps: run another `--once`, or drop the f
 ```bash
 SESSION_NAME="ralph-${SLUG}"
 
-# Check if session already exists
+# Check if already running (as window or session)
+ALREADY_RUNNING=false
 if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-  echo "Ralph session '$SESSION_NAME' already running!"
-  echo "Attach: tmux attach -t $SESSION_NAME"
+  ALREADY_RUNNING=true
+elif [ -n "${TMUX:-}" ] && tmux list-windows -F '#{window_name}' 2>/dev/null | grep -q "^${SESSION_NAME}$"; then
+  ALREADY_RUNNING=true
+fi
+
+if [ "$ALREADY_RUNNING" = true ]; then
+  echo "Ralph '$SESSION_NAME' already running!"
+  echo "Switch: Ctrl-B n/p (tab) or tmux attach -t $SESSION_NAME (session)"
   echo "Stop: /agentic-coding-workflow:ralph $SLUG --stop"
   exit 0
 fi
@@ -171,27 +178,32 @@ EVAL_ENV=""
 [ -n "$EVAL_PER_ITER_FLAG" ] && EVAL_ENV="RALPH_EVAL_PER_ITER=true"
 [ -n "$NO_EVAL_FLAG" ] && EVAL_ENV="RALPH_EVAL_END_OF_RUN=false"
 
-# Launch in new tmux session
-tmux new-session -d -s "$SESSION_NAME" \
-  "$EVAL_ENV bash '${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/loop.sh' '$SPEC_DIR' build $MAX_ITERATIONS $FLAGS; echo 'Ralph loop finished. Press enter to close.'; read"
+# Launch in tmux — window (tab) if already in tmux, new session if not
+LOOP_CMD="$EVAL_ENV bash '${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/loop.sh' '$SPEC_DIR' build $MAX_ITERATIONS $FLAGS; echo 'Ralph loop finished. Press enter to close.'; read"
+
+if [ -n "$TMUX" ]; then
+  tmux new-window -n "$SESSION_NAME" "$LOOP_CMD"
+else
+  tmux new-session -d -s "$SESSION_NAME" "$LOOP_CMD"
+fi
 ```
 
 Report:
 ```
 Ralph loop launched!
 
-Session:  ralph-<slug>
-Worktree: .claude/worktrees/ralph-<slug>
-Branch:   ralph/<slug>
-Attach:   tmux attach -t ralph-<slug>
-Status:   /agentic-coding-workflow:ralph <slug> --status
-Stop:     /agentic-coding-workflow:ralph <slug> --stop
-Steer:    echo 'instructions' > .claude/ralph/inject.md
-Run dir:  .claude/ralph/<slug>/runs/ (inside worktree)
-Journal:  .claude/ralph/<slug>/journal.tsv
-Dashboard: .claude/ralph/status.md
+Tab/Session: ralph-<slug>
+Worktree:    .claude/worktrees/ralph-<slug>
+Branch:      <slug>
+Switch:      Ctrl-B n/p (if tab) or tmux attach -t ralph-<slug> (if session)
+Status:      /agentic-coding-workflow:ralph <slug> --status
+Stop:        /agentic-coding-workflow:ralph <slug> --stop
+Steer:       echo 'instructions' > .claude/ralph/inject.md
+Run dir:     .claude/ralph/<slug>/runs/ (inside worktree)
+Journal:     .claude/ralph/<slug>/journal.tsv
+Dashboard:   .claude/ralph/status.md
 
-Changes land on the ralph/<slug> branch. Merge via ORC or `git merge ralph/<slug>`.
+Changes land on the <slug> branch. Merge via ORC or `git merge <slug>`.
 ```
 
 ### Phase 7: Parallel Mode
