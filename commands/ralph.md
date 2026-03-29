@@ -50,20 +50,25 @@ Extract from `$ARGUMENTS`:
 
 **If `--stop`:**
 ```bash
-touch .claude/ralph-stop
+touch .claude/ralph/stop
 ```
 Report that the loop will stop after the current iteration and exit.
 
 **If `--status`:**
-First check if `.claude/ralph-status.md` exists — if so, display it (this is the live dashboard updated each iteration with progress, timing, success rate, and recent iterations).
+First check if `.claude/ralph/status.md` exists — if so, display it (this is the live dashboard updated each iteration with progress, timing, success rate, and recent iterations).
+
+Check orchestrator process status:
+- If `.claude/ralph/<slug>/orchestrator.pid` exists, read the PID and check if it's alive: `kill -0 <pid> 2>/dev/null`
+- Report: "Orchestrator: RUNNING (PID: <pid>)" or "Orchestrator: NOT RUNNING"
+- Check for worker tmux session: `tmux has-session -t ralph-<slug> 2>/dev/null` and report active/inactive
+- Check `.claude/ralph/<slug>/runs/` for recent run directories
 
 Also read `.claude/specs/<slug>/IMPLEMENTATION_PLAN.md` and display:
 - Overall status (IN_PROGRESS / COMPLETE)
 - Task completion count (e.g., "7/12 tasks complete")
 - Table of all tasks with status
 - Any learnings recorded
-- Check for running tmux sessions: `tmux list-sessions 2>/dev/null | grep ralph`
-- Check ralph-logs for recent activity
+- Show persistent journal tail: `tail -10 .claude/ralph/<slug>/journal.tsv`
 
 **If the plan status is COMPLETE**, suggest next steps:
 - `/agentic-coding-workflow:review --spec` to review the changes
@@ -181,9 +186,10 @@ Branch:   ralph/<slug>
 Attach:   tmux attach -t ralph-<slug>
 Status:   /agentic-coding-workflow:ralph <slug> --status
 Stop:     /agentic-coding-workflow:ralph <slug> --stop
-Steer:    echo 'instructions' > .claude/ralph-inject.md
-Logs:     .claude/ralph-logs/ (inside worktree)
-Dashboard: .claude/ralph-status.md (inside worktree)
+Steer:    echo 'instructions' > .claude/ralph/inject.md
+Run dir:  .claude/ralph/<slug>/runs/ (inside worktree)
+Journal:  .claude/ralph/<slug>/journal.tsv
+Dashboard: .claude/ralph/status.md
 
 Changes land on the ralph/<slug> branch. Merge via ORC or `git merge ralph/<slug>`.
 ```
@@ -205,34 +211,42 @@ Changes land on the ralph/<slug> branch. Merge via ORC or `git merge ralph/<slug
 FLAGS=""
 [ -n "$CLEAN_ROOM_FLAG" ] && FLAGS="$FLAGS --clean-room"
 
-SESSION_NAME="ralph-${SLUG}-orchestrator"
+PID_FILE=".claude/ralph/${SLUG}/orchestrator.pid"
 
-# Check if already running
-if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-  echo "Parallel orchestrator already running!"
-  echo "Attach: tmux attach -t $SESSION_NAME"
-  echo "Status: /agentic-coding-workflow:ralph $SLUG --status"
-  echo "Stop: /agentic-coding-workflow:ralph $SLUG --stop"
-  exit 0
+# Check if already running via PID file
+if [ -f "$PID_FILE" ]; then
+  EXISTING_PID=$(cat "$PID_FILE")
+  if kill -0 "$EXISTING_PID" 2>/dev/null; then
+    echo "Parallel orchestrator already running! (PID: $EXISTING_PID)"
+    echo "Status: /agentic-coding-workflow:ralph $SLUG --status"
+    echo "Stop:   /agentic-coding-workflow:ralph $SLUG --stop"
+    exit 0
+  else
+    echo "Stale PID file found (process $EXISTING_PID not running). Cleaning up."
+    rm -f "$PID_FILE"
+  fi
 fi
 
-# Launch orchestrator in tmux (it manages worker tmux sessions internally)
-tmux new-session -d -s "$SESSION_NAME" \
-  "bash '${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/orchestrate-parallel.sh' '$SPEC_DIR' '$SLUG' $N $MAX_ITERATIONS $FLAGS; echo 'Orchestrator finished. Press enter to close.'; read"
+# Launch orchestrator as a detached background process (survives terminal/tmux death)
+# Workers still run in tmux for visibility; the orchestrator polls and merges independently
+mkdir -p ".claude/ralph/${SLUG}"
+nohup bash "${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/orchestrate-parallel.sh" \
+  "$SPEC_DIR" "$SLUG" $N $MAX_ITERATIONS $FLAGS &
 ```
 
 5. Report:
 ```
 Ralph parallel orchestrator launched!
 
-Session:   ralph-<slug>-orchestrator
-Workers:   N
-Lifecycle: partition → work → merge → reconcile → cleanup (all automatic)
+PID:       $(cat .claude/ralph/<slug>/orchestrator.pid)
+Runs:      .claude/ralph/<slug>/runs/
+Journal:   .claude/ralph/<slug>/journal.tsv
+Branch:    <slug>
+Lifecycle: partition → wave → merge → reconcile → preserve → cleanup (all automatic)
 
-Attach:    tmux attach -t ralph-<slug>-orchestrator
 Status:    /agentic-coding-workflow:ralph <slug> --status
 Stop:      /agentic-coding-workflow:ralph <slug> --stop
-Steer:     echo 'instructions' > .claude/ralph-inject.md
+Steer:     echo 'instructions' > .claude/ralph/inject.md
 ```
 
 The orchestrator runs the full lifecycle automatically:

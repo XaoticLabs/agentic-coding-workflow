@@ -10,6 +10,12 @@ set -euo pipefail
 # Read hook input from stdin
 INPUT=$(cat)
 
+# Validate JSON before parsing — malformed input cannot be safely allowed
+if ! echo "$INPUT" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then
+  echo "BLOCKED: ship-gate received malformed JSON input — cannot validate tool call." >&2
+  exit 2
+fi
+
 TOOL_NAME=$(echo "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tool_name',''))" 2>/dev/null || echo "")
 COMMAND=$(echo "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tool_input',{}).get('command',''))" 2>/dev/null || echo "")
 

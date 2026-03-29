@@ -44,28 +44,35 @@ output=""
 has_code_errors=false
 has_infra_warnings=false
 infra_warnings=""
-skip_tests=false
+# Per-language skip flags — set by probe_infrastructure, consumed by each subscript
+export SKIP_TESTS_PYTHON=false
+export SKIP_TESTS_ELIXIR=false
 
 # ── Infrastructure probes ────────────────────────────────────────────
 
 probe_infrastructure() {
-  local needs_postgres=false needs_redis=false needs_docker=false
+  local needs_postgres_python=false needs_postgres_elixir=false
+  local needs_redis=false needs_docker=false
 
-  case "$PROJECT_TYPE" in
-    elixir)
-      grep -q "postgrex\|ecto_sql\|postgres" mix.exs 2>/dev/null && needs_postgres=true
-      grep -q "redix\|redis" mix.exs 2>/dev/null && needs_redis=true
-      ;;
-    python)
-      grep -qi "psycopg\|asyncpg\|sqlalchemy\|django.db\|postgres" pyproject.toml setup.py requirements*.txt 2>/dev/null && needs_postgres=true
-      grep -qi "redis\|celery" pyproject.toml setup.py requirements*.txt 2>/dev/null && needs_redis=true
-      ;;
-  esac
+  # Determine per-language postgres needs independently
+  if grep -q "postgrex\|ecto_sql\|postgres" mix.exs 2>/dev/null; then
+    needs_postgres_elixir=true
+  fi
+  if grep -qi "psycopg\|asyncpg\|sqlalchemy\|django.db\|postgres" pyproject.toml setup.py requirements*.txt 2>/dev/null; then
+    needs_postgres_python=true
+  fi
+  grep -q "redix\|redis" mix.exs 2>/dev/null && needs_redis=true
+  grep -qi "redis\|celery" pyproject.toml setup.py requirements*.txt 2>/dev/null && needs_redis=true
 
   [ -f "docker-compose.yml" ] || [ -f "docker-compose.yaml" ] || [ -f "compose.yml" ] && needs_docker=true
 
-  if [ "$needs_postgres" = true ] && command -v pg_isready &>/dev/null && ! pg_isready -q 2>/dev/null; then
-    has_infra_warnings=true; infra_warnings+="postgres is not running, "; skip_tests=true
+  if command -v pg_isready &>/dev/null && ! pg_isready -q 2>/dev/null; then
+    if [ "$needs_postgres_elixir" = true ]; then
+      has_infra_warnings=true; infra_warnings+="postgres is not running, "; SKIP_TESTS_ELIXIR=true
+    fi
+    if [ "$needs_postgres_python" = true ]; then
+      has_infra_warnings=true; infra_warnings+="postgres is not running, "; SKIP_TESTS_PYTHON=true
+    fi
   fi
   if [ "$needs_redis" = true ] && command -v redis-cli &>/dev/null && ! redis-cli ping &>/dev/null; then
     has_infra_warnings=true; infra_warnings+="redis is not running, "

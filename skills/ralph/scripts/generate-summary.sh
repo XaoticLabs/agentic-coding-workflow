@@ -17,7 +17,7 @@ TRACE_FILE="${6:-}"
 SLUG=$(basename "$SPEC_DIR")
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 PLAN_FILE="${SPEC_DIR}/IMPLEMENTATION_PLAN.md"
-SUMMARY_FILE="${PROJECT_DIR}/.claude/ralph-logs/ralph-summary-${SLUG}.md"
+SUMMARY_FILE="${PROJECT_DIR}/.claude/ralph/${SLUG}/summary.md"
 
 # ── Metrics ────────────────────────────────────────────────────────────
 

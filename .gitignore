@@ -45,10 +45,6 @@ htmlcov/
 # app_docs/
 # *.jsonl
 
-# Git worktrees (when ADW creates isolated branches)
-# Note: Commented to avoid ignoring plugin directories
-# */
-
 # Logs
 *.log
 logs/
@@ -58,23 +54,6 @@ logs/
 *.temp
 .cache/
 
-# Git worktrees (parallel branch work)
-.claude/worktrees/
-
-# Runtime artifacts (plans, specs, checkpoints, logs)
-.claude/specs/
-.claude/plans/
-.claude/logs/
-.claude/expected-output.json
-.claude/security_logs/
-
-# Ralph runtime artifacts (journal is untracked — like autoresearch's results.tsv)
-.claude/ralph-journal.tsv
-.claude/ralph-status.md
-.claude/ralph-progress.md
-.claude/ralph-logs/
-.claude/ralph-stop
-.claude/ralph-inject.md
-.claude/ralph-harvest-*.md
-.claude/ralph-worker-done-*
-.claude/ralph-parallel-meta.json
+# Claude runtime artifacts — ignore everything except checked-in rules
+.claude/*
+!.claude/rules/

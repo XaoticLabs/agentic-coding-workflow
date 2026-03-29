@@ -4,6 +4,12 @@
 
 set -e
 
+# Validate dependencies
+if ! command -v jq >/dev/null 2>&1; then
+    echo "ERROR: jq is required but not installed. Install it with: brew install jq (macOS) or apt-get install jq (Linux)" >&2
+    exit 1
+fi
+
 CHECKPOINT_DIR=".claude/checkpoints"
 INDEX_FILE="$CHECKPOINT_DIR/index.json"
 

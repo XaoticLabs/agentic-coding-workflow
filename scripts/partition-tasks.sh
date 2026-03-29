@@ -39,7 +39,7 @@ while IFS= read -r line; do
 
   # Parse incomplete tasks
   if echo "$line" | grep -q '^\- \[ \] \*\*Task [0-9]'; then
-    task_num=$(echo "$line" | sed -n 's/.*Task \([0-9]*\).*/\1/p')
+    task_num=$(echo "$line" | sed -n 's/.*\*\*Task \([0-9]*\):.*/\1/p')
     deps=$(echo "$line" | sed -n 's/.*Deps: \([^,]*\),.*/\1/p')
     [ -z "$deps" ] && deps="none"
     priority=$(echo "$line" | sed -n 's/.*Priority: \([A-Z]*\).*/\1/p')
@@ -98,12 +98,36 @@ assign_wave() {
   done
 
   task_wave[$task]=$((max_dep_wave + 1))
-  [ "${task_wave[$task]}" -gt "$max_wave" ] && max_wave=${task_wave[$task]}
+  if [ "${task_wave[$task]}" -gt "$max_wave" ]; then
+    max_wave=${task_wave[$task]}
+  fi
 }
 
 for task in "${incomplete_tasks[@]}"; do
   assign_wave "$task"
 done
+
+# ── Load conflict hotspots from parallel learnings ─────────────────────
+# Hotspot files get pre-assigned to worker-0 so they're never split across workers.
+declare -A hotspot_files=()
+_PARTITION_SLUG=$(basename "$(dirname "$PLAN_FILE")")
+LEARNINGS_FILE="${CLAUDE_PROJECT_DIR:-.}/.claude/ralph/${_PARTITION_SLUG}/learnings.json"
+if [ -f "$LEARNINGS_FILE" ]; then
+  while IFS= read -r hfile; do
+    [ -n "$hfile" ] && hotspot_files["$hfile"]=1
+  done < <(python3 -c "
+import json, sys
+try:
+    data = json.load(open('${LEARNINGS_FILE}'))
+    for f, info in data.get('conflict_hotspots', {}).items():
+        if info.get('conflicts', 0) >= 2:
+            print(f)
+except: pass
+" 2>/dev/null || true)
+  if [ "${#hotspot_files[@]}" -gt 0 ]; then
+    echo "Loaded ${#hotspot_files[@]} conflict hotspot(s) from parallel learnings" >&2
+  fi
+fi
 
 # ── File-affinity assignment ────────────────────────────────────────────
 # For each task (processed wave-by-wave):
@@ -111,6 +135,7 @@ done
 #   - Assign to worker with most overlap; ties broken by lowest task count
 #   - If no overlap, assign to worker with fewest tasks (load balance)
 #   - Register all task files under the assigned worker
+#   - Conflict hotspot files get extra affinity weight (2x) to prevent splitting
 
 declare -A file_owner=()     # file path -> worker index
 file_owner_count=0           # track count separately to avoid bash unbound issues
@@ -157,7 +182,10 @@ for ((wave=0; wave<=max_wave; wave++)); do
     for f in $files; do
       if [ -n "${file_owner[$f]+x}" ]; then
         owner=${file_owner[$f]}
-        overlap_count[$owner]=$((overlap_count[$owner] + 1))
+        # Hotspot files get 2x weight to strongly prefer keeping them on one worker
+        weight=1
+        [ -n "${hotspot_files[$f]+x}" ] && weight=2
+        overlap_count[$owner]=$((overlap_count[$owner] + weight))
         has_any_overlap=1
       fi
     done

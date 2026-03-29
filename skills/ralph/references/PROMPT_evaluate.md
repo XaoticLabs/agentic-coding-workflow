@@ -10,6 +10,8 @@ Check the metadata at the end of this prompt for `Evaluation mode`:
 
 - **END-OF-RUN**: You are reviewing the ENTIRE run's output (all commits from start to finish). Grade the overall implementation against the full spec and plan acceptance criteria. Your verdict is advisory — it does NOT trigger a revert. Produce a quality report for the human to review before merging.
 - **PER-ITERATION** (or no mode specified): You are reviewing a single iteration's commit. Your verdict may trigger a revert if REVISE.
+- **PARALLEL-MERGE**: You are reviewing the result of merging multiple parallel workers' code. Your verdict IS actionable — REVISE triggers evaluator-guided reconciliation. Focus on integration issues that individual workers couldn't see: conflicting assumptions between workers, duplicated implementations, inconsistent patterns, broken cross-module contracts. Individual worker code may have passed its own evaluation but the combination may have new issues.
+- **WAVE**: You are reviewing a single wave's merged output. Same as PARALLEL-MERGE but scoped to one dependency wave. Subsequent waves will build on this — flag anything that would be a bad foundation.
 
 ## Step 1: Read Context
 

@@ -22,8 +22,8 @@ output+="=== mix format ===\n"
 format_output=$(mix format $elixir_files 2>&1)
 output+="$format_output\n\n"
 
-# Tests — skip if infra probe already failed
-if [ "$skip_tests" = true ]; then
+# Tests — skip if Elixir-specific infra probe failed
+if [ "${SKIP_TESTS_ELIXIR:-false}" = true ]; then
   output+="=== mix test ===\nSkipped — infrastructure not available (${infra_warnings%%, })\n\n"
   return 0 2>/dev/null || exit 0
 fi

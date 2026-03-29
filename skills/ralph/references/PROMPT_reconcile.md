@@ -8,6 +8,12 @@ You are an autonomous reconciliation agent. A parallel Ralph run has been merged
 2. Read the `IMPLEMENTATION_PLAN.md` in the spec directory — all tasks should be marked `[x]`
 3. Read the `## Learnings` section carefully — treat as actionable rules
 
+## Step 1b: Check Evaluator Findings (if present)
+
+Your prompt may include an **"## Evaluator Findings"** section at the end. If present, these are specific issues identified by the post-merge evaluator. **Address these FIRST** — they are higher-signal than generic test runs because an independent evaluator specifically flagged them.
+
+{{EVALUATOR_ISSUES}}
+
 ## Step 2: Run Full Test Suite
 
 Run the project's test suite. This is the primary gate.
@@ -16,7 +22,7 @@ Run the project's test suite. This is the primary gate.
 # Detect and run the appropriate test command
 ```
 
-If tests pass and lint passes, skip to Step 5 (consolidate plan). The merge is clean.
+If tests pass and lint passes AND there are no evaluator findings, skip to Step 5 (consolidate plan). The merge is clean.
 
 ## Step 3: Fix Integration Issues
 

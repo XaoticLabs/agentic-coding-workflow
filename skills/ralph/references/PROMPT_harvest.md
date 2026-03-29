@@ -11,7 +11,7 @@ Read `IMPLEMENTATION_PLAN.md` from the spec directory. Study:
 
 ## Step 2: Read the Failure Journal
 
-Read `.claude/ralph-journal.tsv` if it exists. This is the mechanical record of every iteration — kept by the outer loop, not by Claude. It records what was attempted, what was kept, what was reverted, and why.
+Read `.claude/ralph/<slug>/journal.tsv` if it exists (where `<slug>` is the spec directory name). This is the append-only record of every iteration across all runs. It records what was attempted, what was kept, what was reverted, and why.
 
 Analyze:
 - **Revert patterns** — which tasks got reverted most? What were the failure modes (tests, lint, protected files, timeout)?
@@ -59,7 +59,7 @@ Code, utilities, or patterns Ralph created that could be extracted into shared l
 
 ## Step 6: Write the Harvest Report
 
-Write the harvest report to `.claude/ralph-logs/ralph-harvest-<slug>.md`. Do NOT write it to the project root. Structure it by the categories above.
+Write the harvest report to `.claude/ralph/<slug>/harvest-report.md`. Do NOT write it to the project root. Structure it by the categories above.
 
 ## Step 7: Update AGENTS.md
 
@@ -124,6 +124,16 @@ This is the most important step. Write (or update) `RALPH_OVERRIDES.md` **inside
 - Rules added by humans (not harvest) should be preserved regardless of age — look for `<!-- human -->` markers
 
 If `RALPH_OVERRIDES.md` already exists (from a previous run or human edits), **merge** your new findings into it. Do not delete existing rules unless the journal shows they are wrong or they are older than 30 days without verification. Append new rules, update outdated ones, and remove any that the current run disproved.
+
+## Step 10: Analyze Parallel Learnings (if applicable)
+
+If `.claude/ralph/<slug>/learnings.json` exists, this was a parallel run. Read it and analyze:
+
+- **Conflict hotspots** — files that caused merge conflicts. Add overrides like: `RALPH_PARALLEL_HOTSPOT: src/router/index.ts` — tells partition-tasks.sh to never split this file across workers.
+- **Workload balance** — if balance_ratio < 0.5 in recent runs, add: `RALPH_PARALLEL_MAX_WORKERS: 3` — limits worker count for this project.
+- **Partition violations** — files touched by multiple workers despite affinity. Add overrides naming these files as single-worker-only.
+
+Also check `.claude/parallel-research-queue.md` — if research triggers exist, summarize them in the harvest report for human review.
 
 ## Rules
 
