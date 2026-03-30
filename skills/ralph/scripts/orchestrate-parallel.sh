@@ -9,8 +9,8 @@
 #   3. Preserve artifacts (logs, journals, evals, unified trace)
 #   4. Cleanup (worktrees, branches, temp files)
 #
-# The orchestrator runs as a background process (nohup) and writes a PID file
-# for tracking. Workers run in tmux for visibility. Output is tee'd to a log file.
+# The orchestrator runs in its own tmux window/session for live visibility.
+# Workers run in separate tmux sessions per-wave. Output is tee'd to a log file.
 #
 # Usage: orchestrate-parallel.sh <spec-dir> <slug> <num-workers> <max-iterations> [flags...]
 #   --clean-room: Skip codebase search (greenfield mode)
@@ -70,7 +70,8 @@ TRACE_FILE="${RUN_DIR}/trace.jsonl"
 mkdir -p "$RUN_DIR"
 
 echo $$ > "$PID_FILE"
-exec >> "$LOG_FILE" 2>&1
+# Tee all output to the log file while keeping it visible in the tmux pane
+exec > >(tee -a "$LOG_FILE") 2>&1
 cleanup_pid() { rm -f "$PID_FILE"; }
 trap cleanup_pid EXIT
 

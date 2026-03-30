@@ -230,6 +230,7 @@ if [ -f "$PID_FILE" ]; then
   EXISTING_PID=$(cat "$PID_FILE")
   if kill -0 "$EXISTING_PID" 2>/dev/null; then
     echo "Parallel orchestrator already running! (PID: $EXISTING_PID)"
+    echo "Attach: tmux attach -t ralph-${SLUG}-orch"
     echo "Status: /agentic-coding-workflow:ralph $SLUG --status"
     echo "Stop:   /agentic-coding-workflow:ralph $SLUG --stop"
     exit 0
@@ -239,17 +240,27 @@ if [ -f "$PID_FILE" ]; then
   fi
 fi
 
-# Launch orchestrator as a detached background process (survives terminal/tmux death)
-# Workers still run in tmux for visibility; the orchestrator polls and merges independently
+# Launch orchestrator in a dedicated tmux window/session for live visibility.
+# Its stdout shows banners, poll updates, and wave progress in real time.
+# Workers get their own tmux sessions per-wave; the orchestrator gets its own persistent pane.
 mkdir -p ".claude/ralph/${SLUG}"
-nohup bash "${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/orchestrate-parallel.sh" \
-  "$SPEC_DIR" "$SLUG" $N $MAX_ITERATIONS $FLAGS &
+ORCH_SESSION="ralph-${SLUG}-orch"
+ORCH_CMD="bash ${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/orchestrate-parallel.sh $SPEC_DIR $SLUG $N $MAX_ITERATIONS $FLAGS"
+if [ -n "${TMUX:-}" ]; then
+  # Inside tmux — create a new window (tab) in the current session
+  tmux new-window -n "$ORCH_SESSION" -d "$ORCH_CMD"
+else
+  # Outside tmux — create a detached session
+  tmux kill-session -t "$ORCH_SESSION" 2>/dev/null || true
+  tmux new-session -d -s "$ORCH_SESSION" "$ORCH_CMD"
+fi
 ```
 
 5. Report:
 ```
 Ralph parallel orchestrator launched!
 
+Tmux:      tmux attach -t ralph-<slug>-orch  (live orchestrator output)
 PID:       $(cat .claude/ralph/<slug>/orchestrator.pid)
 Runs:      .claude/ralph/<slug>/runs/
 Journal:   .claude/ralph/<slug>/journal.tsv
