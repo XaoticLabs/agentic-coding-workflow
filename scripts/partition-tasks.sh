@@ -62,6 +62,24 @@ while IFS= read -r line; do
 done < "$PLAN_FILE"
 
 if [ ${#incomplete_tasks[@]} -eq 0 ]; then
+  # Check if the plan has task-like content but nothing matched our regex.
+  # This catches format mismatches where the planner used a different syntax
+  # (e.g., ### Task headers with **Status:** lines instead of the expected
+  # "- [ ] **Task N:** ..." index format).
+  TOTAL_LINES=$(wc -l < "$PLAN_FILE" | tr -d ' ')
+  HAS_TASK_HEADERS=$(grep -c '### Task [0-9]' "$PLAN_FILE" 2>/dev/null || true)
+  HAS_STATUS_LINES=$(grep -c '^\- \*\*Status:\*\* TODO' "$PLAN_FILE" 2>/dev/null || true)
+
+  if [ "$HAS_TASK_HEADERS" -gt 0 ] || [ "$HAS_STATUS_LINES" -gt 0 ]; then
+    echo "ERROR: Plan file has ${HAS_TASK_HEADERS} task headers and ${HAS_STATUS_LINES} TODO status lines," >&2
+    echo "but 0 parseable task index lines. The partitioner expects lines matching:" >&2
+    echo '  - [ ] **Task N: <name>** — Priority: HIGH, Deps: none, Files: path/to/file.ts' >&2
+    echo "" >&2
+    echo "Add a '## Task Index' section with one line per task in this exact format." >&2
+    echo "See PROMPT_plan.md for the full specification." >&2
+    exit 1
+  fi
+
   echo '{"workers": {}, "waves": [], "file_owners": {}, "note": "All tasks complete"}'
   exit 0
 fi

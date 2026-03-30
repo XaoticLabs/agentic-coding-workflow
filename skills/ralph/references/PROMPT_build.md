@@ -120,10 +120,9 @@ Implements task N from IMPLEMENTATION_PLAN.md
 ## Step 7: Update the Plan
 
 Edit `IMPLEMENTATION_PLAN.md`:
-1. Mark the completed task: `- [ ]` → `- [x]`
+1. In the `## Task Index` section, mark the completed task: `- [ ]` → `- [x]` and append `— Completed in <hash>`. The task index line format MUST remain parseable: `- [x] **Task N: <name>** — Priority: X, Deps: Y, Files: Z — Completed in <hash>`
 2. Add any learnings to the `## Learnings` section — write these as **actionable rules** (e.g., "Use `repo.get()` not `db.query()` for model lookups — wrapper handles caching") not vague notes. Capture the *why* so future iterations can judge edge cases.
-3. Reference the commit hash: `Completed in <hash>` next to the task, so future iterations can `git show` for context without re-exploring.
-4. If this was the **last task**, change `## Status: IN_PROGRESS` to `## Status: COMPLETE`
+3. If this was the **last task**, change `## Status: IN_PROGRESS` to `## Status: COMPLETE`
 
 Commit the plan update separately:
 ```

@@ -47,7 +47,7 @@ LOG_DIR="${RUN_DIR}"
 STOP_SENTINEL="${PROJECT_DIR}/.claude/ralph/stop"
 STATUS_FILE="${PROJECT_DIR}/.claude/ralph/status.md"
 INJECT_FILE="${PROJECT_DIR}/.claude/ralph/inject.md"
-PROGRESS_FILE="${PROJECT_DIR}/.claude/ralph/progress.md"
+PROGRESS_FILE="${PROJECT_DIR}/.claude/ralph-progress.md"
 JOURNAL_FILE="${RALPH_BASE}/journal.tsv"
 READONLY_FILE="${SPEC_DIR}/RALPH_READONLY"
 OVERRIDES_FILE="${SPEC_DIR}/RALPH_OVERRIDES.md"
@@ -169,6 +169,41 @@ fi
 # Clean up any previous stop sentinel
 rm -f "$STOP_SENTINEL"
 
+# ── Register output validation for plan mode ──────────────────────────
+# The validate-output.py stop hook checks expected-output.json to catch
+# format errors at plan-creation time. The partitioner and loop.sh parse
+# task index lines with regex — if the planner emits a different format,
+# parallel mode silently treats all tasks as "complete" and does nothing.
+if [ "$MODE" = "plan" ]; then
+  cat > "${PROJECT_DIR}/.claude/expected-output.json" <<VALIDATE_EOF
+{
+    "source": "ralph-plan",
+    "rules": [
+        {
+            "type": "file_exists",
+            "path": "${SPEC_DIR}/IMPLEMENTATION_PLAN.md"
+        },
+        {
+            "type": "file_contains",
+            "path": "${SPEC_DIR}/IMPLEMENTATION_PLAN.md",
+            "sections": ["## Task Index", "## Tasks", "## Status: IN_PROGRESS"]
+        },
+        {
+            "type": "file_min_lines",
+            "path": "${SPEC_DIR}/IMPLEMENTATION_PLAN.md",
+            "min_lines": 15
+        },
+        {
+            "type": "task_index_format",
+            "path": "${SPEC_DIR}/IMPLEMENTATION_PLAN.md",
+            "min_tasks": 1
+        }
+    ]
+}
+VALIDATE_EOF
+  echo "Registered plan output validation (expected-output.json)"
+fi
+
 # ── Plan integrity check ─────────────────────────────────────────────
 # Verify that [x] tasks with "Completed in <hash>" reference commits
 # reachable from HEAD. If a previous run was interrupted after reverts,
@@ -265,7 +300,7 @@ if [ -z "${RALPH_WORKER_ID:-}" ] && [[ "$MODE" == "build" || "$MODE" == "reconci
   STOP_SENTINEL="${PROJECT_DIR}/.claude/ralph/stop"
   STATUS_FILE="${PROJECT_DIR}/.claude/ralph/status.md"
   INJECT_FILE="${PROJECT_DIR}/.claude/ralph/inject.md"
-  PROGRESS_FILE="${PROJECT_DIR}/.claude/ralph/progress.md"
+  PROGRESS_FILE="${PROJECT_DIR}/.claude/ralph-progress.md"
   JOURNAL_FILE="${RALPH_BASE}/journal.tsv"
   READONLY_FILE="${SPEC_DIR}/RALPH_READONLY"
   OVERRIDES_FILE="${SPEC_DIR}/RALPH_OVERRIDES.md"
@@ -966,6 +1001,24 @@ ${BRIEFING}
 
   # Update status dashboard
   write_status "$ITERATION" "${CURRENT_TASK:-plan}" "$ITER_RESULT"
+
+  # ── Update progress scratchpad ────────────────────────────────────
+  # Mechanical append after each iteration so harvest and future iterations
+  # can see session-level decisions and outcomes. Claude also writes to this
+  # file from Step 7b of the build prompt (richer, but may be reverted).
+  {
+    echo "### Iteration ${ITERATION} — $(date +%H:%M:%S) — ${ITER_RESULT}"
+    echo "- **Task:** ${CURRENT_TASK:-plan}"
+    echo "- **Pre-commit:** ${PRE_COMMIT:0:8}"
+    echo "- **Post-commit:** ${POST_COMMIT:0:8}"
+    if [ "$ITER_RESULT" = "reverted" ] || [[ "$ITER_RESULT" == *"reverted"* ]]; then
+      REVERT_FILE="${LOG_DIR}/revert-${ITERATION}-reason.txt"
+      if [ -f "$REVERT_FILE" ]; then
+        echo "- **Revert reason:** $(head -1 "$REVERT_FILE")"
+      fi
+    fi
+    echo ""
+  } >> "$PROGRESS_FILE"
 
   # --once mode: exit after single iteration
   if [ -n "$ONCE_FLAG" ]; then

@@ -23,30 +23,40 @@ Use parallel subagents for codebase searches to be efficient.
 
 ## Step 4: Generate Implementation Plan
 
-Write `IMPLEMENTATION_PLAN.md` in the spec directory:
+Write `IMPLEMENTATION_PLAN.md` in the spec directory.
+
+**CRITICAL FORMAT REQUIREMENT:** The plan MUST contain a `## Task Index` section with one line per task in EXACTLY this format. The parallel partitioner and loop.sh parse these lines with regex — any deviation causes tasks to be invisible (treated as "all complete") and the build loop will do nothing.
 
 ```markdown
 # Implementation Plan: <Feature Name>
 
 ## Status: IN_PROGRESS
 
-## Tasks
+## Task Index
 
 - [ ] **Task 1: <name>** — Priority: HIGH, Deps: none, Spec: 01-topic.md, Files: src/auth/login.ts src/auth/types.ts
-  - <1-2 line description of what to implement>
-  - **Acceptance criteria:**
-    - POST /api/login with valid credentials returns 200 with `token` and `expires_at`
-    - POST /api/login with invalid password returns 401
-    - Tests cover: valid login, invalid password, missing email, rate limiting
 - [ ] **Task 2: <name>** — Priority: HIGH, Deps: Task 1, Spec: 02-topic.md, Files: src/auth/session.ts src/middleware/auth.ts
-  - <1-2 line description>
-  - **Acceptance criteria:**
-    - <specific observable behavior — binary pass/fail>
-    - <specific test file and cases that must exist>
 - [ ] **Task 3: <name>** — Priority: MEDIUM, Deps: none, Spec: 03-topic.md, Files: src/api/routes.ts src/api/handlers.ts
-  - <1-2 line description>
-  - **Acceptance criteria:**
-    - <specific observable behavior — binary pass/fail>
+
+## Tasks
+
+### Task 1: <name>
+- <1-2 line description of what to implement>
+- **Acceptance criteria:**
+  - POST /api/login with valid credentials returns 200 with `token` and `expires_at`
+  - POST /api/login with invalid password returns 401
+  - Tests cover: valid login, invalid password, missing email, rate limiting
+
+### Task 2: <name>
+- <1-2 line description>
+- **Acceptance criteria:**
+  - <specific observable behavior — binary pass/fail>
+  - <specific test file and cases that must exist>
+
+### Task 3: <name>
+- <1-2 line description>
+- **Acceptance criteria:**
+  - <specific observable behavior — binary pass/fail>
 
 ## Learnings
 
@@ -60,6 +70,13 @@ Write `IMPLEMENTATION_PLAN.md` in the spec directory:
 | 02-topic.md | Partial | Base module exists, needs extension |
 | 03-topic.md | Complete | Already implemented, verified |
 ```
+
+Each Task Index line MUST match this exact pattern (the partitioner uses regex):
+```
+- [ ] **Task <N>: <name>** — Priority: <HIGH|MEDIUM|LOW>, Deps: <none|Task N[, Task M...]>, Spec: <file>, Files: <space-separated paths>
+```
+
+The `## Tasks` section below the index contains the detailed descriptions and acceptance criteria for each task. The index is the machine-readable summary; the task details are the human/agent-readable specification.
 
 ## Step 5: Identify AI Feature Opportunities
 
