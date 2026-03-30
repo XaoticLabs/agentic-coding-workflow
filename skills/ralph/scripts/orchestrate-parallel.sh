@@ -132,6 +132,18 @@ trace_event "parallel_start" "slug=${SLUG}" "num_workers=${NUM_WORKERS}" "source
 update_phase "SETUP" "Saving metadata and partitioning tasks"
 
 if [ ! -f "$PLAN_FILE" ]; then
+  # Check if the plan exists on the target branch but not the current branch.
+  # This happens when the orchestrator is launched from main instead of the feature branch.
+  if git show-ref --verify --quiet "refs/heads/${TARGET_BRANCH}" 2>/dev/null; then
+    RELATIVE_SPEC="${SPEC_DIR#${REPO_ROOT}/}"
+    PLAN_ON_TARGET=$(git show "${TARGET_BRANCH}:${RELATIVE_SPEC}/IMPLEMENTATION_PLAN.md" 2>/dev/null | head -1 || true)
+    if [ -n "$PLAN_ON_TARGET" ]; then
+      echo "Error: Plan file not found on current branch (${SOURCE_BRANCH}), but exists on target branch (${TARGET_BRANCH})." >&2
+      echo "The orchestrator must run from the branch where the plan lives." >&2
+      echo "Fix: git checkout ${TARGET_BRANCH} && relaunch" >&2
+      exit 1
+    fi
+  fi
   echo "Error: Plan file not found: $PLAN_FILE" >&2
   exit 1
 fi
@@ -361,17 +373,46 @@ LAUNCHER_EOF
     sleep "$POLL_INTERVAL"
   done
 
+  # ── Check for empty workers (no commits) ──────────────────────────
+
+  EMPTY_WORKERS=0
+  ACTIVE_BRANCHES=()
+  for i in "${WAVE_WORKERS[@]}"; do
+    WORKTREE_PATH="${WORKTREE_BASE}/${SLUG}-wave${wave}-worker-${i}"
+    WORKER_BRANCH="${BRANCH_PREFIX}/wave-${wave}/worker-${i}"
+    COMMIT_COUNT=$(git -C "$WORKTREE_PATH" rev-list --count "${TARGET_BRANCH}..HEAD" 2>/dev/null || echo "0")
+    if [ "$COMMIT_COUNT" -eq 0 ]; then
+      EMPTY_WORKERS=$((EMPTY_WORKERS + 1))
+      WORKER_TASKS=$(get_wave_worker_tasks "$PARTITION_JSON" "$i" "$WAVE_TASKS_CSV")
+      echo "WARNING: worker-${i} finished with 0 commits (assigned tasks: ${WORKER_TASKS})"
+      trace_event "worker_empty" "wave=${wave}" "worker=worker-${i}" "tasks=${WORKER_TASKS}"
+    else
+      ACTIVE_BRANCHES+=("$WORKER_BRANCH")
+    fi
+  done
+
+  if [ "$EMPTY_WORKERS" -gt 0 ]; then
+    echo "Wave ${wave}: ${EMPTY_WORKERS}/${#WAVE_WORKERS[@]} workers produced no commits"
+  fi
+
   # ── Merge wave branches ───────────────────────────────────────────
 
   echo ""
   echo "━━━ Merging wave ${wave} branches ━━━"
-  update_phase "WAVE ${wave}" "Merging ${#WAVE_BRANCHES[@]} branches"
+
+  if [ ${#ACTIVE_BRANCHES[@]} -eq 0 ]; then
+    echo "Wave ${wave}: no branches to merge (all workers were empty)"
+    trace_event "wave_merge" "wave=${wave}" "status=skipped" "reason=all_workers_empty"
+    continue
+  fi
+
+  update_phase "WAVE ${wave}" "Merging ${#ACTIVE_BRANCHES[@]} branches (${EMPTY_WORKERS} empty workers skipped)"
 
   cd "$REPO_ROOT"
 
   MERGE_RESULT_JSON=$("$SCRIPT_DIR/merge-workers.sh" \
     --target "$TARGET_BRANCH" \
-    --branches "${WAVE_BRANCHES[@]}" \
+    --branches "${ACTIVE_BRANCHES[@]}" \
     --spec-dir "$SPEC_DIR" \
     --project-dir "$PROJECT_DIR" \
     --strictness "$MERGE_STRICTNESS" \
@@ -398,7 +439,7 @@ LAUNCHER_EOF
 
   # ── Post-wave test gate + evaluator loop ─────────────────────────
 
-  PARALLEL_EVAL="${RALPH_PARALLEL_EVAL:-none}"
+  PARALLEL_EVAL="${RALPH_PARALLEL_EVAL:-end}"
   git checkout "$TARGET_BRANCH"
 
   echo "Running post-wave test check..."
@@ -580,6 +621,121 @@ if [ -f "$RETRO_SCRIPT" ]; then
 fi
 
 rm -rf "$WORKER_TRACE_DIR"
+
+# ── End-of-run evaluation ──────────────────────────────────────────────
+# Single evaluator pass reviewing the FULL body of work across all waves.
+# Mirrors loop.sh's end-of-run evaluator but operates on the merged TARGET_BRANCH.
+
+EVAL_END_OF_RUN="${RALPH_EVAL_END_OF_RUN:-true}"
+PARALLEL_EVAL="${RALPH_PARALLEL_EVAL:-end}"
+
+if [ "$EVAL_END_OF_RUN" = "true" ] || [ "$PARALLEL_EVAL" = "end" ]; then
+  git checkout "$TARGET_BRANCH" 2>/dev/null || true
+  FINAL_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "none")
+  START_COMMIT=$(git merge-base "$TARGET_BRANCH" "$SOURCE_BRANCH" 2>/dev/null || echo "none")
+
+  if [ "$START_COMMIT" != "$FINAL_COMMIT" ] && [ "$FINAL_COMMIT" != "none" ] && [ "$START_COMMIT" != "none" ]; then
+    echo ""
+    echo "━━━ Phase: END-OF-RUN EVALUATION ━━━"
+    update_phase "EVALUATE" "Running end-of-run evaluation on merged result"
+
+    EVAL_VERDICT_FILE="${PROJECT_DIR}/.claude/ralph-eval-verdict.json"
+    EVAL_SUMMARY_FILE="${PROJECT_DIR}/.claude/ralph-eval-summary.md"
+    STREAM_PROCESSOR="${SCRIPT_DIR}/stream-processor.py"
+
+    ENDRUN_EVAL_PROMPT=$(cat "${SCRIPT_DIR}/../references/PROMPT_evaluate.md")
+    ENDRUN_EVAL_PROMPT="${ENDRUN_EVAL_PROMPT}
+
+---
+**Evaluation mode:** END-OF-RUN (reviewing all changes from this parallel Ralph run, not a single iteration)
+**Pre-commit (run start):** ${START_COMMIT}
+**Post-commit (run end):** ${FINAL_COMMIT}
+**Workers:** ${NUM_WORKERS}
+**Waves:** ${NUM_WAVES}
+**Spec directory:** ${SPEC_DIR}
+**UI evaluation:** ${RALPH_EVALUATE_UI:-false}
+**Verdict output:** ${EVAL_VERDICT_FILE}
+**Summary output:** ${EVAL_SUMMARY_FILE}
+
+**Important:** You are reviewing the ENTIRE parallel run's output, not a single task. Grade the overall implementation against the full spec and plan acceptance criteria. Your verdict does NOT trigger a revert — it produces a quality report for the human to review before merging.
+"
+
+    rm -f "$EVAL_VERDICT_FILE" "$EVAL_SUMMARY_FILE"
+    ENDRUN_EVAL_LOG="${RUN_DIR}/eval-endofrun-$(date +%Y%m%d-%H%M%S).log"
+    ENDRUN_EVAL_TIMEOUT="${RALPH_EVAL_TIMEOUT:-600}"
+
+    ENDRUN_TIMEOUT_CMD=""
+    if command -v timeout >/dev/null 2>&1; then
+      ENDRUN_TIMEOUT_CMD="timeout $ENDRUN_EVAL_TIMEOUT"
+    elif command -v gtimeout >/dev/null 2>&1; then
+      ENDRUN_TIMEOUT_CMD="gtimeout $ENDRUN_EVAL_TIMEOUT"
+    fi
+
+    set +e
+    if [ -n "$ENDRUN_TIMEOUT_CMD" ]; then
+      echo "$ENDRUN_EVAL_PROMPT" | $ENDRUN_TIMEOUT_CMD claude -p --dangerously-skip-permissions --verbose --model sonnet --output-format stream-json 2>/dev/null \
+        | "$STREAM_PROCESSOR" --trace-file "$TRACE_FILE" > "$ENDRUN_EVAL_LOG"
+    else
+      echo "$ENDRUN_EVAL_PROMPT" | claude -p --dangerously-skip-permissions --verbose --model sonnet --output-format stream-json 2>/dev/null \
+        | "$STREAM_PROCESSOR" --trace-file "$TRACE_FILE" > "$ENDRUN_EVAL_LOG"
+    fi
+    set -e
+
+    if [ -f "$EVAL_VERDICT_FILE" ]; then
+      ENDRUN_VERDICT=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['verdict'])" "$EVAL_VERDICT_FILE" 2>/dev/null || echo "UNKNOWN")
+      ENDRUN_AVG=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['average'])" "$EVAL_VERDICT_FILE" 2>/dev/null || echo "?")
+      echo "End-of-run evaluation: ${ENDRUN_VERDICT} (avg score: ${ENDRUN_AVG})"
+      trace_event "endrun_eval" "verdict=${ENDRUN_VERDICT}" "avg_score=${ENDRUN_AVG}"
+
+      # Copy eval artifacts to run dir
+      cp "$EVAL_VERDICT_FILE" "${RUN_DIR}/eval-verdict.json" 2>/dev/null || true
+      cp "$EVAL_SUMMARY_FILE" "${RUN_DIR}/eval-summary.md" 2>/dev/null || true
+    else
+      echo "End-of-run evaluation did not produce a verdict (non-fatal)."
+      trace_event "endrun_eval" "verdict=error" "reason=no_verdict_file"
+    fi
+  else
+    echo "(No new commits on target branch — skipping end-of-run evaluation)"
+  fi
+fi
+
+# ── Auto-harvest ───────────────────────────────────────────────────────
+# Run harvest to extract patterns, write RALPH_OVERRIDES.md, and produce
+# the harvest report. This is the parallel equivalent of loop.sh's auto-harvest.
+
+AUTO_HARVEST="${AUTO_HARVEST:-true}"
+
+if [ "$AUTO_HARVEST" = "true" ]; then
+  git checkout "$TARGET_BRANCH" 2>/dev/null || true
+  FINAL_COMMIT_HARVEST=$(git rev-parse HEAD 2>/dev/null || echo "none")
+  START_COMMIT_HARVEST=$(git merge-base "$TARGET_BRANCH" "$SOURCE_BRANCH" 2>/dev/null || echo "none")
+
+  if [ "$START_COMMIT_HARVEST" != "$FINAL_COMMIT_HARVEST" ]; then
+    echo ""
+    echo "━━━ Phase: HARVEST ━━━"
+    update_phase "HARVEST" "Extracting patterns and writing overrides"
+
+    # Run harvest as a single iteration via loop.sh
+    # loop.sh harvest mode reads the plan, journal, git history, and writes:
+    #   - harvest-report.md
+    #   - RALPH_OVERRIDES.md (in spec dir)
+    #   - Updates to AGENTS.md
+    RALPH_WORKER_ID="" RALPH_NO_MERGE_PROMPT=1 \
+      "$SCRIPT_DIR/loop.sh" "$SPEC_DIR" harvest 1 2>"${RUN_DIR}/harvest-stderr.log" || {
+        echo "Warning: auto-harvest failed (non-fatal). Check ${RUN_DIR}/harvest-stderr.log"
+      }
+
+    # Copy harvest artifacts to run dir
+    HARVEST_REPORT="${RALPH_BASE}/harvest-report.md"
+    [ -f "$HARVEST_REPORT" ] && cp "$HARVEST_REPORT" "${RUN_DIR}/" 2>/dev/null || true
+    [ -f "${SPEC_DIR}/RALPH_OVERRIDES.md" ] && cp "${SPEC_DIR}/RALPH_OVERRIDES.md" "${RUN_DIR}/" 2>/dev/null || true
+
+    echo "Harvest complete."
+    trace_event "harvest" "status=done"
+  else
+    echo "(No new commits — skipping harvest)"
+  fi
+fi
 
 # ── Cleanup ─────────────────────────────────────────────────────────────
 

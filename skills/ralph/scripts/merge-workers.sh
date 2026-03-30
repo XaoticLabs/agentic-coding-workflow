@@ -77,11 +77,23 @@ fi
 
 echo "━━━ Merging ${#BRANCHES[@]} worker branches into ${TARGET_BRANCH} (strictness: ${STRICTNESS}) ━━━" >&2
 
-# Ensure we're on the target branch
-git checkout "$TARGET_BRANCH" >&2 2>&1 || {
-  echo "Error: could not checkout target branch: ${TARGET_BRANCH}" >&2
-  exit 2
-}
+# Ensure we're on the target branch.
+# A stale worktree from a previous run may hold the branch — detect and remove it.
+if ! git checkout "$TARGET_BRANCH" >&2 2>&1; then
+  STALE_WT=$(git worktree list --porcelain 2>/dev/null \
+    | awk -v branch="refs/heads/${TARGET_BRANCH}" '/^worktree /{wt=$2} /^branch /{if ($2==branch) print wt}')
+  if [ -n "$STALE_WT" ]; then
+    echo "WARNING: Stale worktree at ${STALE_WT} holds branch ${TARGET_BRANCH}. Removing it." >&2
+    git worktree remove "$STALE_WT" --force >&2 2>&1 || true
+    git checkout "$TARGET_BRANCH" >&2 2>&1 || {
+      echo "Error: could not checkout target branch ${TARGET_BRANCH} even after removing stale worktree" >&2
+      exit 2
+    }
+  else
+    echo "Error: could not checkout target branch: ${TARGET_BRANCH}" >&2
+    exit 2
+  fi
+fi
 
 # ── Determine merge order ────────────────────────────────────────────
 
