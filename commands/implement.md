@@ -73,7 +73,9 @@ Switch to autonomous mode — skip all interactive prompts and implement exactly
 1. **Enter Plan Mode:** Call `EnterPlanMode`
 2. **Create a lightweight plan in conversation:**
    - Read relevant codebase files to understand context
+   - **Search for existing code that already does what's needed**
    - Identify what files need to change and what the approach should be
+   - **Prefer approaches that modify fewer files and add fewer lines**
    - Outline the steps clearly
    - Present the plan to the user for confirmation via `AskUserQuestion`
 3. **User confirms** → Call `ExitPlanMode`
@@ -180,6 +182,16 @@ Use TodoWrite to create a checklist based on:
 
 ### Phase 3: Implementation
 
+**Your goal is the shortest correct program that satisfies the spec.** Every line you add is a liability. The best implementation has the least code a competent developer can read in one pass.
+
+Before writing new code, ask in this order:
+1. **Can I delete code** to make this work? Removing a special case beats adding a new one.
+2. **Can I compose existing functions/modules?** A 2-line call beats a 20-line reimplementation.
+3. **Can I add a parameter to existing code** rather than a new function/module?
+4. **Can I use stdlib/framework features** instead of custom logic?
+5. **Can I use data (maps, config) instead of code** (conditionals, new functions)?
+6. Only after exhausting 1-5: write new code, and write the minimum.
+
 **Follow the spec precisely:**
 - Implement exactly what the spec describes
 - Use the patterns and conventions referenced in the spec
@@ -193,12 +205,15 @@ Use TodoWrite to create a checklist based on:
 4. Integration points
 5. Tests
 
-**Best practices:**
+**Rules:**
 - Make small, incremental changes
 - Keep changes focused on this single task
 - Don't refactor unrelated code
 - Don't add features not in the spec
 - Follow existing codebase conventions
+- Don't add abstractions for single use sites — inline is fine
+- Don't add error handling for conditions that can't occur
+- Don't add docstrings, comments, or type annotations to code you didn't functionally change
 
 **As you complete each item:**
 - Mark the corresponding todo as complete

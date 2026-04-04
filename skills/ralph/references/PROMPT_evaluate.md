@@ -43,11 +43,25 @@ Score each dimension 1-5:
 
 | Dimension | What to Check |
 |-----------|---------------|
-| **Spec Fidelity** | Does the code do exactly what was asked? No more, no less. |
+| **Spec Fidelity** | Does the code do exactly what was asked? No more, no less. Check alignment with `## Strategic Context` in IMPLEMENTATION_PLAN.md if present — does the implementation honor the human's stated intent and constraints? |
 | **Correctness** | Will it work? Edge cases per spec? No obvious bugs? |
 | **Integration Quality** | Follows existing patterns? Uses existing utilities? Doesn't break other code? |
 | **Code Quality** | Minimal, readable, idiomatic? No unnecessary complexity? |
 | **Test Coverage** | Right things tested? Tests verify behavior, not implementation? |
+| **Compression** | Is this the shortest correct program? Could fewer lines, files, or abstractions achieve the same result? |
+
+### Compression Analysis
+
+Measure and report these metrics from the diff:
+
+- **Lines added vs deleted** — healthy implementations often delete as much as they add. A high add:delete ratio is a smell.
+- **Lines added per acceptance criterion** — divide total lines added by number of criteria satisfied. >30 lines/criterion for typical business logic is a flag.
+- **New files created** — each new file is a structural complexity cost. Was each one necessary, or could the code live in an existing file?
+- **New abstractions introduced** (classes, modules, interfaces, base types) — was each abstraction warranted by multiple concrete use sites, or speculative?
+- **Single-use helpers** — functions/methods called exactly once. These should usually be inlined.
+- **Framework reimplementation** — custom code that duplicates stdlib or framework functionality.
+
+Include these metrics in the verdict JSON under a `"compression_metrics"` key.
 
 ### LLM Code Smell Check
 
@@ -57,6 +71,9 @@ Actively look for:
 - **Template residue**: Generic names, boilerplate comments, unused imports
 - **Feature creep**: Configurability or flags not in the spec
 - **Premature generalization**: Generic solutions for single concrete cases
+- **Wrapper bloat**: Thin wrappers that just delegate to the underlying call with no added value
+- **Speculative error handling**: Catching errors that can't occur in the current call path
+- **Annotation sprawl**: Type hints, docstrings, or comments added to unchanged code
 
 ## Step 6: Active Feature Exercising (if RALPH_EVALUATE_UI is set)
 
@@ -101,9 +118,12 @@ Apply these rules:
 - Any dimension **1-2** → **REVISE**
 - Spec Fidelity **< 3** → **REVISE**
 - Correctness **< 3** → **REVISE**
+- Compression **< 2** → **REVISE** (egregious bloat — the implementation is significantly longer than necessary)
 - Average across all dimensions **< 3.0** → **REVISE**
 - More than 2 acceptance criteria **FAIL** → **REVISE**
 - Otherwise → **ACCEPT**
+
+When compression triggers REVISE, the `revise_guidance` must include specific compression instructions: which helpers to inline, which abstractions to remove, which stdlib functions to use instead.
 
 ## Step 8: Write Verdict File
 
@@ -119,7 +139,17 @@ Write the verdict to `.claude/ralph-eval-verdict.json`:
     "correctness": <1-5>,
     "integration_quality": <1-5>,
     "code_quality": <1-5>,
-    "test_coverage": <1-5>
+    "test_coverage": <1-5>,
+    "compression": <1-5>
+  },
+  "compression_metrics": {
+    "lines_added": <N>,
+    "lines_deleted": <N>,
+    "add_delete_ratio": <float>,
+    "new_files": <N>,
+    "new_abstractions": <N>,
+    "single_use_helpers": <N>,
+    "lines_per_criterion": <float>
   },
   "average": <float>,
   "criteria_results": [

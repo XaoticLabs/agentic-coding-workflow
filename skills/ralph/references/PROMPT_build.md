@@ -8,7 +8,10 @@ Read `.claude/AGENTS.md` to understand the project's build, test, lint, and form
 
 ## Step 2: Read the Implementation Plan
 
-Read `IMPLEMENTATION_PLAN.md` from the spec directory provided. Also read the `## Learnings` section carefully — previous iterations captured gotchas, patterns, and deviations that apply to your work. Treat learnings as actionable rules, not just notes.
+Read `IMPLEMENTATION_PLAN.md` from the spec directory provided.
+
+- Read the `## Strategic Context` section first if it exists — this is human-written intent (the "why" behind this work, constraints, and architectural decisions). Let it guide your overall approach.
+- Read the `## Learnings` section carefully — previous iterations captured gotchas, patterns, and deviations that apply to your work. Treat learnings as actionable rules, not just notes.
 
 If `.claude/ralph-progress.md` exists, read it for session-level context (recent decisions, blockers, discoveries from prior iterations).
 
@@ -77,13 +80,26 @@ If this task involves writing or updating tests, **read the target test files fi
 
 Read **only the specific spec file** referenced by this task (e.g., `Spec: 03-topic.md` → read only `03-topic.md`). Do not read other spec files — keep your context focused.
 
-Implement exactly what it specifies:
+**Your goal is the shortest correct program that satisfies the spec.** Not the most thorough, not the most "complete," not the most defensive — the shortest. Every line you write is a liability: it must be read, maintained, debugged, and understood by the next person. The best implementation is the one with the least code that a competent developer can read in one pass.
+
+Before writing any new code, ask in this order:
+1. **Can I delete code** to make this work? Removing a special case or outdated branch is always preferred over adding new code.
+2. **Can I compose existing functions/modules** to achieve this? A 2-line call to existing code beats a 20-line reimplementation.
+3. **Can I add a parameter or config entry** to existing code rather than a new function/module?
+4. **Can I use stdlib or framework features** instead of custom logic? Your custom version is always worse — it has bugs you haven't found yet.
+5. **Can I use data (maps, tables, config) instead of code** (conditionals, switches, new functions)?
+6. Only after exhausting 1-5: **write new code**, and write the minimum.
+
+Implementation rules:
 
 1. Follow existing codebase patterns and conventions
-2. Make the minimal changes needed
+2. Make the minimal changes needed — if the spec says "add X," add X and nothing else
 3. Don't refactor unrelated code
 4. Don't add features not in the spec
 5. Handle edge cases specified in the task
+6. Don't add abstractions for single use sites — inline is fine
+7. Don't add error handling for conditions that can't occur in the current call path
+8. Don't add type annotations, docstrings, or comments to code you didn't functionally change
 
 ## Step 5: Test and Lint (Backpressure)
 
@@ -94,17 +110,6 @@ If either fails:
 - Fix the issue
 - Re-run until both pass
 - Do NOT skip this step — it is the quality gate
-
-## Step 5b: Simplicity Check
-
-Before committing, review your own diff:
-
-- **>100 lines added for a single task?** Consider whether a simpler approach exists. If you can achieve the same result with less code, do it now — don't leave it for a future cleanup task.
-- **>5 files modified?** The task may be doing too much, or you may be making unnecessary changes to surrounding code. Strip back to the minimum.
-- **A solution that deletes code while passing tests is always preferred** over one that adds code. Removing complexity is a feature.
-- **If it feels like it needs "one more iteration to clean up"**, it's too complex. Simplify now or the next iteration will inherit your mess.
-
-This check is about preventing complexity creep across many autonomous iterations. Each individual commit looks reasonable, but 30 iterations of "reasonable" additions creates an over-engineered codebase.
 
 ## Step 6: Commit
 

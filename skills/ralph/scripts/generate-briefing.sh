@@ -14,6 +14,25 @@ JOURNAL_FILE="${2:?}"
 ITERATION="${3:?}"
 TRACE_FILE="${4:-}"
 
+# ── Strategic Context (human-written, persists across iterations) ──
+# Unlike Learnings (machine-written tactical notes), Strategic Context
+# captures the human's intent, constraints, and architectural decisions.
+# This addresses the Knuth/Stappers insight: "why" context must cross
+# context boundaries to prevent coherence drift.
+
+echo "### Strategic Context"
+if [ -f "$PLAN_FILE" ]; then
+  STRATEGIC=$(sed -n '/^## Strategic Context/,/^## /{ /^## Strategic Context/d; /^## /d; p; }' "$PLAN_FILE" | head -20)
+  if [ -n "$STRATEGIC" ] && [ "$(echo "$STRATEGIC" | grep -c '[^ ]')" -gt 0 ]; then
+    echo "$STRATEGIC"
+  else
+    echo "(none — add a '## Strategic Context' section to IMPLEMENTATION_PLAN.md to guide iterations)"
+  fi
+else
+  echo "(no plan file)"
+fi
+echo ""
+
 # ── Remaining tasks (compact) ──────────────────────────────────────
 
 echo "### Remaining Tasks"
@@ -141,6 +160,43 @@ if [ "$TOTAL_JOURNAL_LINES" -ge 6 ] && [ -x "${SCRIPT_DIR}/generate-metrics.sh" 
   # Only include failure patterns and timeline — skip full task table to save tokens
   "${SCRIPT_DIR}/generate-metrics.sh" "$JOURNAL_FILE" "" "$TRACE_FILE" 2>/dev/null | awk '/^### Failure Patterns/,0' || true
   echo ""
+fi
+
+# ── Coherence drift detection ─────────────────────────────────────
+# Compare last iteration's commit message and changed files against the
+# current top-priority task spec. Flag misalignment so the model doesn't
+# silently solve the wrong problem across context boundaries.
+
+if [ -f "$PLAN_FILE" ] && [ "$ITERATION" -gt 1 ]; then
+  # Get current task's spec file
+  NEXT_TASK_SPEC=$(grep -m1 '^\- \[ \] \*\*Task' "$PLAN_FILE" 2>/dev/null | grep -oE 'Spec: [^ ,]+' | sed 's/Spec: //' || true)
+  NEXT_TASK_NAME=$(grep -m1 '^\- \[ \] \*\*Task' "$PLAN_FILE" 2>/dev/null | sed 's/.*\*\*Task [0-9]*: \(.*\)\*\*.*/\1/' || true)
+
+  if [ -n "$NEXT_TASK_SPEC" ] && [ -n "$TRACE_FILE" ] && [ -f "$TRACE_FILE" ]; then
+    # Get last iteration's committed files
+    LAST_KEEP=$(grep '"outcome":"KEEP"' "$TRACE_FILE" 2>/dev/null | tail -1 || true)
+    if [ -n "$LAST_KEEP" ]; then
+      LAST_COMMIT=$(echo "$LAST_KEEP" | sed 's/.*"commit":"\([^"]*\)".*/\1/' || true)
+      LAST_FILES=$(echo "$LAST_KEEP" | sed 's/.*"files_changed":"\([^"]*\)".*/\1/' || true)
+      LAST_TASK=$(echo "$LAST_KEEP" | sed 's/.*"task":"\([^"]*\)".*/\1/' || true)
+
+      # Get spec file's referenced files
+      SPEC_DIR_PATH=$(dirname "$PLAN_FILE")
+      SPEC_FULL_PATH="${SPEC_DIR_PATH}/${NEXT_TASK_SPEC}"
+      if [ -f "$SPEC_FULL_PATH" ]; then
+        SPEC_FILES=$(grep -oE '[a-zA-Z0-9_/.]+\.[a-z]+' "$SPEC_FULL_PATH" 2>/dev/null | sort -u | head -10 || true)
+
+        # Check if last iteration worked on files related to the next task
+        # If the last task name matches the next task, that's a retry — flag it
+        if [ -n "$LAST_TASK" ] && [ "$LAST_TASK" = "$NEXT_TASK_NAME" ]; then
+          echo "### Coherence Check"
+          echo "**⚠ Same task as last iteration.** The previous attempt was kept but you're seeing this task again."
+          echo "Verify the plan was updated correctly — if the task is actually done, mark it \`[x]\` and move on."
+          echo ""
+        fi
+      fi
+    fi
+  fi
 fi
 
 # ── Iteration stats ───────────────────────────────────────────────

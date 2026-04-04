@@ -22,7 +22,10 @@ Manages autonomous Claude coding loops. Not user-invocable directly — invoked 
 
 | Script | Purpose |
 |--------|---------|
-| `scripts/loop.sh` | Outer bash loop driving iterations |
+| `scripts/loop.sh` | Outer bash loop driving iterations (with steering checkpoints and eval-gates-merge) |
+| `scripts/notify.sh` | Cross-platform desktop notifications for loop events |
+| `scripts/check-overrides-staleness.sh` | Pre-flight check for stale override rules |
+| `scripts/validate-alignment.sh` | Pre-flight check for plan-spec criteria alignment |
 | `scripts/generate-agents-md.sh` | Auto-generates `.claude/AGENTS.md` project guide |
 | `scripts/generate-briefing.sh` | Per-iteration context briefing with revert details and trends |
 | `scripts/generate-summary.sh` | Completion summary with metrics and PR description |
@@ -143,6 +146,53 @@ Use this when:
 |------|---------|
 | `--once` | Single iteration, foreground (HITL mode) |
 | `--clean-room` | Skip codebase search — greenfield mode |
+| `--checkpoint-every=N` | Pause for human steering every N iterations |
+| `--eval-gates-merge` | Block merge if end-of-run evaluator verdict is REVISE |
+| `--time-budget=N` | Max seconds per iteration (default 600) |
+
+## Human Steering
+
+### Steering Checkpoints (`--checkpoint-every=N`)
+
+Pauses the loop every N iterations for human input. At each checkpoint you can:
+- **Continue** (Enter) — resume autonomous execution
+- **Stop** (s) — graceful stop at the checkpoint
+- **Inject** (i) — opens `inject.md` in your editor for mid-loop steering
+
+This addresses the Knuth/Stappers insight: models need periodic human course-correction,
+not just a single `--once` check at the start. Desktop notification fires at each checkpoint.
+
+### Strategic Context
+
+Add a `## Strategic Context` section to `IMPLEMENTATION_PLAN.md` with human-written intent,
+constraints, and architectural decisions. Unlike `## Learnings` (machine-written tactical notes),
+this section carries the "why" across context boundaries and is fed into every iteration's briefing.
+
+### Eval Gates Merge (`--eval-gates-merge`)
+
+When set, the merge prompt checks the end-of-run evaluator verdict. If the verdict is REVISE,
+merge is blocked. The worktree and branch are preserved for manual review. Override by running
+`git merge <branch>` directly.
+
+## Pre-Flight Checks
+
+Before the loop starts, two advisory checks run automatically:
+
+1. **Override staleness** — flags rules in `RALPH_OVERRIDES.md` older than 30 days without
+   recent journal confirmation. Stale rules silently bias every iteration.
+2. **Plan-spec alignment** — validates that acceptance criteria in `IMPLEMENTATION_PLAN.md`
+   match the corresponding spec files. Divergence means the evaluator grades against stale criteria.
+
+## Desktop Notifications
+
+The loop sends desktop notifications (macOS/Linux) for critical events:
+- Struggle detection (stuck on same task)
+- Circuit breaker (soft and hard)
+- Evaluator REVISE verdict
+- Steering checkpoints
+- Loop completion
+
+Disable with `RALPH_NOTIFY=false`. Disable sound with `RALPH_NOTIFY_SOUND=0`.
 
 ## Stop Mechanisms
 

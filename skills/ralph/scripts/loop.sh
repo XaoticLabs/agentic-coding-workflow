@@ -9,6 +9,8 @@
 #   --once:         Run a single iteration then stop (HITL mode)
 #   --clean-room:   Skip codebase search (greenfield mode)
 #   --time-budget:  Max seconds per iteration (default: 600, 0 = no limit)
+#   --checkpoint-every N: Pause for human steering every N iterations
+#   --eval-gates-merge: Block merge if end-of-run evaluator verdict is REVISE
 
 set -euo pipefail
 
@@ -18,6 +20,8 @@ MAX_ITERATIONS="${3:-50}"
 ONCE_FLAG=""
 CLEAN_ROOM_FLAG=""
 TIME_BUDGET="600"  # 10 minutes default, 0 = no limit
+CHECKPOINT_EVERY=""  # Pause for human steering every N iterations
+EVAL_GATES_MERGE=""  # Block merge if evaluator verdict is REVISE
 
 # Check for flags in any position
 for arg in "$@"; do
@@ -25,6 +29,8 @@ for arg in "$@"; do
     --once)       ONCE_FLAG="1" ;;
     --clean-room) CLEAN_ROOM_FLAG="1" ;;
     --time-budget=*) TIME_BUDGET="${arg#--time-budget=}" ;;
+    --checkpoint-every=*) CHECKPOINT_EVERY="${arg#--checkpoint-every=}" ;;
+    --eval-gates-merge) EVAL_GATES_MERGE="1" ;;
   esac
 done
 
@@ -113,6 +119,18 @@ trace_event() {
   echo "$json" >> "$TRACE_FILE"
 }
 
+# ── Notification helper ───────────────────────────────────────────────
+# Sends desktop notifications so the human doesn't have to poll.
+# Usage: ralph_notify <event-type> <message>
+NOTIFY_SCRIPT="${SCRIPT_DIR}/notify.sh"
+ralph_notify() {
+  local event_type="$1"
+  local message="$2"
+  if [ -x "$NOTIFY_SCRIPT" ]; then
+    "$NOTIFY_SCRIPT" "$event_type" "Ralph: ${SLUG}" "$message" &
+  fi
+}
+
 # ── Initialize failure journal ────────────────────────────────────────
 if [ ! -f "$JOURNAL_FILE" ]; then
   printf "timestamp\toutcome\ttask\tmetric\tnotes\n" > "$JOURNAL_FILE"
@@ -151,6 +169,8 @@ echo "║  Overrides:  $( [ -f "$OVERRIDES_FILE" ] && echo "yes ($(wc -l < "$OVE
 echo "║  Criteria:   inline (in IMPLEMENTATION_PLAN.md)"
 echo "║  Evaluator:  $( [ "$EVAL_PER_ITER" = "true" ] && echo "per-iteration (>=${EVAL_DIFF_THRESHOLD} files)" || echo "end-of-run" )"
 echo "║  UI eval:    ${RALPH_EVALUATE_UI}"
+echo "║  Checkpoint: $( [ -n "$CHECKPOINT_EVERY" ] && echo "every ${CHECKPOINT_EVERY} iterations" || echo "disabled" )"
+echo "║  Eval gate:  $( [ -n "$EVAL_GATES_MERGE" ] && echo "merge blocked on REVISE" || echo "advisory only" )"
 echo "║                                                     ║"
 echo "║  Stop gracefully: touch .claude/ralph-stop          ║"
 echo "║  Steer mid-loop:  write .claude/ralph-inject.md     ║"
@@ -164,6 +184,16 @@ if [ "$MODE" = "build" ] && [ ! -f "$PLAN_FILE" ]; then
   echo "Error: No IMPLEMENTATION_PLAN.md found at ${PLAN_FILE}"
   echo "Run with mode=plan first, or create the plan via /write-spec --ralph"
   exit 1
+fi
+
+# ── Pre-flight: override staleness check ──────────────────────────────
+if [ -f "$OVERRIDES_FILE" ] && [ -x "${SCRIPT_DIR}/check-overrides-staleness.sh" ]; then
+  "${SCRIPT_DIR}/check-overrides-staleness.sh" "$OVERRIDES_FILE" "$JOURNAL_FILE" 2>/dev/null || true
+fi
+
+# ── Pre-flight: plan-spec alignment check ─────────────────────────────
+if [ "$MODE" = "build" ] && [ -x "${SCRIPT_DIR}/validate-alignment.sh" ]; then
+  "${SCRIPT_DIR}/validate-alignment.sh" "$SPEC_DIR" 2>/dev/null || true
 fi
 
 # Clean up any previous stop sentinel
@@ -370,6 +400,7 @@ check_circuit_breaker() {
       echo "   This indicates a systemic issue, not just a hard task."
       echo "   Recent revert tasks: ${CONSECUTIVE_REVERT_TASKS}"
       echo "   Stopping immediately. Review test infrastructure, project setup, or plan quality."
+      ralph_notify "circuit_break" "HARD CIRCUIT BREAK: ${ratio}% success + ${CONSECUTIVE_REVERTS} consecutive reverts. Loop stopped."
       return 1
     fi
 
@@ -379,6 +410,7 @@ check_circuit_breaker() {
       echo "⚠ SOFT CIRCUIT BREAK: Only ${new_commits} commits in ${iteration} iterations (${ratio}% success rate)."
       echo "   Threshold is ${CIRCUIT_BREAKER_MIN_RATIO}%. Ralph may be struggling."
       echo "   Continuing — will hard-stop if 3+ consecutive reverts on different tasks occur."
+      ralph_notify "circuit_break" "SOFT CIRCUIT BREAK: ${ratio}% success rate. Continuing but may be struggling."
       CIRCUIT_BREAKER_SOFT_WARNED=true
       printf "%s\tSOFT_CIRCUIT_BREAK\t-\tratio=%s%%\tLow commit ratio but continuing\n" \
         "$(date +"%Y-%m-%dT%H:%M:%S")" "$ratio" >> "$JOURNAL_FILE"
@@ -592,6 +624,7 @@ while :; do
         echo "⚠ STRUGGLE DETECTED: Task '${CURRENT_TASK}' has been attempted ${SAME_TASK_COUNT} times."
         echo "  Ralph may be stuck. Stopping to prevent token waste."
         echo "  Review logs and consider breaking the task down or adding context."
+        ralph_notify "struggle" "Stuck on '${CURRENT_TASK}' after ${SAME_TASK_COUNT} attempts. Loop stopped."
         echo "${ITERATION} | $(date +%H:%M:%S) | STRUGGLE_STOP | ${CURRENT_TASK}" >> "${RUN_DIR}/orchestrator.log"
         write_status "$ITERATION" "$CURRENT_TASK" "STRUGGLE_STOP"
         break
@@ -1027,6 +1060,69 @@ ${BRIEFING}
     break
   fi
 
+  # ── Steering checkpoint gate ─────────────────────────────────────────
+  # Pauses for human input every N iterations to enable strategic steering.
+  # This addresses the Knuth/Stappers insight: models need periodic human
+  # course-correction, not just a single --once check at the start.
+  if [ -n "$CHECKPOINT_EVERY" ] && [ "$((ITERATION % CHECKPOINT_EVERY))" -eq 0 ]; then
+    if [ -t 0 ]; then
+      echo ""
+      echo "━━━ STEERING CHECKPOINT (iteration ${ITERATION}) ━━━"
+      echo ""
+      # Show compact status
+      if [ -f "$PLAN_FILE" ]; then
+        CP_TOTAL=$(grep -c '^\- \[[ x]\] \*\*Task' "$PLAN_FILE" 2>/dev/null || true); CP_TOTAL=${CP_TOTAL:-0}
+        CP_DONE=$(grep -c '^\- \[x\] \*\*Task' "$PLAN_FILE" 2>/dev/null || true); CP_DONE=${CP_DONE:-0}
+        echo "  Tasks: ${CP_DONE}/${CP_TOTAL} complete"
+      fi
+      CP_COMMITS=$(git rev-list --count HEAD 2>/dev/null || echo 0)
+      CP_NEW=$((CP_COMMITS - COMMITS_AT_START))
+      echo "  Commits this run: ${CP_NEW}"
+      echo "  Success rate: $(tail -n +2 "$JOURNAL_FILE" 2>/dev/null | grep -c 'KEEP' || echo 0) kept / $(tail -n +2 "$JOURNAL_FILE" 2>/dev/null | grep -cE 'KEEP|REVERT|TIMEOUT' || echo 0) total"
+      echo ""
+      echo "  Options:"
+      echo "    [Enter]  Continue running"
+      echo "    [s]      Stop after this checkpoint"
+      echo "    [i]      Write inject.md steering instructions"
+      echo ""
+      ralph_notify "checkpoint" "Steering checkpoint at iteration ${ITERATION}. Waiting for input."
+      read -p "  Action [Enter/s/i]: " -n 1 -r CP_REPLY || CP_REPLY=""
+      echo ""
+      case "$CP_REPLY" in
+        s|S)
+          echo "Stopping at steering checkpoint."
+          trace_event "checkpoint_stop" "iter=${ITERATION}"
+          break
+          ;;
+        i|I)
+          echo "Opening inject.md for steering instructions..."
+          echo "# Mid-loop steering — written at checkpoint iteration ${ITERATION}" > "$INJECT_FILE"
+          echo "# Add your instructions below, then save and close." >> "$INJECT_FILE"
+          if [ -n "${EDITOR:-}" ]; then
+            "$EDITOR" "$INJECT_FILE"
+          elif command -v nano >/dev/null 2>&1; then
+            nano "$INJECT_FILE"
+          else
+            echo "No editor found. Write instructions to: ${INJECT_FILE}"
+            echo "Then press Enter to continue."
+            read -r
+          fi
+          echo "Steering instructions saved. Continuing..."
+          trace_event "checkpoint_inject" "iter=${ITERATION}"
+          ;;
+        *)
+          echo "Continuing..."
+          trace_event "checkpoint_continue" "iter=${ITERATION}"
+          ;;
+      esac
+    else
+      # Non-interactive: just log, don't block
+      echo "━━━ Steering checkpoint at iteration ${ITERATION} (non-interactive — continuing) ━━━"
+      ralph_notify "checkpoint" "Steering checkpoint at iteration ${ITERATION}. Non-interactive mode, continuing."
+      trace_event "checkpoint_skip" "iter=${ITERATION}" "reason=non-interactive"
+    fi
+  fi
+
   echo ""
 done
 
@@ -1048,6 +1144,7 @@ trace_event "run_end" "total_iters=${ITERATION}" "kept=${KEPT_COUNT}" "reverted=
 
 echo ""
 echo "━━━ Ralph loop finished after ${ITERATION} iterations ━━━"
+ralph_notify "complete" "Loop finished after ${ITERATION} iterations. ${KEPT_COUNT:-0} kept, ${REVERTED_COUNT:-0} reverted."
 echo "Run:   ${RUN_DIR}/"
 echo "Trace: ${TRACE_FILE}"
 echo "Journal: ${JOURNAL_FILE}"
@@ -1091,6 +1188,24 @@ if [ "$USING_WORKTREE" = true ]; then
     echo "  To review:  git log --oneline ${TARGET_BRANCH}..${WORKTREE_BRANCH}"
     echo "  To discard: git worktree remove --force ${WORKTREE_PATH} && git branch -D ${WORKTREE_BRANCH}"
     echo ""
+
+    # ── Eval-gates-merge: block merge if evaluator says REVISE ──────────
+    if [ -n "$EVAL_GATES_MERGE" ] && [ -f "$EVAL_VERDICT_FILE" ]; then
+      GATE_VERDICT=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['verdict'])" "$EVAL_VERDICT_FILE" 2>/dev/null || echo "UNKNOWN")
+      if [ "$GATE_VERDICT" = "REVISE" ]; then
+        echo ""
+        echo "⛔ EVAL GATE: End-of-run evaluator verdict is REVISE."
+        echo "   Merge blocked by --eval-gates-merge flag."
+        echo "   Review: ${EVAL_SUMMARY_FILE}"
+        echo "   Override with: git merge ${WORKTREE_BRANCH}  (manual merge bypasses this gate)"
+        ralph_notify "eval_warning" "Merge blocked: evaluator says REVISE. Review eval-summary.md."
+        echo ""
+        echo "Worktree preserved at: ${WORKTREE_PATH}"
+        echo "Branch preserved: ${WORKTREE_BRANCH}"
+        # Skip the merge prompt entirely
+        RALPH_NO_MERGE_PROMPT=1
+      fi
+    fi
 
     # Prompt for merge if running interactively (not a worker)
     if [ -t 0 ] && [ -z "${RALPH_NO_MERGE_PROMPT:-}" ]; then
@@ -1187,6 +1302,10 @@ if [ "$EVAL_END_OF_RUN" = "true" ] && [ "$MODE" = "build" ] && [ -z "$ONCE_FLAG"
       echo "End-of-run evaluation: ${ENDRUN_VERDICT} (avg score: ${ENDRUN_AVG})"
       echo "Full report: ${EVAL_SUMMARY_FILE}"
       trace_event "endrun_eval" "verdict=${ENDRUN_VERDICT}" "avg_score=${ENDRUN_AVG}"
+
+      if [ "$ENDRUN_VERDICT" = "REVISE" ]; then
+        ralph_notify "eval_warning" "End-of-run evaluator says REVISE (avg: ${ENDRUN_AVG}). Review before merging."
+      fi
     else
       echo "End-of-run evaluation did not produce a verdict (non-fatal)."
       trace_event "endrun_eval" "verdict=error" "reason=no_verdict_file"
