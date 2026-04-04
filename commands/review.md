@@ -9,6 +9,8 @@ allowed-tools:
   - AskUserQuestion
   - EnterPlanMode
   - ExitPlanMode
+  - WebSearch
+  - WebFetch
   - mcp__claude_ai_Linear__get_issue
   - mcp__claude_ai_Linear__list_issues
 effort: high
@@ -24,6 +26,8 @@ $ARGUMENTS — Determines the review mode:
 
 | Input | Mode | What happens |
 |-------|------|-------------|
+| `--learn [branch] [--focus phases]` | Review & Learn | Interactive PERFECT training on a PR |
+| `--stats` | Review Stats | Show learning progress from log |
 | `--plan [path\|slug]` | Plan review | Staff engineer critique of a plan document |
 | `--prep [branch]` | PR prep | Clean up commits, generate PR description |
 | `--spec <spec\|slug\|ticket\|description>` | Implementation review | Review code against spec/ticket/criteria |
@@ -33,16 +37,154 @@ $ARGUMENTS — Determines the review mode:
 Optional flags:
 - `elixir` or `python` prefix — force language detection
 - `--env staging|prod` — for troubleshooting context
+- `--focus phase1,phase2` — (learn mode only) drill specific PERFECT phases
 
 ## Mode Detection
 
 Parse `$ARGUMENTS` to determine which mode to run:
 
-1. If starts with `--plan` → **Plan Review** mode
-2. If starts with `--prep` → **PR Prep** mode
-3. If starts with `--spec` or argument is a Linear ticket ID (pattern: `LETTERS-DIGITS`) or a spec path (`.claude/specs/`) or a quoted description → **Implementation Review** mode
-4. If argument looks like a branch name → **PR Code Review** mode
-5. If empty → check `.claude/specs/` for recent specs; if found, offer Implementation Review; otherwise review current branch
+1. If starts with `--learn` → **Review & Learn** mode
+2. If starts with `--stats` → **Review Stats** mode
+3. If starts with `--plan` → **Plan Review** mode
+4. If starts with `--prep` → **PR Prep** mode
+5. If starts with `--spec` or argument is a Linear ticket ID (pattern: `LETTERS-DIGITS`) or a spec path (`.claude/specs/`) or a quoted description → **Implementation Review** mode
+6. If argument looks like a branch name → **PR Code Review** mode
+7. If empty → check `.claude/specs/` for recent specs; if found, offer Implementation Review; otherwise review current branch
+
+---
+
+## Mode: Review & Learn
+
+Interactive training mode where each PR review becomes a learning rep. You review first, AI reveals findings, you learn from gaps.
+
+### 1. Parse Arguments
+
+- Extract branch name (after `--learn`). If empty, use current branch.
+- Extract `--focus` phases if provided (comma-separated: `evidence,reliability,edge-cases`). If not provided, run all 6 scored phases.
+- Detect language (same as PR Code Review).
+
+### 2. Gather Context
+
+- Read PR description or commit history
+- Run `git diff origin/main...HEAD` for full diff
+- Read all changed files
+
+### 3. Silent Pre-Scan
+
+Run the full PERFECT review internally **without displaying results**. Follow the pr-reviewer skill's PERFECT phases (Evidence through Purpose). For each finding, tag with Phase, Confidence, and Source.
+
+Read `references/perfect-framework.md` for phase definitions and `references/source-registry.md` for source URLs.
+
+**Important**: Only **Verified** and **Likely** findings will be used for scoring. Be conservative — better to have 5 well-grounded findings than 15 questionable ones.
+
+Store findings internally, organized by phase.
+
+### 4. Phase-by-Phase Walk-Through
+
+Read `references/learn-mode-prompts.md` for phase-specific prompts and teaching templates.
+
+For each phase (in order: Evidence, Reliability, Form, Clarity, Edge Cases, Purpose — or filtered by `--focus`):
+
+**Step A — Present & Ask:**
+- Show the relevant portion of the diff/code for this phase (see learn-mode-prompts.md for what to show per phase)
+- Use `AskUserQuestion` with the phase-specific framing prompt
+- Wait for the user's findings
+
+**Step B — Compare:**
+- Match user findings against AI findings for this phase
+- Categorize each:
+  - **Caught**: User identified the same issue (even if worded differently)
+  - **Missed**: AI found it, user didn't
+  - **Bonus**: User found something AI missed (praise this!)
+
+**Step C — Teach:**
+- For each **Caught** finding: brief confirmation with the source link
+- For each **Missed** finding: use the teaching template from learn-mode-prompts.md (What, Where, Why it matters, How to spot it, Source URL)
+- For each **Bonus** finding: acknowledge and record
+
+**Step D — Phase Score:**
+- Report: "You found {n} of {m} issues in {Phase}. {brief note}"
+
+### 5. Scorecard
+
+After all phases, present the full scorecard (template in learn-mode-prompts.md):
+- Phase-by-phase breakdown with scores
+- Strongest and weakest phases
+- Bonus finds count
+- Key takeaways (patterns from the 1-2 biggest misses)
+
+### 6. Persist Learning Log
+
+```bash
+mkdir -p "$(git rev-parse --show-toplevel)/.claude/reviews"
+```
+
+Append one JSON line to `.claude/reviews/learning-log.jsonl` following the schema in learn-mode-prompts.md. Include timestamp, branch, language, phase scores, missed patterns with source URLs, and bonus finds.
+
+### 7. Next Steps
+
+Suggest:
+- "Run `/review --stats` to see your progress over time"
+- "Run `/review --learn --focus {weakest_phase}` next time to drill your weakest area"
+- If this was their first session: "After 3+ sessions, stats will show your improvement trajectory"
+
+---
+
+## Mode: Review Stats
+
+Show learning progress from the review training log.
+
+### 1. Read Learning Log
+
+```bash
+LOG_FILE="$(git rev-parse --show-toplevel)/.claude/reviews/learning-log.jsonl"
+```
+
+If the file doesn't exist or is empty:
+> No learning sessions recorded yet. Run `/review --learn <branch>` to start training.
+
+### 2. Parse & Aggregate
+
+Read the JSONL file. For each line, parse the JSON object. Aggregate:
+
+- **Total sessions** and date range
+- **Overall average score** across all sessions
+- **Per-phase averages**: evidence, reliability, form, clarity, edge_cases, purpose
+- **Last 5 sessions**: scores for trend analysis
+- **Most common misses**: group by phase, count frequency of similar patterns
+
+### 3. Present Stats
+
+```markdown
+## Review Training Stats
+
+**Sessions:** {total} ({first_date} — {last_date})
+**Overall Score:** {avg}% (across all sessions)
+
+### Phase Performance
+| Phase | Avg Score | Last 5 Trend | Sessions |
+|-------|-----------|-------------|----------|
+| Evidence | {%} | {arrow up/down/flat} {recent_%} | {n with issues} |
+| Reliability | {%} | {arrow} {recent_%} | {n} |
+| Form | {%} | {arrow} {recent_%} | {n} |
+| Clarity | {%} | {arrow} {recent_%} | {n} |
+| Edge Cases | {%} | {arrow} {recent_%} | {n} |
+| Purpose | {%} | {arrow} {recent_%} | {n} |
+
+### Strongest: {phase} ({%})
+### Weakest: {phase} ({%})
+
+### Most Common Misses
+1. {pattern} ({phase}, missed {n} times)
+2. {pattern} ({phase}, missed {n} times)
+3. {pattern} ({phase}, missed {n} times)
+
+### Recommendations
+- Focus on **{weakest_phase}** — run `/review --learn --focus {weakest_phase}`
+- {specific pattern to watch for based on most common misses}
+```
+
+If 3+ sessions, add a trend section showing whether overall score is improving, stable, or declining.
 
 ---
 
@@ -224,6 +366,9 @@ Show before/after commit count, backup branch, PR description path, and next ste
 ```
 /agentic-coding-workflow:review feature/auth-refactor                    # PR code review
 /agentic-coding-workflow:review elixir feature/payments feature/billing  # Multi-branch Elixir review
+/agentic-coding-workflow:review --learn feature/auth-refactor            # Interactive training on a PR
+/agentic-coding-workflow:review --learn --focus edge-cases,reliability   # Drill specific phases
+/agentic-coding-workflow:review --stats                                  # Show learning progress
 /agentic-coding-workflow:review --spec batch-analysis                    # Review against spec
 /agentic-coding-workflow:review --spec AI-1234                           # Review against Linear ticket
 /agentic-coding-workflow:review --spec "users can reset password"        # Review against description

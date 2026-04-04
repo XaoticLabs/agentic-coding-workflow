@@ -65,14 +65,14 @@ Then type any of these:
 | `/agentic-coding-workflow:write-spec` | Transforms a plan into an implementation spec with atomic, actionable tasks. |
 | `/agentic-coding-workflow:implement` | Picks up a task from a spec and builds it out. Also supports ad-hoc descriptions with plan-first flow. |
 | `/agentic-coding-workflow:test` | Detects project test framework, runs the suite (or a subset), and reports structured results. |
-| `/agentic-coding-workflow:review` | Unified code review — PR review, spec compliance (`--spec`), plan critique (`--plan`), or WIP squash (`--prep`). Auto-detects Elixir/Python, supports parallel multi-branch reviews. |
+| `/agentic-coding-workflow:review` | Unified code review — PR review, spec compliance (`--spec`), plan critique (`--plan`), WIP squash (`--prep`), or interactive PERFECT training (`--learn`). Track progress with `--stats`. Auto-detects Elixir/Python, supports parallel multi-branch reviews. |
 | `/agentic-coding-workflow:ship` | Pushes the current branch, creates a PR with a generated description, and reports the URL. |
 
 ### Autonomous & Parallel
 
 | Command | What it does |
 |---------|--------------|
-| `/agentic-coding-workflow:ralph` | Autonomous coding loop. Works through every task unattended — implements, tests, commits, updates the plan, repeats. Supports `--once` (HITL mode), `--clean-room` (greenfield), `--harvest` (extract patterns), and `--parallel` (multiple worktrees). |
+| `/agentic-coding-workflow:ralph` | Autonomous coding loop. Works through every task unattended — implements, tests, commits, updates the plan, repeats. Supports `--once` (HITL mode), `--clean-room` (greenfield), `--harvest` (extract patterns), `--parallel` (multiple worktrees), `--checkpoint-every=N` (human steering pauses), `--eval-gates-merge` (block merge on REVISE verdict), and `--time-budget=N` (per-iteration time limit). Desktop notifications for key events. |
 | `/agentic-coding-workflow:parallel` | Spins up N worktrees with tmux panes and Claude sessions for parallel task work. |
 | `/agentic-coding-workflow:reunify` | Merges parallel worktree branches back, runs tests after each merge, resolves conflicts, and verifies against the spec. |
 | `/agentic-coding-workflow:spawn` | Launches a full Claude Code session in a tmux pane with an agent role preloaded — for when you need a visible, steerable instance. |
@@ -110,8 +110,8 @@ Then type any of these:
 | `/agentic-coding-workflow:skill-forge` | Build, fix, and optimize Claude Code skills — scaffolding, progressive disclosure, eval-driven iteration |
 | `tmux-multiplexer` | Controls tmux for spinning up multi-agent workflows and parallel tasks |
 | `neovim-controller` | Talks to a running Neovim instance via RPC — open files, run LSP commands, navigate symbols |
-| `pr-reviewer` | The brains behind `/agentic-coding-workflow:review` — knows Elixir and Python patterns, auto-detects language |
-| `ralph` | Orchestrates autonomous Ralph loop iterations with separated evaluator and tiered evaluation modes |
+| `pr-reviewer` | The brains behind `/agentic-coding-workflow:review` — uses the PERFECT framework (Purpose, Edge Cases, Reliability, Form, Evidence, Clarity, Taste) with source-grounded findings. Knows Elixir and Python patterns, auto-detects language |
+| `ralph` | Orchestrates autonomous Ralph loop iterations with separated evaluator, tiered evaluation modes, pre-flight checks (override staleness, plan-spec alignment), and desktop notifications |
 | `data-analytics` | Database querying and data analysis support — MCP server config, connection setup, SQL help |
 
 ## Agents
