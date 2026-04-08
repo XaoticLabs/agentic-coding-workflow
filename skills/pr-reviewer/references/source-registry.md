@@ -9,6 +9,8 @@ For linking to specific rules in review comments:
 | Tool/DB | URL Pattern | Example |
 |---------|-------------|---------|
 | Ruff | `https://docs.astral.sh/ruff/rules/{rule-name}/` | `.../ruff/rules/asyncio-dangling-task/` |
+| basedpyright | `https://docs.basedpyright.com/latest/configuration/config-files/#type-check-rule-overrides` | basedpyright error codes |
+| Pydantic | `https://docs.pydantic.dev/latest/concepts/{topic}/` | `.../concepts/validators/` |
 | CWE | `https://cwe.mitre.org/data/definitions/{ID}.html` | `.../definitions/89.html` (SQL injection) |
 | OWASP Top 10 | `https://owasp.org/Top10/2021/A{NN}_2021-{Name}/` | `.../A03_2021-Injection/` |
 | Refactoring | `https://refactoring.com/catalog/{name}.html` | `.../catalog/extractMethod.html` |
@@ -27,10 +29,12 @@ For linking to specific rules in review comments:
 | pytest How-To Guides | https://docs.pytest.org/en/stable/how-to/index.html | Practical testing patterns | Python |
 | Hypothesis Documentation | https://hypothesis.readthedocs.io/ | Property-based testing, strategies, shrinking | Python |
 | Hypothesis Strategies Reference | https://hypothesis.readthedocs.io/en/latest/data.html | Built-in data generators | Python |
-| mypy Documentation | https://mypy.readthedocs.io/ | Static type checking | Python |
-| mypy Type Hints Cheat Sheet | https://mypy.readthedocs.io/en/stable/cheat_sheet_py3.html | Type annotation patterns | Python |
-| Pyright Documentation | https://microsoft.github.io/pyright/ | Type checker, strict mode | Python |
+| basedpyright Documentation | https://docs.basedpyright.com/ | Type checker, strict mode, enhanced pyright | Python |
+| Pyright Documentation | https://microsoft.github.io/pyright/ | Type checker configuration, error codes | Python |
 | PEP 484 — Type Hints | https://peps.python.org/pep-0484/ | Type annotation standard | Python |
+| PEP 695 — Type Parameter Syntax | https://peps.python.org/pep-0695/ | Modern type parameter syntax (3.12+) | Python |
+| Pydantic Documentation | https://docs.pydantic.dev/latest/ | Data validation, serialization, settings | Python |
+| Pydantic Migration Guide | https://docs.pydantic.dev/latest/migration/ | v1 → v2 migration patterns | Python |
 | ExUnit Documentation | https://hexdocs.pm/ex_unit/ExUnit.html | Assertions, async tests, callbacks, doctests | Elixir |
 | StreamData Documentation | https://hexdocs.pm/stream_data/StreamData.html | Data generators, shrinking | Elixir |
 | StreamData ExUnitProperties | https://hexdocs.pm/stream_data/ExUnitProperties.html | Property-based test macros | Elixir |
@@ -70,8 +74,10 @@ For linking to specific rules in review comments:
 | PEP 8 — Python Style Guide | https://peps.python.org/pep-0008/ | Naming, layout, imports, whitespace | Python |
 | PEP 20 — Zen of Python | https://peps.python.org/pep-0020/ | 19 guiding aphorisms | Python |
 | Google Python Style Guide | https://google.github.io/styleguide/pyguide.html | Docstrings, formatting, imports, types | Python |
-| Ruff Rules Reference | https://docs.astral.sh/ruff/rules/ | 800+ lint rules | Python |
+| Ruff Rules Reference | https://docs.astral.sh/ruff/rules/ | 800+ lint rules (replaces flake8, pylint, isort, etc.) | Python |
 | Ruff Linter Overview | https://docs.astral.sh/ruff/linter/ | Rule categories, configuration | Python |
+| Ruff Formatter | https://docs.astral.sh/ruff/formatter/ | Code formatting (replaces Black) | Python |
+| uv Documentation | https://docs.astral.sh/uv/ | Package management, virtual environments, tool running | Python |
 | Elixir Style Guide (Adams) | https://github.com/christopheradams/elixir_style_guide | Community style conventions | Elixir |
 | Credo Documentation | https://hexdocs.pm/credo/overview.html | Consistency, readability, refactoring checks | Elixir |
 | Credo GitHub | https://github.com/rrrene/credo | Check source code, custom checks | Elixir |

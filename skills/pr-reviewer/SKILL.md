@@ -126,6 +126,7 @@ Check alignment with design principles and codebase conventions:
 Load language-specific references conditionally:
 - **Elixir**: `references/elixir/elixir_style_guide.md` — formatting, naming, module structure
 - **Elixir**: `references/elixir/ecto_phoenix_patterns.md` — schemas, changesets, controllers, LiveView
+- **Python**: `references/python/python_style_guide.md` — naming, imports, type annotations, pydantic, ruff rules (Google + PEP 8 adapted for ruff/basedpyright/uv)
 - **Python**: `references/python/python_review_checklist.md` — code quality section
 
 Severity: **MAJOR** for pattern deviations, **MINOR** for style.
@@ -143,6 +144,7 @@ Assess whether code communicates its intent:
 
 Load conditionally:
 - **Elixir**: `references/elixir/elixir_style_guide.md` — if not already loaded in Form phase
+- **Python**: `references/python/python_style_guide.md` — if not already loaded in Form phase (docstrings, comments, naming sections)
 
 Severity: **MINOR**.
 

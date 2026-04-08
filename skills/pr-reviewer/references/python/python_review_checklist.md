@@ -1,79 +1,21 @@
 # Python PR Review Checklist
 
-Consolidated checklist covering code quality, modern idioms, security, and testing for Python 3.10+ PRs.
+Quick-scan index for Python PR reviews. See `python_style_guide.md` for rationale, examples, and edge cases.
 
-## Pattern Consistency (Highest Priority)
-- Does the code follow existing codebase patterns?
-- Are similar problems solved the same way?
-- If introducing a new pattern, is it justified?
-- Consistent naming conventions, error handling, logging?
+Tooling handles: formatting, import order, unused imports, type errors, bare excepts, deprecated syntax, test failures.
 
-## Type Hints & Modern Syntax
-- All public functions type-hinted
-- `dict[str, int]` not `Dict[str, int]` (3.10+)
-- `X | None` not `Optional[X]`
-- `match` statements for complex conditionals
-- Dataclasses for data containers
-- f-strings for formatting
-- `pathlib.Path` over `os.path`
-
-## Code Quality
-- Functions under 50 lines, single responsibility
-- Nesting under 3 levels deep
-- No code duplication
-- Clear, descriptive names (no abbreviations)
-- Magic numbers replaced with constants
-
-## Error Handling
-- Specific exceptions (not bare `except:` or `except Exception`)
-- Informative, actionable error messages
-- Resources cleaned up in error cases (context managers)
-- Custom exceptions for domain-specific errors
-
-## Security (Flag as BLOCKER)
-
-**Injection:**
-- SQL queries parameterized (`cursor.execute(query, (param,))`) — never f-strings
-- No `subprocess.run(..., shell=True)` with user input
-- No `eval()`/`exec()` with user input
-- File paths validated against traversal (`Path.resolve()` + prefix check)
-
-**Auth & Secrets:**
-- Passwords hashed with bcrypt/argon2, never plain text or MD5/SHA1
-- Secrets from environment variables, never hardcoded
-- JWTs include expiration, use strong secrets, verify with `algorithms=["HS256"]`
-- Session cookies: `httponly=True`, `secure=True`, `samesite='Strict'`
-- Cryptographically secure randoms via `secrets` module, not `random`
-
-**Defense:**
-- Input validated (Pydantic preferred)
-- HTML output sanitized (XSS prevention)
-- File upload size limits enforced
-- External request timeouts set
-- Sensitive data never logged
-
-## Async Patterns (if applicable)
-- All async functions properly awaited
-- Multiple operations gathered with `asyncio.gather()`
-- No blocking calls in async code
-- `asyncio.run()` only at entry points
-
-## Testing (Flag missing tests as BLOCKER)
-- New features have tests proving they work
-- Bug fixes have regression tests
-- Happy path + error cases + edge cases covered
-- Tests are behavior-based, not implementation-based
-- Clear test names describing what they test
-- Proper assertions (not just running code)
-
-## Performance
-- No N+1 queries
-- Large datasets use generators/streaming
-- Sets for membership testing, not lists
-- Expensive operations cached when appropriate
-
-## Dependencies & Imports
-- New dependencies necessary and actively maintained?
-- Versions pinned
-- Import order: stdlib → third-party → local
-- No wildcard imports
+| # | Area | Key Cues | Severity |
+|---|------|----------|----------|
+| 1 | **Pattern Consistency** | Follows codebase patterns? Grep before flagging. New pattern justified? | MAJOR |
+| 2 | **Imports** | Module imports (not symbols). Absolute only. `TYPE_CHECKING` block. No obscure aliases. | MINOR |
+| 3 | **Naming** | No type-encoding, no abbreviation-by-deletion, no builtin shadowing, booleans as questions | MINOR |
+| 4 | **Type Design** | Abstract params (`Sequence`/`Mapping`), concrete returns. `Self`. Parameterized generics. | MAJOR |
+| 5 | **Docstrings** | Imperative summary. Args sans types. Returns describes semantics. Comments = *why*. | MINOR |
+| 6 | **Design** | <40 lines, <3 nesting. Explicit returns. `*` for 3+ optionals. No `@staticmethod`. | MAJOR |
+| 7 | **Error Handling** | Minimal `try`. Actionable messages. Intentional `from None`? No `assert` for validation. | MAJOR |
+| 8 | **Pydantic** | v2 API only. Flag `.dict()`, `class Config:`, `@validator`. `BaseSettings` for config. | MAJOR |
+| 9 | **Security** | Path traversal, JWT expiry+algorithms, cookie flags, timeouts, no sensitive logging, no unsafe deser | **BLOCKER** |
+| 10 | **Async** | `gather()` independent awaits. Check task results. Async context managers. `run()` at entry only. | MAJOR |
+| 11 | **Testing** | Behavioral names. Specific assertions. `match=` on raises. Parametrize. Mock external only. | MAJOR |
+| 12 | **Performance** | Sequential independent awaits, N+1, string `+=` loop, list membership, missing timeouts | MINOR |
+| 13 | **Logging** | `%`-style (not f-strings). Appropriate level. Structured context. | MINOR |
