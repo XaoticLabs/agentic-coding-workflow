@@ -57,8 +57,7 @@ Fuzzy match service names to namespaces:
 
 ```bash
 # Set context
-kubectl config use-context arn:aws:eks:us-east-2:604412908292:cluster/staging-eks  # staging
-kubectl config use-context arn:aws:eks:us-east-2:940766330009:cluster/prod-eks     # prod (confirm first!)
+kubectl config use-context arn staging or prod
 
 # Find pod
 POD=$(kubectl -n <ns> get pods -l app=<service> -o jsonpath='{.items[0].metadata.name}')

@@ -4,7 +4,7 @@
 # Sets: has_code_errors, has_infra_warnings, infra_warnings, output (appends)
 
 # Source infra classifier
-SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 source "${SCRIPT_DIR}/infra-patterns.sh"
 
 python_files=""

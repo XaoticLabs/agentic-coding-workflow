@@ -50,6 +50,13 @@ git diff HEAD --name-only > "${CHECKPOINT_DIR}/changed-files.txt"
 git ls-files --others --exclude-standard > "${CHECKPOINT_DIR}/untracked-files.txt"
 ```
 
+**Locate the relevant spec:**
+- Look for spec files in `.claude/specs/` that relate to the current work
+- Match by: checking the spec's "Files to create/modify" sections against the currently changed files, or by matching the feature name from recent plan/spec filenames
+- If multiple specs match, pick the most relevant one (most file overlap with current changes)
+- If no spec is found, note this — the spec update phase will be skipped
+- Store the spec path for use in Phase 5
+
 **Document what exists:**
 - Read all currently changed files
 - Understand the current approach — what was built and how
@@ -123,7 +130,42 @@ Apply everything learned:
 - Write tests alongside the implementation (lessons from first attempt inform what to test)
 - Keep it simple — the whole point is elegance, not feature creep
 
-### Phase 5: Comparison Report
+### Phase 5: Update the Spec
+
+**Skip this phase if no spec was found in Phase 1.**
+
+Read the spec file identified in Phase 1. Update it to reflect the decisions and learnings from the redo:
+
+1. **Update the Ambiguity Resolutions table** (or create one if missing):
+   - Add rows for each assumption that turned out to be wrong
+   - Add rows for each design decision that changed during the redo
+   - Set the Source column to "elegant-redo [date]"
+
+2. **Update affected task specs:**
+   - For tasks whose implementation approach changed, update the "Detailed specification" section to reflect the new approach
+   - Update "Files to create/modify" if the file set changed
+   - Update "Edge cases to handle" with any new edge cases discovered during the first attempt
+   - Update "Notes/Warnings" with gotchas discovered during the first implementation
+
+3. **Do NOT change:**
+   - Acceptance criteria (unless the user explicitly asked to change scope)
+   - Task boundaries or dependencies (unless tasks were merged/split during redo)
+   - The Overview or Testing Strategy sections (unless directly affected)
+
+4. **Add a changelog entry** at the bottom of the spec:
+   ```markdown
+   ## Changelog
+
+   ### [date] — Elegant Redo
+   - **Trigger:** [brief reason for the redo]
+   - **Key decisions:** [bulleted list of what changed and why]
+   - **Preserved:** [what stayed the same from the original approach]
+   ```
+   If a Changelog section already exists, append to it rather than replacing.
+
+**Present the spec changes** to the user: show a summary of what was updated in the spec so they can verify the decisions were captured correctly.
+
+### Phase 6: Comparison Report
 
 After reimplementation, generate a comparison:
 
@@ -145,6 +187,10 @@ After reimplementation, generate a comparison:
 
 ### What Stayed the Same
 - [Good pattern preserved from first attempt]
+
+### Spec Updated
+- [Path to spec file, or "No matching spec found"]
+- [Summary of decisions captured]
 
 ### Recovery
 Previous implementation saved as:

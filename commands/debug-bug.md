@@ -57,7 +57,7 @@ docker stats --no-stream                           # Resource usage
 
 **`--env staging` (Kubernetes — staging EKS):**
 ```bash
-kubectl config use-context arn:aws:eks:us-east-2:604412908292:cluster/staging-eks
+kubectl config use-context staging arn
 kubectl -n <namespace> get pods                    # Pod status
 kubectl -n <namespace> logs <pod> --tail=100       # Recent logs
 kubectl -n <namespace> get events --sort-by='.lastTimestamp' | tail -20  # Events
@@ -66,7 +66,7 @@ kubectl -n <namespace> get events --sort-by='.lastTimestamp' | tail -20  # Event
 **`--env prod` (Kubernetes — prod EKS):**
 **Confirm with user before any command.** All commands are read-only.
 ```bash
-kubectl config use-context arn:aws:eks:us-east-2:940766330009:cluster/prod-eks
+kubectl config use-context prod arn
 kubectl -n <namespace> get pods
 kubectl -n <namespace> logs <pod> --tail=100
 kubectl -n <namespace> get events --sort-by='.lastTimestamp' | tail -20

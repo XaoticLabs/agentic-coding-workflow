@@ -180,9 +180,54 @@ Use TodoWrite to create a checklist based on:
 - Consider edge cases listed
 - Flag anything unclear for clarification
 
-### Phase 3: Implementation
+### Phase 3: RED — Write Contract Tests
 
-**Your goal is the shortest correct program that satisfies the spec.** Every line you add is a liability. The best implementation has the least code a competent developer can read in one pass.
+**Before implementing anything, encode the spec's acceptance criteria as failing tests.**
+
+If the spec has a "Contract Tests" section, use it as your guide for test file location and test names. Otherwise, derive tests directly from the acceptance criteria.
+
+Write tests that:
+- Verify behavior described in the spec, not implementation details
+- Cover the happy path for each acceptance criterion first
+- Cover edge cases explicitly mentioned in the spec
+- Use the project's existing test framework, helpers, fixtures, and assertion style
+
+**Consider spawning a test-writer instance** for large test suites:
+If the task requires extensive test coverage (>3 test files or >15 test cases), suggest using `/agentic-coding-workflow:spawn test-writer` in a separate tmux pane with the spec's acceptance criteria as input. This gives the user visibility into test creation. For smaller test additions, write tests inline.
+
+**Run the tests. They must fail.** Confirm each test fails for the right reason — the behavior doesn't exist yet, not because of a syntax error, import failure, or test infrastructure problem.
+
+**If this task has no testable behavior** (configuration, wiring, infrastructure, deletion-only), skip to Phase 4 and implement directly.
+
+**Commit the contract tests:**
+```
+test: RED — failing tests for <task name>
+```
+
+**Present to user for confirmation via AskUserQuestion:**
+> RED tests committed for Task N: `<name>`
+>
+> Tests written:
+> - `<test file>`: `<test name>` — verifies <what>
+> - `<test file>`: `<test name>` — verifies <what>
+>
+> These tests become the immutable contract — once confirmed, they cannot be modified during implementation.
+>
+> Are these tests correct? (yes / no / adjust: <feedback>)
+
+If the user says "no" or provides feedback, update the tests, re-run to confirm they still fail correctly, amend the contract commit, and ask again. Repeat until confirmed.
+
+**CONTRACT IMMUTABILITY RULE:**
+
+Once the user confirms the contract tests:
+- **Test files from the contract commit are FROZEN.** You may not modify, delete, rename, skip, or mark as expected-failure any test from the contract commit.
+- **You may only ADD new test files or new test cases** — never change existing contract tests.
+- **If a test seems wrong**, re-read the spec. The test encodes the spec, not the implementation.
+- **If you cannot make a contract test pass**, explain why to the user rather than weakening the test.
+
+### Phase 4: GREEN — Implementation
+
+**Your goal is the shortest correct program that makes the contract tests pass.** Every line you add is a liability. The best implementation has the least code a competent developer can read in one pass.
 
 Before writing new code, ask in this order:
 1. **Can I delete code** to make this work? Removing a special case beats adding a new one.
@@ -203,7 +248,6 @@ Before writing new code, ask in this order:
 2. Core business logic
 3. API/Interface layer
 4. Integration points
-5. Tests
 
 **Rules:**
 - Make small, incremental changes
@@ -214,39 +258,35 @@ Before writing new code, ask in this order:
 - Don't add abstractions for single use sites — inline is fine
 - Don't add error handling for conditions that can't occur
 - Don't add docstrings, comments, or type annotations to code you didn't functionally change
+- **Never modify the contract test files** — fix the code, not the tests
+
+**Run the tests after implementing. The contract tests must now pass.** If they don't, fix the implementation.
 
 **As you complete each item:**
 - Mark the corresponding todo as complete
 - Note any deviations from spec (and why)
 
-### Phase 4: Testing
+### Phase 4b: REFACTOR (Optional)
 
-**Consider spawning a test-writer instance** for large test suites:
-If the task requires extensive test coverage (>3 test files or >15 test cases), suggest using `/agentic-coding-workflow:spawn test-writer` in a separate tmux pane. This gives the user visibility into test creation and keeps the main implementation context focused. For smaller test additions, write tests inline.
-
-**Write required tests:**
-- Implement all tests specified in "Testing requirements"
-- Cover edge cases listed in the spec
-- Follow existing test patterns in the codebase
-
-**Run tests:**
-```bash
-# Run the full test suite or relevant subset
-mix test                           # Elixir
-pytest                             # Python
-npm test                           # JavaScript/TypeScript
-```
-
-**Verify all tests pass:**
-- If tests fail, fix the implementation
-- Do not mark the task complete with failing tests
+If the green implementation has obvious duplication or awkwardness, clean it up now:
+- Tests must stay green after every change
+- No new behavior — refactoring is structure-only
+- Contract tests remain untouched
+- If the code is clean enough, skip this step
 
 ### Phase 5: Verification
+
+**Run static analysis / lint:**
+```bash
+mix credo                          # Elixir
+ruff check                         # Python
+eslint / tsc                       # TypeScript
+```
 
 **Check each acceptance criterion:**
 Go through the acceptance criteria one by one and verify:
 - [ ] Each criterion is met
-- [ ] Tests prove the criterion is met
+- [ ] Contract tests prove the criterion is met
 - [ ] Edge cases are handled
 
 **Code quality check:**
@@ -254,13 +294,7 @@ Go through the acceptance criteria one by one and verify:
 - Ensure no debug code or TODOs left behind
 - Verify no secrets or sensitive data exposed
 - Check that error handling is appropriate
-
-**Run static analysis if available:**
-```bash
-mix credo                          # Elixir
-pylint / mypy                      # Python
-eslint / tsc                       # TypeScript
-```
+- Verify contract test files were not modified after the RED commit
 
 ### Phase 6: Summary Report
 
@@ -274,11 +308,13 @@ eslint / tsc                       # TypeScript
 - `path/to/other.ex` - [what was done]
 
 ### Acceptance Criteria Status
-- [x] [Criterion 1] - Verified by [test/manual check]
-- [x] [Criterion 2] - Verified by [test/manual check]
+- [x] [Criterion 1] - Contract test: `test_name`
+- [x] [Criterion 2] - Contract test: `test_name`
 
-### Tests Added
-- `test/path/to/test.exs` - [what's tested]
+### TDD Summary
+- Contract tests (RED): [N tests written, all confirmed failing before implementation]
+- Implementation (GREEN): [all contract tests passing]
+- Contract integrity: [confirmed — no contract test files modified after RED commit]
 
 ### Test Results
 [Pass/Fail summary]
@@ -311,9 +347,10 @@ Unblocked tasks: [List task numbers that can now be started]
 
 ## Important Constraints
 
+- **Red before green** - Write failing contract tests from acceptance criteria before implementing
+- **Never modify contract tests** - Once the user confirms the RED tests, they are frozen. Fix the code, not the tests
 - **Stay focused** - Only implement what's in this task's spec
 - **Follow the spec** - The spec was carefully designed; trust it
-- **Test everything** - Every acceptance criterion needs verification
 - **Document deviations** - If you must deviate from spec, explain why
 - **Don't break existing functionality** - Run the full test suite
 - **Keep it atomic** - This should be a single, mergeable PR
