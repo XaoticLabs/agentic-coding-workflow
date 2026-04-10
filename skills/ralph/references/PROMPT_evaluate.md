@@ -47,7 +47,7 @@ Score each dimension 1-5:
 | **Correctness** | Will it work? Edge cases per spec? No obvious bugs? |
 | **Integration Quality** | Follows existing patterns? Uses existing utilities? Doesn't break other code? |
 | **Code Quality** | Minimal, readable, idiomatic? No unnecessary complexity? |
-| **Test Coverage** | Right things tested? Tests verify behavior, not implementation? |
+| **Test Coverage** | Right things tested? Tests verify behavior, not implementation? If TDD was used: were contract tests written RED-first? Do they encode spec criteria, not implementation details? Were contract tests left unmodified during GREEN? |
 | **Compression** | Is this the shortest correct program? Could fewer lines, files, or abstractions achieve the same result? |
 
 ### Compression Analysis
@@ -74,6 +74,8 @@ Actively look for:
 - **Wrapper bloat**: Thin wrappers that just delegate to the underlying call with no added value
 - **Speculative error handling**: Catching errors that can't occur in the current call path
 - **Annotation sprawl**: Type hints, docstrings, or comments added to unchanged code
+- **Contract violation**: Test files from the RED commit were modified during GREEN/REFACTOR — this defeats TDD and is an automatic REVISE
+- **Tests follow implementation**: Tests that assert implementation details (specific method calls, internal state) rather than behavior — a sign the tests were written after the code, not before
 
 ## Step 6: Active Feature Exercising (if RALPH_EVALUATE_UI is set)
 
@@ -115,6 +117,7 @@ If UI evaluation is not enabled, skip this entire step.
 ## Step 7: Render Verdict
 
 Apply these rules:
+- **Contract violation detected** → **REVISE** (automatic, overrides all other scoring — contract test immutability is non-negotiable)
 - Any dimension **1-2** → **REVISE**
 - Spec Fidelity **< 3** → **REVISE**
 - Correctness **< 3** → **REVISE**
@@ -124,6 +127,8 @@ Apply these rules:
 - Otherwise → **ACCEPT**
 
 When compression triggers REVISE, the `revise_guidance` must include specific compression instructions: which helpers to inline, which abstractions to remove, which stdlib functions to use instead.
+
+When contract violation triggers REVISE, the `revise_guidance` must specify which test files were modified and instruct the next iteration to leave them untouched.
 
 ## Step 8: Write Verdict File
 

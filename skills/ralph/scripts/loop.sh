@@ -842,7 +842,49 @@ ${BRIEFING}
       fi
     fi
 
-    # Gate 3: External test + lint verification (tamper-proof)
+    # Gate 3: TDD contract integrity check
+    # If the iteration used TDD (has a "RED" contract commit), verify that
+    # no files from that commit were modified in subsequent commits.
+    if [ "$GATE_PASSED" = true ]; then
+      # Find the contract commit: look for "test: RED" in commit messages since PRE_COMMIT
+      CONTRACT_COMMIT=$(git log --oneline "$PRE_COMMIT"..HEAD --grep="^test: RED" --format="%H" | tail -1 || true)
+      if [ -n "$CONTRACT_COMMIT" ]; then
+        # Get files touched by the contract commit
+        CONTRACT_FILES=$(git diff-tree --no-commit-id --name-only -r "$CONTRACT_COMMIT" 2>/dev/null || true)
+        if [ -n "$CONTRACT_FILES" ]; then
+          # Get files modified in commits AFTER the contract commit
+          POST_CONTRACT_FILES=$(git diff --name-only "$CONTRACT_COMMIT"..HEAD 2>/dev/null || true)
+          TAMPERED=""
+          while IFS= read -r cfile; do
+            [ -z "$cfile" ] && continue
+            if echo "$POST_CONTRACT_FILES" | grep -qxF "$cfile"; then
+              TAMPERED="${TAMPERED}${cfile}\n"
+            fi
+          done <<< "$CONTRACT_FILES"
+
+          if [ -n "$TAMPERED" ]; then
+            GATE_PASSED=false
+            echo "REVERT: Contract test files were modified after the RED commit: $(echo -e "$TAMPERED" | head -5)"
+            printf "%s\tREVERT_CONTRACT\t%s\t-\tTampered contract tests: %s\n" \
+              "$JOURNAL_TS" "$TASK_LABEL" "$(echo -e "$TAMPERED" | tr '\n' ' ')" >> "$JOURNAL_FILE"
+            trace_event "gate" "gate=contract_integrity" "passed=false" "tampered=$(echo -e "$TAMPERED" | tr '\n' ' ' | head -c 200)"
+            REVERT_REASON_FILE="${LOG_DIR}/revert-${ITERATION}-reason.txt"
+            {
+              echo "REVERT_CONTRACT — Iteration ${ITERATION} — $(date)"
+              echo "Task: ${TASK_LABEL}"
+              echo "The following contract test files from the RED commit were modified during GREEN/REFACTOR:"
+              echo -e "$TAMPERED"
+              echo "---"
+              echo "Contract tests are immutable once committed. Fix the implementation, not the tests."
+            } > "$REVERT_REASON_FILE"
+          else
+            trace_event "gate" "gate=contract_integrity" "passed=true" "contract_files=$(echo "$CONTRACT_FILES" | wc -l | tr -d ' ')"
+          fi
+        fi
+      fi
+    fi
+
+    # Gate 4: External test + lint verification (tamper-proof)
     if [ "$GATE_PASSED" = true ]; then
       echo "Running external verification gate..."
 

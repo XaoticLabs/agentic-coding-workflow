@@ -97,10 +97,12 @@ Scan the plan document and your Phase 2 analysis for ambiguity:
 
 **Rules for atomic tasks:**
 - Each task should be completable in a single commit (ideally 1-4 hours of work)
-- Each task should be independently testable
-- Each task should have clear acceptance criteria
+- Each task should be independently testable — acceptance criteria must translate directly into test assertions
+- Each task should have clear acceptance criteria written as behavioral contracts (what the system does, not how it's built)
 - Tasks should have minimal dependencies on other tasks
 - Tasks should be orderable (what must come before what)
+
+**TDD orientation:** Every task's acceptance criteria will become immutable contract tests during implementation (RED phase). Write criteria with this in mind — they must be specific enough that an implementer can write a failing test from each one without ambiguity.
 
 **Task categories to consider:**
 1. **Data/Schema tasks** - migrations, models, types
@@ -142,22 +144,31 @@ For each atomic task, write a complete specification:
 **Acceptance criteria:**
 - [ ] [Specific, verifiable criterion 1]
 - [ ] [Specific, verifiable criterion 2]
-- [ ] [Test coverage criterion]
 
 > **Acceptance criteria quality rules** — every criterion must be:
 > - **Observable:** An evaluator can verify it by reading code or running a command
 > - **Binary:** It either passes or fails — no "somewhat meets" allowed
 > - **Scoped:** It references specific files, functions, or behaviors — not general qualities
+> - **Test-encodable:** An implementer can write a failing test directly from this criterion — no interpretation required
 >
 > Bad: "Authentication should work properly"
 > Good: "POST /api/login with valid credentials returns 200 with JSON body containing `token` (string) and `expires_at` (ISO 8601 timestamp)"
 >
 > Bad: "Tests should cover the feature"
 > Good: "test/auth/login_test.exs includes tests for: valid login, invalid password (401), missing email (422)"
+>
+> Bad: "The cache should be fast"
+> Good: "Calling `UserCache.get(id)` after `UserCache.put(user)` returns `{:ok, user}` without hitting the database"
 
-**Testing requirements:**
-- Unit tests for: [specific functions/modules]
-- Integration tests for: [specific flows]
+**Contract tests (RED phase):**
+- Test file: `[path/to/test_file]`
+- Tests to write before implementing:
+  - `[test name]` — asserts [criterion from above]
+  - `[test name]` — asserts [criterion from above]
+- These tests become immutable once committed — implementation must make them pass without modifying them
+
+**Non-testable items** (if any):
+- [Config, wiring, or infrastructure items that skip the RED phase — list explicitly so implementers know]
 
 **Notes/Warnings:**
 - [Any gotchas, performance considerations, or things to watch out for]
@@ -263,13 +274,19 @@ Replace `<slug>` with the actual slug in the JSON.
 
 [... more tasks ...]
 
-## Testing Strategy
+## Testing Strategy (TDD)
 
-### Unit Testing
-- [What to unit test and why]
+Implementation follows red-green TDD: for each task, the implementer writes failing contract tests from the acceptance criteria (RED), then implements the minimum code to make them pass (GREEN). Contract tests are immutable once committed — they cannot be modified during implementation.
+
+### Contract Tests per Task
+| Task | Test File | Contract Tests | Non-Testable Items |
+|------|-----------|----------------|-------------------|
+| 1 | `[test file path]` | [N tests] | [any config/wiring items] |
+| 2 | `[test file path]` | [N tests] | [none] |
+| ... | ... | ... | ... |
 
 ### Integration Testing
-- [What integration tests are needed]
+- [Cross-task integration tests — written after individual tasks pass]
 
 ### Manual Testing Checklist
 - [ ] [Manual test scenario 1]
@@ -293,7 +310,7 @@ Replace `<slug>` with the actual slug in the JSON.
 
 ---
 
-*This spec is implementation-ready. Each task is designed to be picked up independently (respecting dependencies) and completed in a single commit.*
+*This spec is implementation-ready. Each task is designed for red-green TDD: write failing contract tests from the acceptance criteria (RED), implement the minimum to pass them (GREEN). Contract tests are immutable once committed. Tasks can be picked up independently (respecting dependencies) and completed in a single iteration.*
 ```
 
 ### Phase 8: Ralph-Compatible Output (conditional)
@@ -323,7 +340,7 @@ mkdir -p .claude/specs/<slug>
     "path": ".claude/specs/<slug>/",
     "glob": "*.md",
     "exclude": ["IMPLEMENTATION_PLAN.md"],
-    "sections": ["## Acceptance Criteria"],
+    "sections": ["## Acceptance Criteria", "## Contract Tests (RED Phase)"],
     "min_files": 1
 }
 ```
@@ -353,16 +370,25 @@ Read the monolithic spec's Implementation Tasks section. For each task, create a
 
 ## Acceptance Criteria
 
+- [ ] <Specific, verifiable criterion — must be directly encodable as a test assertion>
 - [ ] <Specific, verifiable criterion>
-- [ ] <Specific, verifiable criterion>
+
+## Contract Tests (RED Phase)
+
+Test file: `<path/to/test_file>`
+
+| Test Name | Asserts |
+|-----------|---------|
+| `<descriptive_test_name>` | <which acceptance criterion this encodes> |
+| `<descriptive_test_name>` | <which acceptance criterion this encodes> |
+
+Non-testable items: <list any config/wiring/deletion items that skip RED, or "none">
+
+These tests are written before implementation and become immutable once committed.
 
 ## Edge Cases
 
-- <Edge case and expected behavior>
-
-## Testing Requirements
-
-- <What to test and expected outcomes>
+- <Edge case and expected behavior — include as contract test if behavioral>
 ```
 
 **Generate IMPLEMENTATION_PLAN.md:**
@@ -413,12 +439,14 @@ Ralph-compatible specs generated:
 
 Before finalizing the spec, verify:
 
-- [ ] Every task has clear acceptance criteria
+- [ ] Every task has clear acceptance criteria that are directly test-encodable
 - [ ] Every task specifies which files to modify
+- [ ] Every task with testable behavior has a Contract Tests section naming the test file and test cases
+- [ ] Each acceptance criterion maps to at least one contract test
+- [ ] Non-testable items (config, wiring, deletion) are explicitly marked per task
 - [ ] Dependencies between tasks are explicit
 - [ ] Edge cases from the plan are assigned to specific tasks
 - [ ] Security considerations are addressed in relevant tasks
-- [ ] Testing requirements are clear for each task
 - [ ] The critical path is identified
 - [ ] Tasks are small enough for single PRs
 - [ ] Existing codebase patterns are referenced

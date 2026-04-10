@@ -30,8 +30,8 @@ else
   exit 0
 fi
 
-# Get staged and unstaged changes, deduplicate, filter to existing files
-CHANGED_FILES=$(git diff --name-only 2>/dev/null; git diff --cached --name-only 2>/dev/null)
+# Get staged, unstaged, and untracked changes, deduplicate, filter to existing files
+CHANGED_FILES=$(git diff --name-only 2>/dev/null; git diff --cached --name-only 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null)
 CHANGED_FILES=$(echo "$CHANGED_FILES" | sort -u | grep -v '^$' | while read -r f; do [ -f "$f" ] && echo "$f"; done)
 
 if [ -z "$CHANGED_FILES" ]; then
