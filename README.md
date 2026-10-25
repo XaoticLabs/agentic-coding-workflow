@@ -128,10 +128,11 @@ Reusable agent role definitions in `agents/` — work as both subagent prompts (
 
 ## Hooks
 
+Tool approvals use Claude Code's normal permission handling.
+
 | Hook | Event | What it does |
 |------|-------|--------------|
 | `dangerous_command_blocker.py` | PreToolUse | Catches dangerous commands (`rm -rf /`, `.env` access) and blocks them |
-| `subagent_permission_router.py` | PreToolUse | Auto-approves read-only tools for all sessions, extra tools for subagents |
 | `ship-gate.sh` | PreToolUse | Blocks `gh pr create` unless PR description exists and user approved it |
 | `audit-logger.py` | PostToolUse | Logs all tool calls to `.claude/logs/tool-calls.jsonl` for audit and debugging |
 | `lint-on-stop.sh` | Stop | Runs linting and tests when Claude stops — blocks and asks Claude to fix errors |

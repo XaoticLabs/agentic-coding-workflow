@@ -13,16 +13,6 @@
         ]
       },
       {
-        "description": "Auto-approves read-only tools (Read, Glob, Grep, safe Bash) for all sessions and extra tools for subagents",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/subagent_permission_router.py",
-            "timeout": 5
-          }
-        ]
-      },
-      {
         "description": "Blocks gh pr create unless PR description exists and user approved it",
         "hooks": [
           {
