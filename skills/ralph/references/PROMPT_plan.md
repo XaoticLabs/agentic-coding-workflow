@@ -19,7 +19,7 @@ Compare specs against the existing codebase:
 3. **Identify new work** — what specs have no implementation at all?
 4. **Identify conflicts** — do any specs contradict existing code?
 
-Use parallel subagents for codebase searches to be efficient.
+Read a few relevant files and perform targeted searches directly. Delegate an independent investigation when its intermediate output would overwhelm the main task, requesting a concise summary with paths and evidence. Parallelize independent spec areas with clear interfaces and ownership. Use an independent verifier when its expected benefit justifies the extra model calls, latency, and handoff cost.
 
 ## Step 4: Generate Implementation Plan
 

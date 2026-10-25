@@ -58,4 +58,4 @@ Write test files directly. Include a brief summary of what's covered and any not
 ## Best Used As
 
 - **Primary instance**: `claude --plugin-dir /path/to/agentic-coding-workflow --agent agentic-coding-workflow:test-writer` — for writing tests with visibility and steering
-- **Subagent**: Only for small, well-defined test additions where the scope is clear
+- **Subagent**: Self-contained test work with clear ownership and completion checks, the required editing and test tools, sufficient `maxTurns`, and worktree isolation when concurrent edits need separate checkouts

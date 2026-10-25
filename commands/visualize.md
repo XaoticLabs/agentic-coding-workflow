@@ -49,7 +49,7 @@ grep -r "^from\|^import" <path> --include="*.py" | head -50
 grep -rn "def \|defp \|def " <path> --include="*.ex" | head -50
 ```
 
-**Use subagents for large codebases** — launch parallel Agent workers to explore different subsystems, then combine their structural maps.
+Read a few relevant files directly. Delegate independent subsystem investigations when their intermediate output would overwhelm the visualization task. Parallelize subsystems with clear interfaces, request concise structural maps with paths and evidence, then combine the findings.
 
 **Build a dependency graph:**
 - Which modules depend on which?

@@ -198,9 +198,11 @@ Route to the `pr-reviewer` skill in an isolated worktree.
 - Otherwise auto-detect: `mix.exs` → elixir, `pyproject.toml`/`setup.py` → python
 - Branches separated by spaces, "and", commas
 
-### 2. Launch via Script
+### 2. Choose Review Placement
 
-**IMPORTANT: Do NOT use subagents or the Agent tool for PR code reviews. You MUST run the launch script below.** The script handles everything: fetching, worktree creation, PR number lookup, dependency bootstrapping, tmux session creation (for multi-branch), and launching independent Claude review sessions.
+Review a small, focused change in the current session. Use an independent reviewer when the expected benefit justifies the model calls, latency, and handoff cost. A subagent needs the review tools, permissions, turn budget, and an isolated worktree at the target branch. Parallelize independent branch reviews with clear scope and separate worktrees. Use separate primary sessions when independent visibility, user interaction, or a separate lifecycle is needed.
+
+For separate primary sessions, use the launch script below. It handles fetching, worktree creation, PR number lookup, dependency bootstrapping, tmux session creation (for multi-branch), and launching independent Claude review sessions.
 
 Find the launch script:
 ```bash
@@ -221,9 +223,9 @@ The script will:
 
 After launching, report the tmux session name if applicable. Your job is done — the review sessions are independent.
 
-### 3. Fallback (no tmux, no script)
+### 3. Current Session or Subagent Review
 
-Only if the launch script cannot be found: review in current session by creating a worktree, cd into it, invoke the `pr-reviewer` skill directly, then cleanup worktree when done.
+For current-session or subagent review, follow the `pr-reviewer` skill's worktree setup and guarded cleanup instructions. Review the requested branch, gather PR context, and prepare dependencies needed for verification. Pass the branch, criteria, and output format to a delegated reviewer; inspect its findings and evidence before reporting. This path also serves as the fallback if the launcher is unavailable.
 
 ---
 
@@ -257,7 +259,7 @@ For each acceptance criterion: read relevant code, mark as PASS/FAIL/PARTIAL wit
 
 - Search for similar implementations in codebase; flag deviations from established patterns
 - Assess readability, maintainability, edge cases, error handling, security, performance
-- Auto-detect language and spawn subagent for language-specific deep review
+- Auto-detect language and load the relevant review guidance; delegate an independent language-specific review when its expected benefit justifies its cost
 
 ### 5. Run Verification
 
@@ -302,9 +304,9 @@ Staff engineer critique of a plan document before implementation.
 - Slug → look for `.claude/plans/<slug>.md`
 - Empty → auto-detect from `.claude/plans/`, ask if multiple
 
-### 2. Launch Review Subagent
+### 2. Review the Plan
 
-Spawn a subagent with staff engineer persona to review across:
+Read the plan directly. Use an independent reviewer with a staff engineer persona when a separate assessment is likely to catch enough material issues to justify its cost. Review across:
 - **Feasibility** — technically achievable? hidden complexities?
 - **Scope** — well-defined? scope creep hiding?
 - **Missing considerations** — edge cases, failure modes, performance, migration?

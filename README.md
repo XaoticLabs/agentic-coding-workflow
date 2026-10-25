@@ -128,6 +128,8 @@ For interactive work, a conversational plan is often enough. Save a plan or gene
 
 Reusable agent role definitions in `agents/` — work as both subagent prompts (via the `Agent` tool) and full primary instances (via `claude --plugin-dir /path/to/agentic-coding-workflow --agent agentic-coding-workflow:<role>`).
 
+Read a few relevant files directly. Delegate investigations whose intermediate output would overwhelm the main task, parallelize independent components with clear interfaces, and use independent verification when its expected benefit justifies its cost. Implementation can run in the current session, a capable subagent, or a separate primary instance; choose by tools, permissions, turn budget, isolation, and oversight. See the [routing policy](CLAUDE.md#subagents-vs-primary-instances--when-to-use-which) and [Claude subagent reference](https://code.claude.com/docs/en/sub-agents).
+
 | Agent | Role |
 |-------|------|
 | `researcher` | Read-only research and exploration |

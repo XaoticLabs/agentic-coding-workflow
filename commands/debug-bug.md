@@ -87,23 +87,23 @@ If the bug description is ambiguous or lacks reproduction steps, use AskUserQues
 
 ### Step 4: Reproduce (Locate Code)
 
-**Use a subagent for initial exploration** — this keeps the main context clean and is ideal for read-only research:
+Start with targeted searches and direct reads of a few relevant files. Delegate an independent investigation to a researcher subagent when its intermediate output would overwhelm the main task. Parallelize separate hypotheses or subsystems only when their interfaces and scope are clear.
 
-Launch an Agent (subagent) with the researcher role to search the codebase:
+Look for:
 - Entry points related to the bug (controllers, handlers, UI components)
 - Data flow through the affected feature
 - Related modules, services, or functions
 - If environment context was gathered, correlate infrastructure findings with code (error messages → source strings, stack traces → files/lines, config issues → env vars)
 
-The subagent prompt should include the bug summary from Step 3 and ask it to return:
+If delegating, include the bug summary from Step 3 and ask for:
 1. Relevant files and line numbers
 2. The data flow through the affected area
 3. Any recent git changes to those files
 4. Similar patterns elsewhere that work correctly
 
-Read the subagent's findings, then continue investigation in the main session with targeted reads.
+Review delegated findings and evidence before continuing with targeted reads.
 
-**When to escalate to a primary instance:** If the bug requires implementation work (writing a fix, running tests, iterating), and you want the user to have visibility, suggest `/agentic-coding-workflow:spawn test-writer` or continue in the current session. Subagents should only handle the research phase.
+Keep tightly coupled investigation, fixes, and testing in the current session. A self-contained fix can run in a subagent with the required tools, permissions, turn budget, and worktree isolation. Use `/agentic-coding-workflow:spawn implementer` when independent visibility, direct user steering, or a separate session lifecycle is needed. Add an independent verifier when its expected benefit justifies its cost.
 
 ### Step 5: Investigate
 

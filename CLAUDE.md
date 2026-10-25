@@ -17,31 +17,20 @@ Component-specific conventions are in `.claude/rules/` — see `commands.md`, `s
 
 ## Subagents vs Primary Instances — When to Use Which
 
-There are two ways to throw more compute at a problem. Pick the right one:
+Choose delegation from the work's independence, context needs, required capabilities, and oversight. Account for the extra model calls, latency, and handoffs:
 
-**Subagents** (built-in `Agent` tool) — fire-and-forget workers inside your session:
-- Read-only research and exploration (search, summarize, answer questions)
-- Bounded tasks with self-verifying output (find X, count Y, what does Z do?)
-- Keeping the main context window clean from noisy intermediate work
-- Quick turnaround, no setup overhead
+- Read a few relevant files and perform targeted searches directly in the current session.
+- Delegate an independent investigation when its intermediate search results, logs, or file contents would overwhelm the main task. Ask for a concise summary with relevant paths and evidence.
+- Parallelize independent components with clear interfaces, file ownership, and completion checks.
+- Use an independent verifier when its expected reduction in consequential errors justifies its cost.
 
-**Primary instances** (full Claude sessions via tmux / `/agentic-coding-workflow:spawn`) — independent sessions with their own context:
-- Implementation work where you want visibility and course-correction
-- Tasks needing the full permission model and human-in-the-loop approval
-- Long-running work where mid-flight steering is likely
-- Parallel feature work across worktrees (each instance owns a branch)
+Keep tightly coupled investigation, implementation, and testing together when they share substantial context.
 
-**Quick routing guide:**
+**Subagents** (built-in `Agent` tool) can investigate, implement, and run tests when their configured tools and permissions support the task. Check tool access, the `maxTurns` budget, and `isolation: worktree` when concurrent edits need separate checkouts. Read-only roles remain read-only. See the [Claude subagent reference](https://code.claude.com/docs/en/sub-agents).
 
-| Task | Mode | Why |
-|------|------|-----|
-| Search codebase for all uses of X | Subagent | Read-only, bounded |
-| Explore how a system works | Subagent | Research — result is a summary |
-| Write tests for a module | Primary instance | Implementation — needs review as it writes |
-| Implement feature A while working on B | Primary instance | Parallel work, needs own worktree |
-| Fix failing CI tests | Primary instance | Debugging + implementation, needs judgment |
-| Summarize recent commits | Subagent | Read-only, bounded |
-| Refactor a major system | Primary instance | High-stakes, needs oversight |
+**Primary instances** (full Claude sessions via tmux / `/agentic-coding-workflow:spawn`) suit work that needs an independently visible, steerable session, user interaction unavailable to the selected subagent, or a separate session lifecycle. Implementation does not inherently require a separate primary session; choose placement from capability and oversight requirements.
+
+Give delegated work a clear scope, inputs, output format, and verification criteria. Review its result and integrate it before treating the task as complete.
 
 **Agent definitions are shared context** — the same `agents/researcher.md` works as a subagent prompt (`Agent` tool) or a full instance context (`claude --plugin-dir /path/to/agentic-coding-workflow --agent agentic-coding-workflow:researcher` or `/agentic-coding-workflow:spawn researcher`).
 

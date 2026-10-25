@@ -64,7 +64,14 @@ If ALL tasks have `status: "done"` (legacy `[x]`) (or all your assigned tasks if
 
 Before writing any code, **search the codebase** to check if this task (or parts of it) is already implemented.
 
-**Use subagents for ALL exploration.** Spawn parallel subagents for every search, read, and grep operation. Never search or read files directly in your main context — keep it clean for implementation. Subagents should return concise summaries: relevant file paths, key patterns found, and gaps identified.
+**Choose delegation based on the work:**
+
+- Read a few relevant files and perform targeted searches directly.
+- Delegate an independent investigation when its intermediate output would overwhelm the main task. Request a concise summary of relevant paths, patterns, evidence, and gaps.
+- Parallelize independent components with clear interfaces, file ownership, and completion checks.
+- Use an independent verifier when its expected benefit justifies the added model calls, latency, and handoff cost.
+
+Implementation can stay in the current session or run in a capable subagent or separate primary session. Choose placement by required tools and permissions, turn budget, worktree isolation, and oversight needs. Keep tightly coupled work together, and check delegated results before integrating them.
 
 Look for:
 - Functions/modules mentioned in the task spec

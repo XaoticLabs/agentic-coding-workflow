@@ -18,10 +18,11 @@ paths:
 ## Dual-Use Design
 - Agent definitions work for BOTH subagents (via `Agent` tool prompt) and primary instances (via `claude --plugin-dir /path/to/plugin --agent agentic-coding-workflow:<role>`); use `--append-system-prompt-file` for a standalone role file (only the Markdown instructions, without agent frontmatter metadata)
 - Write instructions that make sense in either context
-- Specify constraints appropriate for autonomous operation (subagent mode) — the human-in-the-loop will add oversight in primary instance mode
+- Specify scope, constraints, completion checks, and reporting appropriate to the task in either mode
 
 ## Mode Selection in Commands
-- **Use subagents for:** read-only research, exploration, review, analysis, summarization
-- **Use primary instances for:** implementation, testing, debugging, any task where the user wants to steer
+- Follow the task-based delegation policy in `CLAUDE.md`: read a few relevant files directly, delegate investigations with overwhelming intermediate output, parallelize independent components with clear interfaces, and use independent verification when its expected benefit justifies its cost
+- Implementation, testing, and debugging may run in the current session, a capable subagent, or a separate primary instance; check tools, permissions, turn budget, worktree isolation, and oversight needs
+- Keep tightly coupled work and ongoing user interaction in the current session; use a separate primary instance when independent visibility, steering, or lifecycle is needed
 - Commands should document which mode they use and why
 - When a command switches modes mid-flow (e.g., research subagent → implementation in main session), make the handoff explicit

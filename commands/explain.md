@@ -65,7 +65,7 @@ $ARGUMENTS — One of:
 - Configuration that affects behavior
 - Similar patterns elsewhere in the codebase (shows conventions)
 
-**Use subagents for broad exploration** — if the concept spans multiple modules, launch Agent workers to explore different areas in parallel. Combine their findings.
+Read a few relevant files directly. Delegate an independent investigation when its intermediate output would overwhelm the explanation task; parallelize independent areas with clear interfaces. Request concise summaries with paths and evidence, then combine the findings.
 
 ### Phase 3: Generate the Explanation
 

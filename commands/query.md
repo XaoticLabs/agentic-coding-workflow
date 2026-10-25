@@ -92,7 +92,7 @@ mysql -e "SHOW TABLES;" <database>
 mysql -e "DESCRIBE <table>;" <database>
 ```
 
-**Use a subagent for schema exploration** if the question touches multiple tables or you're unsure which tables are relevant. Have the subagent:
+Read a few relevant schema definitions directly. Delegate independent schema exploration when its intermediate output would overwhelm the main task, asking for a concise summary. If delegating, have the subagent:
 1. List all tables
 2. Find tables related to the question's domain (users, campaigns, revenue, etc.)
 3. Check column names and types on relevant tables

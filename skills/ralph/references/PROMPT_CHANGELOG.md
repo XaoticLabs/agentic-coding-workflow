@@ -24,6 +24,14 @@ Each entry follows this structure:
 
 ## Changelog
 
+### 2026-10-25 — PROMPT_build.md / PROMPT_plan.md — Task-based delegation
+
+**Changed:** Replaced mandatory exploration subagents with direct reads for a few relevant files, delegation for independent investigations with overwhelming intermediate output, parallel work with clear interfaces, and independent verification when its expected benefit justifies its cost. Build placement now depends on tools, permissions, turn budget, isolation, and oversight.
+**Intended effect:** Reduce unnecessary model calls and handoffs for trivial lookups while retaining useful delegation and verification.
+**Observed effect:** Pending — no Ralph run performed for this revision.
+**Model:** N/A — prompt-only change
+**Evidence:** Static prompt review and the [Claude subagent reference](https://code.claude.com/docs/en/sub-agents); runtime cost and quality effects remain unmeasured.
+
 ### 2026-03-26 — PROMPT_evaluate.md — Initial evaluator prompt
 
 **Changed:** Created new evaluation prompt with 5 grading dimensions, hard thresholds, LLM code smell detection, and structured JSON verdict output. Supports two modes: END-OF-RUN (default, advisory report) and PER-ITERATION (opt-in, can trigger reverts).

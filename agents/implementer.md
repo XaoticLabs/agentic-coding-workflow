@@ -42,5 +42,5 @@ No summary report needed — the git log and plan updates are the record.
 
 ## Best Used As
 
-- **Subagent**: Not recommended — implementation needs full tool access
+- **Subagent**: Self-contained implementation with the required editing, shell, and test tools, sufficient `maxTurns`, and `isolation: worktree` when concurrent edits need separate checkouts
 - **Primary instance**: `claude --plugin-dir /path/to/agentic-coding-workflow --agent agentic-coding-workflow:implementer` — for Ralph loop iterations where each invocation is a fresh session implementing one task autonomously

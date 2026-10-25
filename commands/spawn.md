@@ -9,7 +9,7 @@ effort: low
 
 # Spawn Primary Claude Instance
 
-Launches a new full Claude Code session in a tmux pane with an agent role preloaded as context. For when you need a visible, steerable Claude instance — not a fire-and-forget subagent.
+Launches a new full Claude Code session in a tmux pane with an agent role preloaded as context. Use when work needs an independently visible, steerable session or a separate session lifecycle. Choose placement by required capabilities and oversight; implementation can also run in the current session or a suitably configured subagent.
 
 ## Input
 
