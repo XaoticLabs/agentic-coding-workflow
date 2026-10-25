@@ -1,7 +1,6 @@
 ---
-globs:
+paths:
   - "commands/**/*.md"
-description: Rules for writing and modifying slash commands
 ---
 
 # Command Development Rules

@@ -1,7 +1,6 @@
 ---
-globs:
+paths:
   - "skills/**/*"
-description: Rules for building and modifying skills
 ---
 
 # Skill Development Rules

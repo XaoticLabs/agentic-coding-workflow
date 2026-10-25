@@ -46,7 +46,7 @@ Rules belong in different places depending on their scope. Evaluate the rule and
 **File-type-specific rules → `.claude/rules/<topic>.md` (path-scoped)**
 - Only matters when working with certain file types or directories
 - Examples: "Elixir contexts must have a public API module" (scoped to `lib/**/*.ex`), "React components use named exports" (scoped to `src/components/**/*.tsx`)
-- Use YAML frontmatter `globs:` to scope the rule to matching paths
+- Use YAML frontmatter `paths:` to scope the rule to matching paths
 
 **Personal preferences → `~/.claude/CLAUDE.md` or `~/.claude/rules/`**
 - User-specific, not project conventions
@@ -74,9 +74,8 @@ Before creating a new rule:
 - Use this format:
 ```markdown
 ---
-globs:
+paths:
   - "path/pattern/**/*.ext"
-description: One-line description of when this rule applies
 ---
 
 # Rule Topic
@@ -84,6 +83,7 @@ description: One-line description of when this rule applies
 - Rule statement 1
 - Rule statement 2
 ```
+- Only `paths` is recognized in rule frontmatter; other fields are ignored. Put descriptions in the Markdown body. Rules without `paths` load unconditionally.
 - File names should be descriptive: `elixir-contexts.md`, `api-conventions.md`, `testing.md`
 
 **If updating personal rules (`~/.claude/`):**

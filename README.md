@@ -148,8 +148,10 @@ Tool approvals use Claude Code's normal permission handling.
 This plugin ships with a `CLAUDE.md` and `.claude/rules/` directory that teach Claude how to work on this plugin. Projects that install this plugin should create their own:
 
 - **`CLAUDE.md`** (project root) — project-wide conventions, architecture, preferred patterns
-- **`.claude/rules/<topic>.md`** — path-scoped rules that only load when Claude touches matching files (uses YAML `globs:` frontmatter)
+- **`.claude/rules/<topic>.md`** — path-scoped rules that only load when Claude touches matching files (uses YAML `paths:` frontmatter)
 - **`~/.claude/CLAUDE.md`** — personal preferences that apply across all projects
+
+Claude Code only reads `paths` from rule frontmatter; other fields are ignored. Rules without `paths` load unconditionally. See the [rule frontmatter reference](https://code.claude.com/docs/en/memory#rule-frontmatter-reference).
 
 The `/agentic-coding-workflow:update-rules` command helps you build these up over time. The `rule-capture-on-stop` hook gently reminds you to capture patterns after implementation tasks.
 

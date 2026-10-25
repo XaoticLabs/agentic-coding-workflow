@@ -1,7 +1,6 @@
 ---
-globs:
+paths:
   - "hooks/**/*"
-description: Rules for writing and modifying hooks
 ---
 
 # Hook Development Rules

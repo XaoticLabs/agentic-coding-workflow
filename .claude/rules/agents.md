@@ -1,7 +1,6 @@
 ---
-globs:
+paths:
   - "agents/**/*.md"
-description: Rules for writing and modifying agents and subagents
 ---
 
 # Agent Development Rules
