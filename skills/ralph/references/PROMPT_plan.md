@@ -25,6 +25,8 @@ Use parallel subagents for codebase searches to be efficient.
 
 Write `IMPLEMENTATION_PLAN.md` in the spec directory.
 
+When refreshing an existing plan, preserve its `## Execution Boundaries` section, including approved scope, allowed operations, completion checks, limits, and stop conditions. Plan regeneration must not expand those boundaries. Record material conflicts as blockers for human input.
+
 **Task contract:** Put one fenced JSON object in `## Task Index`. `scripts/task-plan.py` is the shared parser for planning validation, scheduling, progress, and task selection. It rejects duplicate IDs, missing dependencies, self-dependencies, and cycles before execution. Existing checkbox indexes remain readable for compatibility; generate JSON for new plans.
 
 ````markdown

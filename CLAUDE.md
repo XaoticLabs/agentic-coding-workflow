@@ -47,7 +47,17 @@ There are two ways to throw more compute at a problem. Pick the right one:
 
 ## Workflow
 
-The plugin's core workflow is: `/agentic-coding-workflow:prime` → `/agentic-coding-workflow:plan` → `/agentic-coding-workflow:review --plan` → `/agentic-coding-workflow:write-spec` → `/agentic-coding-workflow:implement` → `/agentic-coding-workflow:test` → `/agentic-coding-workflow:review --spec` → `/agentic-coding-workflow:ship`. All intermediate artifacts go in `.claude/plans/` and `.claude/specs/`. Implement creates its own worktree automatically. For autonomous execution, use `/agentic-coding-workflow:ralph` which handles parallel workers, task partitioning, and reunification. For manual parallel work, use `/agentic-coding-workflow:parallel` to spin up N implement sessions, then `/agentic-coding-workflow:reunify` to merge back.
+Use the least elaborate workflow that resolves material uncertainty and produces verifiable results. Choose by uncertainty, impact, reversibility, and scope; reassess after inspection. The shared policy is in `commands/shared-patterns.md` under **Proportional Workflow**.
+
+| Task | Default workflow |
+|------|------------------|
+| Small, clear change | Inspect relevant context → implement → verify → report |
+| Substantial feature | Clarify material uncertainty → maintain a concise plan → implement → verify → review |
+| Long unattended task | Approve scope and limits → execute in isolation → preserve progress → verify outcomes → present evidence |
+
+`/agentic-coding-workflow:implement "<change>"` supports direct interactive work. `/agentic-coding-workflow:plan` writes a concise plan when context is sufficient; `--interview` selects deeper questioning. `/agentic-coding-workflow:write-spec` is available for detailed task handoffs. Teaching (`explain`, `review --learn`) and explicit contract-test approval (`implement --approve-tests`) remain selected modes. Planning, specs, new worktrees, and repeated approvals are not universal prerequisites. Verification and project-required gates apply to every path.
+
+Save generated artifacts in `.claude/plans/` and `.claude/specs/` when needed. Use `/agentic-coding-workflow:ralph` for unattended execution with agreed limits and isolated worktrees; it handles task partitioning, progress records, verification, and reunification. For manual parallel work, use `/agentic-coding-workflow:parallel` and `/agentic-coding-workflow:reunify`. Review and ship when requested; existing publishing gates still apply.
 
 ## File Organization
 

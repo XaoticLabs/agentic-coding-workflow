@@ -11,6 +11,7 @@ Read `.claude/AGENTS.md` for project conventions and `.claude/project-commands.j
 Read `IMPLEMENTATION_PLAN.md` from the spec directory provided.
 
 - Read the `## Strategic Context` section first if it exists — this is human-written intent (the "why" behind this work, constraints, and architectural decisions). Let it guide your overall approach.
+- Read `## Execution Boundaries` if present and respect its approved scope, allowed operations, completion checks, limits, and stop conditions. Resolve minor implementation details autonomously within those boundaries. If a material decision would exceed them, record the blocker in Learnings, leave the task pending, preserve progress, create `.claude/ralph/stop` in the project root, and exit without expanding scope or publishing. Do not mark blocked work complete.
 - Read the `## Learnings` section carefully — previous iterations captured gotchas, patterns, and deviations that apply to your work. Treat learnings as actionable rules, not just notes.
 
 If `.claude/ralph-progress.md` exists, read it for session-level context (recent decisions, blockers, discoveries from prior iterations).

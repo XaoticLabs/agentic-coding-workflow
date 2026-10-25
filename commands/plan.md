@@ -9,13 +9,12 @@ allowed-tools:
   - WebFetch
   - Agent
   - mcp__claude_ai_Linear__get_issue
-  - mcp__claude_ai_Linear__list_issues
 effort: high
 ---
 
-# Feature Planning Partner
+# Task Planning Partner
 
-An interactive planning command that explores the problem space and produces a comprehensive plan document that feeds directly into `/agentic-coding-workflow:write-spec`.
+Produces a concise, codebase-grounded plan. Resolves material uncertainty before writing, with an optional interview for deeper exploration. The plan can guide implementation directly or feed `/agentic-coding-workflow:write-spec` when a detailed handoff is useful.
 
 ## Input
 
@@ -24,18 +23,17 @@ $ARGUMENTS - Either:
 - A feature description string (e.g., `"batch conversation analysis"`)
 - A path to an existing context document (e.g., `../other-repo/docs/research.md`)
 
+Optional flag: `--interview` — explore the problem, challenge consequential assumptions, and discuss alternatives with the user before writing. Remove the flag before interpreting the remaining input. Honor an explicit request for review or approval before writing.
+
 ## Instructions
 
-### Phase A: Interactive Refinement (Read-Only)
+Follow **Proportional Workflow** in `commands/shared-patterns.md`. Invoking this command authorizes writing the plan once its material decisions are clear; no separate document-generation confirmation is required by default.
 
-> **CRITICAL — DO NOT SKIP THIS PHASE.**
-> Phase A is the entire point of this command. You are a thinking partner, not a document generator. If you rush through questioning to get to writing, you have failed. The minimum bar is **3 rounds of back-and-forth** with the user before you may proceed to Phase B.
+### Phase 1: Load Relevant Context (Read-Only)
 
-**Phase A is read-only.** Use only Read, Glob, Grep, and Agent (for research) during this phase. Do NOT write files or run destructive commands. Focus entirely on asking questions and exploring the codebase.
+During research and clarification, use read-only tools, ticket retrieval, WebFetch when relevant, and read-only Bash commands to resolve repository paths. Use an Explore agent for a bounded research question when useful. Do not modify project files during these phases.
 
-#### Step 1: Load Context
-
-**Determine the target project.** The plan document will be saved to the project the user is working on, which may differ from where this plugin lives. If the user references a path outside the current directory (e.g., `../repo/docs/spec.md`), the target project is that directory's git root. Resolve and remember this path now — you'll need it in Phase B.
+**Determine the target project.** Save the plan to the project the user is working on, which may differ from where this plugin lives. If the user references a path outside the current directory, resolve its git root and remember it for document generation. Ask if the intended project remains ambiguous.
 
 **Auto-load prime context if available:**
 - Check if `.claude/prime-context/context.md` exists in the target project — if so, read it
@@ -49,106 +47,27 @@ $ARGUMENTS - Either:
 **If the input is a feature description:**
 - Use the description as-is for the starting point
 
-#### Step 2: Iterative Refinement (The Core Loop)
+Read relevant code, existing tests, and project constraints before proposing an approach. Search for existing behavior that already addresses the request. Keep research focused on the decisions the plan needs to make.
 
-This is NOT a one-and-done questionnaire. You are a thinking partner who keeps probing until the feature is crystal clear. Use `AskUserQuestion` repeatedly to dig deeper.
+### Phase 2: Resolve Material Uncertainty
 
-**Track your progress.** Maintain a mental checklist:
-- [ ] Asked at least 3 rounds of questions (HARD REQUIREMENT)
-- [ ] Identified at least 5 edge cases
-- [ ] Pushed back on at least 2 assumptions
-- [ ] Explored at least 1 simpler alternative
-- [ ] Scope boundaries are clear
-- [ ] Implementation approach is grounded in the actual codebase
+Check whether the context establishes:
+- The intended outcome and how success will be observed
+- Scope boundaries and constraints
+- Decisions that affect behavior, compatibility, permissions, data, or recovery
+- An approach grounded in existing code and a way to verify the result
 
-**Round 1 — Problem space (MANDATORY before anything else):**
-- What specific problem are we solving?
-- Who exactly experiences this problem? (Be specific — not "users" but which users, in what context)
-- Why does this matter now? What's the cost of not solving it?
-- How are users currently working around this problem?
+Use `AskUserQuestion` only for missing decisions whose answers could change implementation, acceptance criteria, or risk. Group related questions and avoid asking for information already supplied or discoverable in the project. Record reasonable assumptions for minor details.
 
-**Round 2 — Challenge and push back:**
-- Play devil's advocate — question whether this feature is even needed
-- Ask "what if we did nothing?" and make them justify the investment
-- Suggest simpler alternatives and see if they'd work
-- Push back on scope creep — ask "is that really part of this feature?"
-- Question assumptions — "you said X, but have you validated that?"
+Consider relevant edge cases, failure modes, security concerns, and simpler alternatives in proportion to their consequences. There is no minimum number of questions, rounds, edge cases, challenged assumptions, or tasks. In default mode, if the context is sufficient, proceed without an interview.
 
-**Round 3+ — Explore deeper (continue until the checklist is complete):**
+**When `--interview` is selected:** Discuss the problem and user journey, challenge consequential assumptions, explore simpler alternatives, and work through relevant trade-offs with the user. Continue while answers affect the plan. Stop when material uncertainty is resolved or the user asks to conclude; record any remaining questions. Honor a request to skip further questions without pushing back to meet a quota.
 
-*Happy path:*
-- Walk through the ideal user journey step by step
-- What does success look like?
-- How will users discover this feature?
-- What's the simplest possible version that delivers value?
+**Ready to write:** The outcome, scope, material decisions, and verification approach are sufficiently clear. Resolve blocking decisions before presenting the plan as ready for implementation. Nonblocking unknowns may remain as explicit open questions. If the user requests a draft with blockers, label it as a draft and identify the blockers.
 
-*Edge cases (surface at least 5):*
-- What happens when things go wrong?
-- What if the user has no data? Too much data?
-- What about concurrent users/operations?
-- What about permissions/authorization edge cases?
-- What if external dependencies are unavailable?
-- What about backward compatibility?
+### Phase 3: Generate the Plan
 
-*Integration points:*
-- What existing systems does this touch?
-- What APIs need to change?
-- What data needs to flow where?
-- What are the system boundaries?
-
-*Failure modes:*
-- What can go wrong?
-- How do we recover from failures?
-- What's the blast radius of a bug here?
-- What monitoring/alerting do we need?
-
-*Security considerations:*
-- What data is involved? PII? Sensitive?
-- Who should have access? Who shouldn't?
-- What's the threat model?
-
-*Scope boundaries:*
-- What is explicitly NOT part of this feature?
-- What's being deferred to future work?
-- What adjacent features are we NOT building?
-
-#### Step 3: Implementation Approach (Codebase Research)
-
-After the problem and solution are well-defined, shift to technical planning. Use Agent subagents (with `subagent_type: "Explore"`) to research the codebase in parallel. This keeps your main context clean.
-
-**Recommended pattern:**
-- What architectural pattern fits best?
-- Are there existing patterns in the codebase to follow?
-- Read relevant codebase areas to ground decisions in reality
-
-**Key technical decisions:**
-- What are the major decision points?
-- What are the trade-offs for each?
-- What's the recommended choice and why?
-
-**Rough task breakdown:**
-- What are the major chunks of work? (3-7 chunks, not 20)
-- What's the dependency order?
-- What can be parallelized?
-- What's the riskiest part?
-
-#### Step 4: Synthesis Check (GATE — Do Not Proceed Unless All Pass)
-
-Before moving to Phase B, verify EVERY item:
-- [ ] Asked at least 3 rounds of questions
-- [ ] Identified at least 5 edge cases
-- [ ] Pushed back on at least 2 assumptions
-- [ ] Explored at least one simpler alternative
-- [ ] Scope boundaries are clear
-- [ ] Implementation approach is grounded in the actual codebase
-
-**If any item fails, go back to Step 2.** Tell the user which items are incomplete and ask targeted questions to fill the gaps.
-
-When all items pass, tell the user: "The plan is ready to write. Shall I generate the document?" Wait for confirmation before proceeding.
-
-### Phase B: Document Generation
-
-**Confirm with the user before writing.** Present a concise summary (3-5 bullet points covering: the problem, proposed solution, key decisions, and scope boundaries) and ask if they're ready to generate the document using `AskUserQuestion`. Once confirmed, proceed to write the full document.
+Briefly state the intended approach and write the plan. Ask for additional confirmation only when the user requested an approval step or a material scope or permission decision remains. Reuse authorization already given.
 
 **Create the output directory** in the TARGET PROJECT (not the plugin repo):
 ```bash
@@ -172,18 +91,9 @@ mkdir -p <target-project-path>/.claude/plans
                 "## Goals",
                 "## Non-Goals",
                 "## Proposed Solution",
-                "## Architecture",
                 "## Implementation Approach",
-                "## Edge Cases & Decisions",
-                "## Security Considerations",
-                "## Failure Modes & Risks",
-                "## Alternatives Considered"
+                "## Verification"
             ]
-        },
-        {
-            "type": "file_min_lines",
-            "path": ".claude/plans/<slug>.md",
-            "min_lines": 50
         }
     ]
 }
@@ -194,7 +104,7 @@ Replace `<slug>` with the actual slug in the JSON.
 
 **Write the document** to `<target-project-path>/.claude/plans/<slug>.md` using the template below.
 
-> **LEVEL OF DETAIL CHECK:** Before writing, review your draft mentally. If it contains specific file paths with line-level changes, code snippets, class/function definitions, or per-file modification tables — **STOP**. You are writing an implementation spec, not a plan. Strip it back to conceptual descriptions. The plan captures "what" and "why" and high-level "how". The `/agentic-coding-workflow:write-spec` command produces the detailed implementation specification.
+Keep the plan concise and actionable. Reference relevant files and existing patterns where they ground decisions. Detailed code, schemas, and per-file instructions belong in an optional `/agentic-coding-workflow:write-spec` handoff. Validate meaningful content under the core headings; do not pad a plan to a line count or add sections that do not help this task.
 
 #### Document Template
 
@@ -208,145 +118,56 @@ Replace `<slug>` with the actual slug in the JSON.
 
 [Clear articulation of the problem being solved]
 
-### Who experiences this?
-[Specific user personas and contexts]
-
-### Why now?
-[Business/user motivation for solving this]
-
-### Current workarounds
-[How users cope today]
-
 ## Goals
 
-- [Specific, measurable goal 1]
-- [Specific, measurable goal 2]
+- [Observable outcomes that establish success]
 
-## Non-Goals (Explicit Scope Boundaries)
+## Non-Goals
 
-- [Thing we are NOT doing 1]
-- [Thing we are NOT doing 2]
-- [Adjacent feature we're explicitly deferring]
+[Scope boundaries and deferred work; "None identified" if appropriate]
 
 ## Proposed Solution
 
-### Conceptual Overview
-[High-level description of the solution — the "what", not the "how"]
-
-### User Journey
-[Step-by-step happy path from the user's perspective]
-
-## Architecture
-
-### Data Model
-[Entities, relationships, key attributes — conceptual, not schema definitions]
-
-### System Boundaries
-[What systems are involved, where does this feature live]
-
-### API Surface
-[What endpoints/interfaces are needed — conceptual, not full specifications]
-
-### Integration Points
-[How this connects to existing systems]
+[Intended behavior, key decisions, and rationale]
 
 ## Implementation Approach
 
-### Recommended Pattern
-[Architectural pattern and why it fits. Reference existing codebase patterns where applicable.]
+[Relevant codebase patterns, major steps, dependencies, and constraints]
 
-### Key Technical Decisions
-| Decision | Choice | Rationale | Trade-offs |
-|----------|--------|-----------|------------|
-| [Decision 1] | [Choice] | [Why] | [What we're giving up] |
-| [Decision 2] | [Choice] | [Why] | [What we're giving up] |
+## Verification
 
-### Rough Task Breakdown
-1. [Major chunk 1] — [brief description, dependencies]
-2. [Major chunk 2] — [brief description, dependencies]
-3. [Major chunk 3] — [brief description, dependencies]
+[Checks that demonstrate each goal, relevant regression checks, and any manual validation]
 
-### Riskiest Part
-[What's most likely to go wrong or take longer than expected, and why]
+## Risks & Decisions (include when relevant)
 
-## Edge Cases & Decisions
+[Consequential edge cases, compatibility, permissions, failure recovery, and mitigations]
 
-| Edge Case | Decision | Rationale |
-|-----------|----------|-----------|
-| [Case 1] | [What we'll do] | [Why] |
-| [Case 2] | [What we'll do] | [Why] |
+## Open Questions (include when relevant)
 
-## Security Considerations
+[Remaining unknowns, whether they block implementation, and stated assumptions]
 
-- [Data sensitivity assessment]
-- [Access control requirements]
-- [Threat model considerations]
-- [Compliance implications if any]
+## Alternatives Considered (include when relevant)
 
-## Failure Modes & Risks
-
-| Risk | Likelihood | Impact | Mitigation |
-|------|------------|--------|------------|
-| [Risk 1] | Low/Med/High | Low/Med/High | [Strategy] |
-| [Risk 2] | Low/Med/High | Low/Med/High | [Strategy] |
-
-## Open Questions
-
-- [ ] [Unresolved question 1]
-- [ ] [Unresolved question 2]
-
-## Alternatives Considered
-
-### [Alternative 1 Name]
-**Description:** [What this approach would look like]
-**Rejected because:** [Why we're not doing this]
-
-### [Alternative 2 Name]
-**Description:** [What this approach would look like]
-**Rejected because:** [Why we're not doing this]
-
----
-
-*This plan captures the "what", "why", and high-level "how" of the feature. It is intended as input for `/agentic-coding-workflow:write-spec`, which will produce the detailed implementation specification.*
+[Relevant simpler approaches and why the proposed solution fits]
 ```
 
-## Important Constraints
+Remove optional headings that are not needed, and remove the template's parenthetical instructions from headings that are included. Expand architecture, security, rollout, or execution limits only when the task calls for them.
 
-- **Phase A is the core value** — do NOT rush through it. 3 rounds of questions is the MINIMUM
-- **Phase B is write-only** — just document generation, no more questions
-- **Be a skeptic** — your job is to poke holes, not be a yes-man
-- **Ground in reality** — read relevant codebase files to validate technical assumptions
-- **This is NOT an implementation spec** — no file paths, no code snippets, no per-file change lists. If your document has those, rewrite it at a higher level. Leave detailed specs for `/agentic-coding-workflow:write-spec`
-- **Save to the target project** — the plan goes in `<target-project>/.claude/plans/`, NOT in this plugin's directory and NOT in `~/.claude/plans/`
-- **Confirm before writing** — summarize the plan and get user confirmation via `AskUserQuestion` before generating the document
+### Phase 4: Report
 
-## Example Session Flow
-
-1. User runs `/agentic-coding-workflow:plan AI-1234`
-2. Claude loads context (ticket, prime-context if available)
-3. Claude summarizes starting point, asks first round of clarifying questions (problem space)
-4. User answers → Claude asks follow-up questions probing deeper
-5. Claude pushes back: "Do we really need X? What if we just did Y instead?"
-6. User defends or adjusts scope
-7. Claude surfaces edge cases: "What happens when Z?"
-8. User provides decisions on edge cases
-9. Claude probes security: "Who should NOT have access to this?"
-10. Claude explores implementation approach: uses Explore agents to research codebase, suggests patterns
-11. More back and forth until the synthesis checklist passes...
-12. Claude says "The plan is ready to write. Shall I generate the document?"
-13. User confirms → Claude writes document to `<target-project>/.claude/plans/feature-name.md`
+Report the saved path, the approach, verification criteria, and any blocking open questions. An existing plan may guide implementation directly. Suggest `/agentic-coding-workflow:write-spec <slug>` when a detailed specification or Ralph handoff would help.
 
 ## Example Usage
 
 ```
 /agentic-coding-workflow:plan AI-1234
-/agentic-coding-workflow:plan "batch conversation analysis for admin dashboard"
+/agentic-coding-workflow:plan --interview "batch conversation analysis for admin dashboard"
 /agentic-coding-workflow:plan ../other-repo/docs/research-spec.md
 ```
 
 ## Error Handling
 
 - If Linear MCP unavailable or ticket not found, ask user to provide the feature description directly
-- If user wants to skip questions, gently push back — the value is in the refinement process. If they insist, note which synthesis checklist items are incomplete in the document's Open Questions section
+- If the user wants to skip further questions, write from available context and identify assumptions and any blockers in Open Questions
 - If the target project's `.claude/plans/` directory can't be created, ask the user where to save
 - If prime-context doesn't exist, proceed without it (don't error)

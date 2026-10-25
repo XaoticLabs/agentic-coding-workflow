@@ -40,8 +40,8 @@ claude
 ```
 Then type any of these:
 - `/agentic-coding-workflow:prime` — loads your project context (git history, docs, structure)
-- `/agentic-coding-workflow:plan` — describe what you want to build, get a plan back
-- `/agentic-coding-workflow:implement` — builds from the plan
+- `/agentic-coding-workflow:implement "<change>"` — inspects, implements, verifies, and reports; plans when needed
+- `/agentic-coding-workflow:plan` — get a concise plan for a substantial or ambiguous task
 - `/agentic-coding-workflow:ralph` — autonomous mode
 
 ## Why This Exists
@@ -50,9 +50,19 @@ Then type any of these:
 
 ### The mental model
 
-**Interactive mode:** The workflow (`plan → spec → implement → review`) is meant to be done in order, but any step can be started independently if you've already planned, implemented, etc.
+Use the least elaborate workflow that resolves material uncertainty and produces verifiable results.
 
-**Autonomous mode (Ralph):** Uses Geoffrey Huntley's Ralph methodology — an autonomous coding loop where Claude picks tasks, implements, tests, commits, and updates the plan with no human in the loop. You can take your spec and let Ralph run off with it.
+| Task | Default workflow |
+|------|------------------|
+| Small, clear change | Inspect relevant context → implement → verify → report |
+| Substantial feature | Clarify material uncertainty → maintain a concise plan → implement → verify → review |
+| Long unattended task | Approve scope and limits → execute in isolation → preserve progress → verify outcomes → present evidence |
+
+Choose by uncertainty, impact, reversibility, and scope. Inspection may reveal a need for more planning, or show that existing context is sufficient. Clarification ends when the outcome, scope, material decisions, and verification approach are clear. Every path includes verification and reports its evidence and limitations.
+
+For interactive work, a conversational plan is often enough. Save a plan or generate a detailed spec when requested or useful for handoff. `/plan --interview` selects deeper questioning; `/write-spec` selects detailed specification; `/explain` and `/review --learn` select teaching; `/implement --approve-tests` selects explicit approval of immutable contract tests. `/implement --plan` selects plan mode and plan approval, and `--worktree` requests isolation. These are optional modes, with no fixed question or document-length quotas.
+
+**Autonomous mode (Ralph):** Uses Geoffrey Huntley's Ralph methodology — an autonomous coding loop where Claude picks tasks, implements, tests, commits, and updates the plan. Unattended execution adds agreed limits, isolated worktrees, stop conditions, durable progress, and completion evidence. Ralph retains its RED/GREEN contract tests and verification gates. The launch command confirms scope and limits before starting unless those settings are already authorized.
 
 ## Commands
 
@@ -61,9 +71,9 @@ Then type any of these:
 | Command | What it does |
 |---------|--------------|
 | `/agentic-coding-workflow:prime` | Loads initial context — git logs, docs, project structure. Add `--deep` for thorough codebase analysis. |
-| `/agentic-coding-workflow:plan` | Interactive planning partner. Takes a ticket ID or feature description, explores edge cases, produces a plan doc. |
+| `/agentic-coding-workflow:plan` | Writes a concise plan from a ticket, description, or context document; asks about material uncertainty. Add `--interview` for deeper exploration. |
 | `/agentic-coding-workflow:write-spec` | Transforms a plan into an implementation spec with atomic, actionable tasks. |
-| `/agentic-coding-workflow:implement` | Picks up a task from a spec and builds it out. Also supports ad-hoc descriptions with plan-first flow. |
+| `/agentic-coding-workflow:implement` | Implements a spec task or ad-hoc description with planning and verification proportional to the task. Optional `--plan`, `--worktree`, and `--approve-tests` modes. |
 | `/agentic-coding-workflow:test` | Detects project test framework, runs the suite (or a subset), and reports structured results. |
 | `/agentic-coding-workflow:review` | Unified code review — PR review, spec compliance (`--spec`), plan critique (`--plan`), WIP squash (`--prep`), or interactive PERFECT training (`--learn`). Track progress with `--stats`. Auto-detects Elixir/Python, supports parallel multi-branch reviews. |
 | `/agentic-coding-workflow:ship` | Pushes the current branch, creates a PR with a generated description, and reports the URL. |
@@ -187,11 +197,19 @@ Ralph plans use a fenced JSON `{"tasks": [...]}` index under `## Task Index`. Ea
 
 Parallel run artifacts live under `.claude/ralph/<slug>/runs/<run>/`. `trace.jsonl` contains orchestrator events. Worker inputs are preserved as `worker-traces/<wave-worker>/<worker-run>/trace.jsonl`. `unified-trace.jsonl` combines every input in timestamp order and labels events with `source` and `worker_run`. It is refreshed on exit to include final verification, evaluation, and completion events, and remains after worker cleanup. The retrospective and analysis tools consume this combined artifact. To reproduce it, run `scripts/stitch-traces.sh <run>/worker-traces <slug> <run>/trace.jsonl <run>/unified-trace.jsonl`. Invalid input fails visibly and leaves any prior combined artifact intact.
 
-### Interactive (human-in-the-loop)
+### Small, clear change
+
+Run `/agentic-coding-workflow:implement "fix the health check response header"`. It inspects the relevant code, makes the change in the current checkout, runs appropriate checks, and reports the result. Existing work and project rules are respected. No separate plan, spec, worktree, or approval round is required by default.
+
+### Substantial feature
+
+Clarify decisions that affect behavior, scope, or risk, then maintain a concise plan while implementing. A typical flow is `/plan` → `/implement "<planned feature>"` → `/review`. `/implement` can also manage a conversational plan itself. Use `/test` for additional test runs and `/ship` when ready to publish.
+
+For a detailed handoff, select the spec workflow:
 
 1. `/agentic-coding-workflow:prime` — Load up context for a ticket
 2. `/agentic-coding-workflow:plan AI-1234` — Talk through what you're building, go over edge cases and things you might not have thought of
-3. `/agentic-coding-workflow:review --plan` — Get a plan critique (optional)
+3. `/agentic-coding-workflow:review --plan` — Get a plan critique if useful
 4. `/agentic-coding-workflow:write-spec feature-name` — Turn the plan into an implementation spec
 5. `/agentic-coding-workflow:implement 1` — Build task 1 from the spec
 6. Repeat for remaining tasks. Use `/agentic-coding-workflow:parallel 3 specs/feature/` to work on multiple tasks simultaneously with auto task assignment
@@ -200,16 +218,16 @@ Parallel run artifacts live under `.claude/ralph/<slug>/runs/<run>/`. `trace.jso
 9. `/agentic-coding-workflow:review --spec` — Make sure it matches the spec
 10. `/agentic-coding-workflow:ship` — Create the PR
 
-### Autonomous (Ralph loop)
+### Long unattended task (Ralph loop)
 
-Best when the spec is solid and you'd rather review a finished branch than babysit each task.
+Best when scope and completion checks are clear and you'd rather review a finished branch. Unattended execution can apply to either small or substantial work; it adds isolation and execution limits to the task's planning needs.
 
 1. `/agentic-coding-workflow:prime` — Load context
 2. `/agentic-coding-workflow:plan AI-1234` — Plan the feature
-3. `/agentic-coding-workflow:review --plan` — Critique the plan (don't skip — last chance to steer before Ralph takes over)
+3. `/agentic-coding-workflow:review --plan` — Critique material risks if useful
 4. `/agentic-coding-workflow:write-spec feature-name --ralph` — Generate atomic specs + implementation plan
 5. `/agentic-coding-workflow:ralph feature-name --once` — Observe one autonomous iteration, then review its results to validate the spec and plan
-6. `/agentic-coding-workflow:ralph feature-name` — Launch the autonomous loop
+6. `/agentic-coding-workflow:ralph feature-name --max 20 --time-budget=600` — Approve scope, completion checks, limits, and stop conditions, then launch in isolation
 7. Go do something else. Check back with `/agentic-coding-workflow:ralph feature-name --status` or read `.claude/ralph-status.md`
 8. Steer mid-loop by writing instructions to `.claude/ralph-inject.md`
 9. `/agentic-coding-workflow:ralph feature-name --harvest` — After completion, extract reusable patterns
@@ -218,4 +236,4 @@ Best when the spec is solid and you'd rather review a finished branch than babys
 For greenfield work, add `--clean-room` to skip codebase search. For large features, `--parallel 3` splits work across worktrees — three independent Claude instances working through dependency-ordered tasks simultaneously.
 
 **"Where do I start?"**
-Run `claude` in a project. Try `/agentic-coding-workflow:prime` then `/agentic-coding-workflow:plan` with a feature idea. Once comfortable, try `/agentic-coding-workflow:implement` on a task, and then `/agentic-coding-workflow:ralph` on a small spec.
+Run `claude` in a project and use `/agentic-coding-workflow:implement "<clear change>"`. For an ambiguous feature, start with `/agentic-coding-workflow:plan`. Select `/agentic-coding-workflow:ralph` when you want bounded unattended execution.

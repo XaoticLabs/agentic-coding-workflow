@@ -2,6 +2,26 @@
 
 Reference for common patterns used across commands. Commands should reference this file instead of duplicating these blocks inline.
 
+## Proportional Workflow
+
+Use the least elaborate workflow that resolves material uncertainty and produces verifiable results. Add planning, clarification, isolation, or review as the task requires. Honor explicitly selected modes and project requirements.
+
+| Task | Default workflow |
+|------|------------------|
+| Small, clear change | Inspect relevant context → implement → verify → report |
+| Substantial feature | Clarify material uncertainty → maintain a concise plan → implement → verify → review |
+| Long unattended task | Approve scope and limits → execute in isolation → preserve progress → verify outcomes → present evidence |
+
+- Choose the initial path from the task's uncertainty, impact, reversibility, and scope. A short permissions change may require careful planning; a broad mechanical edit may be straightforward.
+- Inspect relevant code and existing behavior first. Reassess the path when inspection reveals a material decision, dependency, or risk. Explain a change of path briefly; ask only when a decision needs user input.
+- Proceed when the intended outcome, scope, material decisions, and verification approach are sufficiently clear. Ask questions whose answers could change implementation, acceptance criteria, or risk. Use repository evidence before asking the user, and state reasonable assumptions for minor details.
+- Keep plans as short as useful. A conversational plan is sufficient unless a saved artifact is requested or needed for handoff or unattended execution. There are no question, edge-case, challenged-assumption, task-count, or document-length quotas.
+- An explicit request to plan or write a spec authorizes generating that artifact. Additional confirmation is needed for a material scope or permission decision, or an explicitly selected approval step. Existing authorization persists.
+- Interviews, detailed specs, teaching, plan approval, and contract-test approval are selected modes. Ordinary TDD does not itself select immutable contracts or a test-approval gate. Offer deeper modes when they would help without making them prerequisites for routine work.
+- Use the current checkout for clear interactive work when project policy permits. Use an isolated worktree for unattended execution, concurrent changes, or an explicit isolation request; reuse an appropriate existing worktree.
+- Verify every change using checks appropriate to its behavior and consequences, including project-required gates. Add behavioral or regression tests where useful; use direct inspection or targeted validation for changes without testable behavior. Report actual checks, outcomes, and unresolved limitations. Never imply an unrun check passed.
+- Before unattended execution, establish scope, completion checks, iteration/time limits, allowed operations, and stop conditions. Preserve commits, task status, and recovery evidence. If a material decision exceeds the agreed scope, preserve progress and stop for input. Build authorization does not itself authorize publishing.
+
 ## Git: Branch and Base Detection
 
 Use this whenever you need the current branch and the main/master base branch:

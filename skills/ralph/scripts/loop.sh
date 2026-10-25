@@ -226,11 +226,6 @@ if [ "$MODE" = "plan" ]; then
             "sections": ["## Task Index", "## Tasks", "## Status: IN_PROGRESS"]
         },
         {
-            "type": "file_min_lines",
-            "path": "${SPEC_DIR}/IMPLEMENTATION_PLAN.md",
-            "min_lines": 15
-        },
-        {
             "type": "task_index_format",
             "path": "${SPEC_DIR}/IMPLEMENTATION_PLAN.md",
             "min_tasks": 1

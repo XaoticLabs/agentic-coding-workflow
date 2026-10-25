@@ -93,11 +93,17 @@ Verify the spec directory exists. If not:
 - If monolithic exists but no directory, suggest: "Run `/agentic-coding-workflow:write-spec ${SLUG} --ralph` to generate Ralph-compatible specs"
 - If nothing exists, list available specs and exit
 
+For build requests, ensure `IMPLEMENTATION_PLAN.md` exists before confirming scope. If it is missing, generate it through `bash "${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/launch.sh" "$SPEC_DIR" --plan` and inspect the resulting tasks first. Do not create a plan containing only execution boundaries: the build launcher would treat it as an existing task plan.
+
 ### Phase 4: Confirm Launch
 
 For `--plan` or `--harvest`, proceed directly to Phase 5.
 
-Before a build, use AskUserQuestion to confirm the spec, worker count, iteration limit, timeout, checkpoints, and evaluation settings. Explain that Ralph runs Claude autonomously with `--dangerously-skip-permissions`, and stops via `/agentic-coding-workflow:ralph <slug> --stop`.
+Follow **Proportional Workflow** in `commands/shared-patterns.md`. Before a build, establish the scope, completion checks, allowed operations, worker count, iteration limit, per-iteration timeout, checkpoints, evaluation settings, and stop conditions. Present these concrete settings using AskUserQuestion for approval unless the same scope and settings are already authorized. Resolve missing material decisions before launch; do not repeat an approval already given.
+
+Record the agreed scope, allowed operations, completion checks, limits, and stop conditions under `## Execution Boundaries` in `IMPLEMENTATION_PLAN.md` before launching. These boundaries accompany the specs into worker worktrees. Use a finite iteration/time limit by default, and obtain explicit authorization for unlimited settings. The timeout is per iteration; do not describe it as a total-run budget. Ralph retains its isolated worktrees, immutable RED/GREEN contracts, verification gates, and durable run evidence.
+
+Explain that Ralph runs Claude autonomously with `--dangerously-skip-permissions`, and stops via `/agentic-coding-workflow:ralph <slug> --stop`. If a material decision exceeds the agreed scope, preserve progress and report the blocker for user input rather than expanding the work. Build authorization does not itself authorize publishing.
 
 `--once` runs one autonomous `claude -p` iteration in the foreground. You can observe its progress and inspect its output logs and commits afterward. It cannot ask for test approval during the iteration. For steering between iterations, use `--checkpoint-every=N` in a terminal; without a terminal, checkpoints are logged and execution continues.
 
@@ -121,7 +127,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/launch.sh" "$SPEC_DIR" --parall
 
 ### Phase 6: Report
 
-For foreground runs, summarize the outcome and point to the logs. For tmux runs, report the session/window (`ralph-<slug>` or `ralph-<slug>-orch`) and how to attach or switch to it.
+For foreground runs, summarize completed and incomplete outcomes, verification results, unresolved blockers, and preserved work with paths to the evidence. For tmux runs, report that execution has started, the session/window (`ralph-<slug>` or `ralph-<slug>-orch`), and how to attach or switch to it; do not imply outcomes have already been verified.
 
 Include these paths and commands:
 

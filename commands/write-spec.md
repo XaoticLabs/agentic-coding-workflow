@@ -11,7 +11,7 @@ effort: high
 
 # Implementation Spec Generator
 
-Transforms a plan document into a detailed implementation specification with atomic, actionable tasks.
+Transforms a plan document or inline request into a detailed implementation specification with atomic, actionable tasks. Select this command when a detailed handoff is useful; a spec is optional for ordinary interactive implementation.
 
 ## Input
 
@@ -20,7 +20,15 @@ $ARGUMENTS - Either:
 - A feature slug (e.g., `feature-name`) — will look in `.claude/plans/`
 - An inline quoted prompt (e.g., `"add rate limiting to the API"`) — treated as a lightweight plan
 
+Optional flags:
+- `--approve-tests` — generate a spec that selects explicit approval of immutable contract tests during interactive implementation
+- `--ralph` — also generate topic specs and an implementation plan for Ralph's autonomous contract-testing workflow
+
+Parse flags before locating the input. Reject `--approve-tests` combined with `--ralph`: Ralph iterations cannot pause for interactive test approval. Invoking this command authorizes generating its artifacts once material decisions are clear.
+
 ## Instructions
+
+Follow **Proportional Workflow** in `commands/shared-patterns.md`. Use the supplied plan and repository evidence to resolve context; ask only about uncertainty that could change implementation, acceptance criteria, or risk. Preserve the selected test mode explicitly in the spec.
 
 ### Phase 1: Load and Parse Plan Document
 
@@ -37,6 +45,7 @@ $ARGUMENTS - Either:
 - Edge cases and decisions
 - Security considerations
 - Open questions
+- Goals and verification criteria from concise plans; optional architecture or risk sections may be absent
 
 ### Phase 2: Codebase Analysis
 
@@ -97,12 +106,12 @@ Scan the plan document and your Phase 2 analysis for ambiguity:
 
 **Rules for atomic tasks:**
 - Each task should be completable in a single commit (ideally 1-4 hours of work)
-- Each task should be independently testable — acceptance criteria must translate directly into test assertions
+- Each task should be independently verifiable — use behavioral tests where appropriate and direct validation for work without testable behavior
 - Each task should have clear acceptance criteria written as behavioral contracts (what the system does, not how it's built)
 - Tasks should have minimal dependencies on other tasks
 - Tasks should be orderable (what must come before what)
 
-**TDD orientation:** Every task's acceptance criteria will become immutable contract tests during implementation (RED phase). Write criteria with this in mind — they must be specific enough that an implementer can write a failing test from each one without ambiguity.
+**Test mode:** Default to `standard`: specify behavioral and regression checks without requiring test approval, immutable tests, or separate test commits. Ordinary TDD can be used in standard mode. With `--approve-tests` or an equivalent explicit request, select `approved-contract`. With `--ralph`, select `ralph-contract`, retaining Ralph's RED/GREEN commits and immutable contracts without mid-iteration approval. Contract-mode criteria with testable behavior must be specific enough to encode as failing tests without ambiguity.
 
 **Task categories to consider:**
 1. **Data/Schema tasks** - migrations, models, types
@@ -149,7 +158,7 @@ For each atomic task, write a complete specification:
 > - **Observable:** An evaluator can verify it by reading code or running a command
 > - **Binary:** It either passes or fails — no "somewhat meets" allowed
 > - **Scoped:** It references specific files, functions, or behaviors — not general qualities
-> - **Test-encodable:** An implementer can write a failing test directly from this criterion — no interpretation required
+> - **Verifiable:** Name a behavioral assertion or direct validation method; contract-mode behavioral criteria must be encodable as failing tests
 >
 > Bad: "Authentication should work properly"
 > Good: "POST /api/login with valid credentials returns 200 with JSON body containing `token` (string) and `expires_at` (ISO 8601 timestamp)"
@@ -160,15 +169,19 @@ For each atomic task, write a complete specification:
 > Bad: "The cache should be fast"
 > Good: "Calling `UserCache.get(id)` after `UserCache.put(user)` returns `{:ok, user}` without hitting the database"
 
-**Contract tests (RED phase):**
+**Verification:**
+- Existing checks to run: [relevant tests, lint, or direct validation]
+- Behavioral or regression tests to add: [scenario and expected result, if needed]
+
+**Contract tests (RED phase, include only for selected contract modes):**
 - Test file: `[path/to/test_file]`
 - Tests to write before implementing:
   - `[test name]` — asserts [criterion from above]
   - `[test name]` — asserts [criterion from above]
-- These tests become immutable once committed — implementation must make them pass without modifying them
+- Lock these files after user approval in `approved-contract` mode, or on the RED commit in `ralph-contract` mode; implementation must make them pass without modifying them
 
-**Non-testable items** (if any):
-- [Config, wiring, or infrastructure items that skip the RED phase — list explicitly so implementers know]
+**Direct validation** (if any):
+- [Items without testable behavior and the inspection or targeted validation that verifies them]
 
 **Notes/Warnings:**
 - [Any gotchas, performance considerations, or things to watch out for]
@@ -202,16 +215,13 @@ mkdir -p .claude/specs
                 "## Testing Strategy",
                 "## Rollout Considerations"
             ]
-        },
-        {
-            "type": "file_min_lines",
-            "path": ".claude/specs/<slug>-spec.md",
-            "min_lines": 80
         }
     ]
 }
 ```
 Replace `<slug>` with the actual slug in the JSON.
+
+Check that the required sections contain useful task-specific content. Do not pad the document to a line count.
 
 **Derive the slug** from the input plan filename. If the plan file has a ticket ID prefix (e.g., `AI-1234-auth-feature.md`), preserve it in the spec slug. The slug should match the plan's slug exactly so all artifacts share the same naming convention.
 
@@ -222,6 +232,8 @@ Replace `<slug>` with the actual slug in the JSON.
 
 > Generated from: `.claude/plans/<slug>.md` (or inline prompt)
 > Generated on: [date]
+
+**Test mode:** [standard | approved-contract | ralph-contract — choose the selected mode]
 
 ## Overview
 
@@ -274,16 +286,14 @@ Replace `<slug>` with the actual slug in the JSON.
 
 [... more tasks ...]
 
-## Testing Strategy (TDD)
+## Testing Strategy
 
-Implementation follows red-green TDD: for each task, the implementer writes failing contract tests from the acceptance criteria (RED), then implements the minimum code to make them pass (GREEN). Contract tests are immutable once committed — they cannot be modified during implementation.
+Selected mode: [standard | approved-contract | ralph-contract]. Describe the relevant behavioral, regression, integration, or direct checks. For standard mode, no test approval or immutability gate is required. For approved-contract mode, tests lock after explicit approval; for Ralph, they lock on the RED commit without an interactive prompt.
 
-### Contract Tests per Task
-| Task | Test File | Contract Tests | Non-Testable Items |
-|------|-----------|----------------|-------------------|
-| 1 | `[test file path]` | [N tests] | [any config/wiring items] |
-| 2 | `[test file path]` | [N tests] | [none] |
-| ... | ... | ... | ... |
+### Verification per Task
+| Task | Evidence | Direct Validation | Contract Tests (only when selected) |
+|------|----------|-------------------|------------------------------------|
+| [Task] | [test scenarios or existing checks] | [inspection/commands if needed] | [test file and cases, or omit column] |
 
 ### Integration Testing
 - [Cross-task integration tests — written after individual tasks pass]
@@ -310,7 +320,7 @@ Implementation follows red-green TDD: for each task, the implementer writes fail
 
 ---
 
-*This spec is implementation-ready. Each task is designed for red-green TDD: write failing contract tests from the acceptance criteria (RED), implement the minimum to pass them (GREEN). Contract tests are immutable once committed. Tasks can be picked up independently (respecting dependencies) and completed in a single iteration.*
+*Tasks can be picked up independently, respecting dependencies, using the selected test mode and the verification criteria above.*
 ```
 
 ### Phase 8: Ralph-Compatible Output (conditional)
@@ -452,11 +462,12 @@ Ralph-compatible specs generated:
 
 Before finalizing the spec, verify:
 
-- [ ] Every task has clear acceptance criteria that are directly test-encodable
+- [ ] Every task has clear acceptance criteria and an appropriate verification method
 - [ ] Every task specifies which files to modify
-- [ ] Every task with testable behavior has a Contract Tests section naming the test file and test cases
-- [ ] Each acceptance criterion maps to at least one contract test
-- [ ] Non-testable items (config, wiring, deletion) are explicitly marked per task
+- [ ] The selected test mode is explicit; standard mode does not imply contract approval or immutability
+- [ ] For selected contract modes, each task with testable behavior names its contract test file and cases
+- [ ] Each acceptance criterion maps to behavioral tests or direct validation, and to a contract test when that mode applies
+- [ ] Items without testable behavior name their alternative validation
 - [ ] Dependencies between tasks are explicit
 - [ ] Edge cases from the plan are assigned to specific tasks
 - [ ] Security considerations are addressed in relevant tasks
@@ -473,6 +484,13 @@ Before finalizing the spec, verify:
 - **Include the "why"** - link back to plan decisions where relevant
 - **Don't over-specify** - leave room for implementation judgment on minor details
 
+## Error Handling
+
+- If the input document is missing or ambiguous, show available plans and ask only for the missing selection or material decision
+- If requested test modes conflict, explain the conflict before generating artifacts; do not silently discard an approval requirement
+- If a material requirement remains unresolved, identify it as a blocker and label any requested draft accordingly
+- If artifact creation or task-graph validation fails, preserve completed output, report the failure, and do not describe the spec as ready for execution
+
 ## Example Usage
 
 ```
@@ -483,7 +501,7 @@ This would:
 1. Look for `.claude/plans/batch-conversation-analysis.md`
 2. Analyze relevant parts of the codebase
 3. Surface and resolve ambiguous requirements
-4. Break the feature into 5-15 atomic tasks
+4. Break the feature into the atomic tasks needed for the agreed scope
 5. Write detailed specs for each task
 6. Output to `.claude/specs/batch-conversation-analysis-spec.md`
 
@@ -498,3 +516,5 @@ This would read the plan doc directly and generate a spec from it.
 ```
 
 This would treat the inline prompt as a lightweight plan, analyze the codebase, and generate a spec.
+
+Add `--approve-tests` to select approval of immutable test contracts during implementation, or `--ralph` to generate autonomous topic specs with Ralph's contract policy. These modes are mutually exclusive.
