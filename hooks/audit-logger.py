@@ -5,7 +5,7 @@
 # ///
 
 """
-PostToolUse Hook: Audit Logger
+PostToolUse / PostToolUseFailure Hook: Audit Logger
 
 Logs every tool call to .claude/logs/tool-calls.jsonl for debugging,
 token analysis, and session replay. Each line is a self-contained JSON
@@ -60,13 +60,15 @@ def main():
     except (json.JSONDecodeError, Exception):
         sys.exit(0)
 
+    if not isinstance(input_data, dict):
+        sys.exit(0)
+
     tool_name = input_data.get("tool_name", "unknown")
     tool_input = input_data.get("tool_input", {})
     session_id = input_data.get("session_id", "unknown")
 
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
     log_dir = Path(project_dir) / ".claude" / "logs"
-    log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / "tool-calls.jsonl"
 
     entry = {
@@ -74,9 +76,14 @@ def main():
         "session": session_id[:12] if len(session_id) > 12 else session_id,
         "tool": tool_name,
         "input": summarize_input(tool_name, tool_input),
+        "event": input_data.get("hook_event_name", "PostToolUse"),
     }
+    if entry["event"] == "PostToolUseFailure":
+        entry["error"] = truncate_value(input_data.get("error", ""))
+        entry["is_interrupt"] = input_data.get("is_interrupt", False)
 
     try:
+        log_dir.mkdir(parents=True, exist_ok=True)
         with open(log_file, "a") as f:
             f.write(json.dumps(entry, separators=(",", ":")) + "\n")
     except Exception:

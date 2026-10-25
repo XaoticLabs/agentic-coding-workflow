@@ -39,6 +39,7 @@ SPEC_DIR=$(realpath "$SPEC_DIR")
 PLAN_FILE="${SPEC_DIR}/IMPLEMENTATION_PLAN.md"
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 PROMPT_DIR="${SCRIPT_DIR}/../references"
+TASK_PLAN="${SCRIPT_DIR}/../../../scripts/task-plan.py"
 
 SLUG=$(basename "$SPEC_DIR")
 STREAM_PROCESSOR="${SCRIPT_DIR}/stream-processor.py"
@@ -203,9 +204,8 @@ rm -f "$STOP_SENTINEL"
 
 # ── Register output validation for plan mode ──────────────────────────
 # The validate-output.py stop hook checks expected-output.json to catch
-# format errors at plan-creation time. The partitioner and loop.sh parse
-# task index lines with regex — if the planner emits a different format,
-# parallel mode silently treats all tasks as "complete" and does nothing.
+# malformed indexes and dependency graphs at plan-creation time. All consumers
+# use scripts/task-plan.py, which supports structured JSON and legacy indexes.
 if [ "$MODE" = "plan" ]; then
   cat > "${PROJECT_DIR}/.claude/expected-output.json" <<VALIDATE_EOF
 {
@@ -236,42 +236,15 @@ VALIDATE_EOF
   echo "Registered plan output validation (expected-output.json)"
 fi
 
-# ── Plan integrity check ─────────────────────────────────────────────
-# Verify that [x] tasks with "Completed in <hash>" reference commits
-# reachable from HEAD. If a previous run was interrupted after reverts,
-# the plan file on disk may claim tasks are done when their commits are
-# orphaned (reverted via git reset --hard). Re-mark these as incomplete.
-
-if [ "$MODE" = "build" ] && [ -f "$PLAN_FILE" ]; then
-  INTEGRITY_FIXES=0
-  while IFS= read -r line; do
-    # Extract commit hash from "Completed in <hash>"
-    hash=$(echo "$line" | grep -o 'Completed in [a-f0-9]*' | awk '{print $3}' || true)
-    if [ -z "$hash" ]; then
-      continue
-    fi
-    # Check if commit is reachable from HEAD
-    if ! git merge-base --is-ancestor "$hash" HEAD 2>/dev/null; then
-      # Extract task number for logging
-      task_num=$(echo "$line" | grep -o 'Task [0-9]*' | head -1)
-      echo "⚠ INTEGRITY: ${task_num} references orphaned commit ${hash:0:8} — re-marking incomplete"
-      # Re-mark as incomplete: replace "- [x]" with "- [ ]" and strip "Completed in <hash>"
-      escaped_hash=$(echo "$hash" | sed 's/[.[\*^$()+?{}|]/\\&/g')
-      sed -i.bak "s/^\(- \)\[x\]\(.*\) — Completed in ${escaped_hash}.*/\1[ ]\2/" "$PLAN_FILE"
-      # Also ensure status is not COMPLETE if we just un-did a task
-      sed -i.bak 's/^## Status: COMPLETE/## Status: IN_PROGRESS/' "$PLAN_FILE"
-      INTEGRITY_FIXES=$((INTEGRITY_FIXES + 1))
-      printf "%s\tINTEGRITY_FIX\t%s\t-\tOrphaned commit %s re-marked incomplete\n" \
-        "$(date +"%Y-%m-%dT%H:%M:%S")" "${task_num:-unknown}" "$hash" >> "$JOURNAL_FILE"
-      trace_event "integrity_fix" "task=${task_num:-unknown}" "orphaned_commit=$hash"
-    fi
-  done < <(grep '^\- \[x\]' "$PLAN_FILE" 2>/dev/null || true)
-  rm -f "${PLAN_FILE}.bak"
-
-  if [ "$INTEGRITY_FIXES" -gt 0 ]; then
-    echo "  Fixed ${INTEGRITY_FIXES} orphaned task(s). Plan integrity restored."
-    echo ""
-  fi
+# Validate the same structured graph used by the scheduler before any worker runs.
+if [ "$MODE" = build ] && [ -f "$PLAN_FILE" ]; then
+  integrity_repairs=$(python3 "$TASK_PLAN" repair "$PLAN_FILE")
+  while IFS=$'\t' read -r task_num hash; do
+    [ -n "$task_num" ] || continue
+    printf "%s\tINTEGRITY_FIX\tTask %s\t-\tOrphaned commit %s re-marked pending\n" \
+      "$(date +%Y-%m-%dT%H:%M:%S)" "$task_num" "$hash" >> "$JOURNAL_FILE"
+    trace_event "integrity_fix" "task=Task ${task_num}" "orphaned_commit=$hash"
+  done < <(printf '%s' "$integrity_repairs" | jq -r '.[] | [.id, .commit] | @tsv')
 fi
 
 # ── Worktree isolation (single-track build mode) ────────────────────────
@@ -347,7 +320,7 @@ STRUGGLE_THRESHOLD=3
 # Extract the current top-priority incomplete task name from the plan
 get_current_task() {
   if [ -f "$PLAN_FILE" ]; then
-    grep -m1 '^\- \[ \] \*\*Task' "$PLAN_FILE" 2>/dev/null | sed 's/.*\*\*Task [0-9]*: \(.*\)\*\*.*/\1/' || echo ""
+    python3 "$TASK_PLAN" next "$PLAN_FILE"
   fi
 }
 
@@ -525,8 +498,8 @@ write_status() {
 
   local total_tasks=0 done_tasks=0
   if [ -f "$PLAN_FILE" ]; then
-    total_tasks=$(grep -c '^\- \[[ x]\] \*\*Task' "$PLAN_FILE" 2>/dev/null || true); total_tasks=${total_tasks:-0}
-    done_tasks=$(grep -c '^\- \[x\] \*\*Task' "$PLAN_FILE" 2>/dev/null || true); done_tasks=${done_tasks:-0}
+    task_stats=$(python3 "$TASK_PLAN" stats "$PLAN_FILE")
+    read -r total_tasks done_tasks _ <<< "$task_stats"
   fi
 
   local commits_now
@@ -587,7 +560,9 @@ while :; do
 
   # Check if plan is complete (build mode only)
   if [ "$MODE" = "build" ] && [ -f "$PLAN_FILE" ]; then
-    if grep -q "## Status: COMPLETE" "$PLAN_FILE"; then
+    task_stats=$(python3 "$TASK_PLAN" stats "$PLAN_FILE" --assigned)
+    read -r _ _ remaining_tasks <<< "$task_stats"
+    if [ "$remaining_tasks" -eq 0 ]; then
       echo "All tasks complete! Plan status: COMPLETE"
       break
     fi
@@ -634,9 +609,8 @@ while :; do
 
   # ── Plan state snapshot ────────────────────────────────────────────
   if [ "$MODE" = "build" ] && [ -f "$PLAN_FILE" ]; then
-    PLAN_TOTAL=$(grep -c '^\- \[[ x]\] \*\*Task' "$PLAN_FILE" 2>/dev/null || true); PLAN_TOTAL=${PLAN_TOTAL:-0}
-    PLAN_DONE=$(grep -c '^\- \[x\] \*\*Task' "$PLAN_FILE" 2>/dev/null || true); PLAN_DONE=${PLAN_DONE:-0}
-    PLAN_REMAINING=$((PLAN_TOTAL - PLAN_DONE))
+    task_stats=$(python3 "$TASK_PLAN" stats "$PLAN_FILE")
+    read -r PLAN_TOTAL PLAN_DONE PLAN_REMAINING <<< "$task_stats"
     trace_event "plan_state" "iter=${ITERATION}" "total=${PLAN_TOTAL}" "done=${PLAN_DONE}" "remaining=${PLAN_REMAINING}" "task=${CURRENT_TASK:-unknown}"
   fi
 
@@ -689,7 +663,7 @@ $(cat "$INJECT_FILE")
   # Targeted spec loading: extract spec file for current task
   TASK_SPEC=""
   if [ "$MODE" = "build" ] && [ -f "$PLAN_FILE" ]; then
-    TASK_SPEC=$(grep -m1 '^\- \[ \] \*\*Task' "$PLAN_FILE" 2>/dev/null | grep -o 'Spec: [^ ]*' | sed 's/Spec: //' || echo "")
+    TASK_SPEC=$(python3 "$TASK_PLAN" next "$PLAN_FILE" --field spec)
   fi
 
   PROMPT="${PROMPT}
@@ -703,6 +677,11 @@ $( [ -n "$TASK_SPEC" ] && echo "**Current task spec file:** ${SPEC_DIR}/${TASK_S
 
   # ── Snapshot pre-iteration state ──────────────────────────────────
   PRE_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "none")
+  export RALPH_PRE_COMMIT="$PRE_COMMIT" RALPH_PLAN_FILE="$PLAN_FILE"
+  if [ -f "$PLAN_FILE" ]; then
+    RALPH_PLAN_BLOB=$(git hash-object -- "$PLAN_FILE")
+    export RALPH_PLAN_BLOB
+  fi
 
   # ── Generate structured briefing for context ─────────────────────
   BRIEFING=""
@@ -1092,8 +1071,8 @@ ${BRIEFING}
       echo ""
       # Show compact status
       if [ -f "$PLAN_FILE" ]; then
-        CP_TOTAL=$(grep -c '^\- \[[ x]\] \*\*Task' "$PLAN_FILE" 2>/dev/null || true); CP_TOTAL=${CP_TOTAL:-0}
-        CP_DONE=$(grep -c '^\- \[x\] \*\*Task' "$PLAN_FILE" 2>/dev/null || true); CP_DONE=${CP_DONE:-0}
+        task_stats=$(python3 "$TASK_PLAN" stats "$PLAN_FILE")
+        read -r CP_TOTAL CP_DONE _ <<< "$task_stats"
         echo "  Tasks: ${CP_DONE}/${CP_TOTAL} complete"
       fi
       CP_COMMITS=$(git rev-list --count HEAD 2>/dev/null || echo 0)
@@ -1165,7 +1144,7 @@ echo "View:  trace-viewer.py ${TRACE_FILE} [--view timeline|summary|tools|revert
 if [ -f "$PLAN_FILE" ]; then
   echo ""
   echo "Plan status:"
-  grep -E "^## Status:|^\- \[[ x]\]" "$PLAN_FILE" | head -20
+  python3 "$TASK_PLAN" render "$PLAN_FILE"
 fi
 
 # ── Auto-harvest on completion ──────────────────────────────────────────

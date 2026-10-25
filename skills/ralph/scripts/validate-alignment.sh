@@ -9,6 +9,7 @@ set -euo pipefail
 
 SPEC_DIR="${1:?Usage: validate-alignment.sh <spec-dir>}"
 PLAN_FILE="${SPEC_DIR}/IMPLEMENTATION_PLAN.md"
+TASK_PLAN="$(dirname "$(realpath "$0")")/../../../scripts/task-plan.py"
 
 if [ ! -f "$PLAN_FILE" ]; then
   echo "No IMPLEMENTATION_PLAN.md found — skipping alignment check."
@@ -19,10 +20,9 @@ MISALIGNED=0
 MISSING_SPECS=0
 
 # Extract task entries and their spec file references
-while IFS= read -r task_line; do
-  # Parse task number and spec file
-  TASK_NUM=$(echo "$task_line" | grep -oE 'Task [0-9]+' | head -1 | awk '{print $2}')
-  SPEC_FILE=$(echo "$task_line" | grep -oE 'Spec: [^ ,]+' | sed 's/Spec: //' || true)
+while IFS= read -r task_json; do
+  TASK_NUM=$(printf '%s' "$task_json" | jq -r '.id')
+  SPEC_FILE=$(printf '%s' "$task_json" | jq -r '.spec')
 
   [ -z "$TASK_NUM" ] && continue
 
@@ -65,7 +65,7 @@ while IFS= read -r task_line; do
       fi
     fi
   fi
-done < <(grep '^\- \[[ x]\] \*\*Task' "$PLAN_FILE" 2>/dev/null || true)
+done < <(python3 "$TASK_PLAN" validate "$PLAN_FILE" | jq -c '.tasks[]')
 
 # Summary
 if [ "$MISALIGNED" -gt 0 ] || [ "$MISSING_SPECS" -gt 0 ]; then

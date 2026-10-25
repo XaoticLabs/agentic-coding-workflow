@@ -15,7 +15,7 @@ SLUG="${3:?Usage: parallel-retrospective.sh <run-dir> <ralph-base> <slug>}"
 
 LEARNINGS_FILE="${RALPH_BASE}/learnings.json"
 RESEARCH_QUEUE="${RALPH_BASE}/research-queue.md"
-UNIFIED_TRACE="${RUN_DIR}/trace.jsonl"
+UNIFIED_TRACE="${RUN_DIR}/unified-trace.jsonl"
 
 python3 - "$RUN_DIR" "$RALPH_BASE" "$SLUG" "$LEARNINGS_FILE" "$RESEARCH_QUEUE" "$UNIFIED_TRACE" <<'PYEOF'
 import sys, json, os, glob

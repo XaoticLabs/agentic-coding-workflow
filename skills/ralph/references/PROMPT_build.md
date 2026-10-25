@@ -31,8 +31,8 @@ Your prompt may include two auto-injected sections at the end:
 **Before picking a task, read the briefing's "Recent Outcomes" section.** If a task was recently REVERTED, do NOT retry the same approach. The external gate (tests/lint run outside your session) already rejected it. You must try a fundamentally different implementation strategy, or skip the task and pick a different one.
 
 Parse the task list. Identify:
-- Tasks marked `[x]` — already done, skip. **But verify:** if a task says "Completed in <hash>", run `git log --oneline -1 <hash>` to confirm the commit exists on the current branch. If the commit is missing/orphaned, the task was reverted by a previous run — re-mark it `[ ]` and treat it as a candidate.
-- Tasks marked `[ ]` with all dependencies met (deps are done or "none") — candidates
+- JSON tasks with `status: "done"` (legacy `[x]`) — already done, skip. **But verify:** if a task says "Completed in <hash>", run `git log --oneline -1 <hash>` to confirm the commit exists on the current branch. If the commit is missing/orphaned, the task was reverted by a previous run — set it back to `pending` and treat it as a candidate.
+- JSON tasks with `status: "pending"` and all dependency IDs marked `done` — candidates (legacy `[ ]` indexes are also supported)
 
 ### Parallel Worker Task Assignments
 
@@ -40,8 +40,8 @@ Parse the task list. Identify:
 
 1. Read the file — it contains comma-separated task numbers (e.g., `1,3`)
 2. **ONLY work on tasks listed in that file.** Do not touch, implement, or pick up ANY other task, even if it appears incomplete in the plan. Another worker owns it.
-3. **If ALL your assigned tasks are already marked `[x]` in the plan**, set `## Status: COMPLETE` at the top of the plan and exit immediately. Do NOT look for other work — your job is done.
-4. When evaluating which assigned task to pick, only consider tasks from your assigned list that are marked `[ ]` with dependencies met.
+3. **If ALL your assigned tasks are already done in the plan**, set `## Status: COMPLETE` at the top of the plan and exit immediately. Do NOT look for other work — your job is done.
+4. When evaluating which assigned task to pick, only consider tasks from your assigned list that are pending with dependencies met.
 
 **This is a hard constraint, not a preference.** Picking up an unassigned task causes merge conflicts and wasted work.
 
@@ -57,7 +57,7 @@ Pick the single best candidate from your assigned tasks (or all candidates if si
 
 **Simplicity tiebreaker:** When two candidates are close in priority, prefer the one that requires fewer files and fewer lines of change. A task you can solve by deleting code is always preferred over one that adds code.
 
-If ALL tasks are `[x]` (or all your assigned tasks if parallel), set `## Status: COMPLETE` at the top of the plan and exit immediately.
+If ALL tasks have `status: "done"` (legacy `[x]`) (or all your assigned tasks if parallel), set `## Status: COMPLETE` at the top of the plan and exit immediately.
 
 ## Step 3: Search Before Implementing
 
@@ -183,7 +183,7 @@ Implements task N from IMPLEMENTATION_PLAN.md
 ## Step 8: Update the Plan
 
 Edit `IMPLEMENTATION_PLAN.md`:
-1. In the `## Task Index` section, mark the completed task: `- [ ]` → `- [x]` and append `— Completed in <hash>`. The task index line format MUST remain parseable: `- [x] **Task N: <name>** — Priority: X, Deps: Y, Files: Z — Completed in <hash>`
+1. In the JSON `## Task Index`, set the completed task’s `status` to `"done"` and `completed_in` to the commit hash. Preserve all dependency IDs and paths. For legacy checkbox indexes, mark `[x]` and append `— Completed in <hash>`. Validate with `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/task-plan.py" validate <plan-file>`.
 2. Add any learnings to the `## Learnings` section — write these as **actionable rules** (e.g., "Use `repo.get()` not `db.query()` for model lookups — wrapper handles caching") not vague notes. Capture the *why* so future iterations can judge edge cases.
 3. If this was the **last task**, change `## Status: IN_PROGRESS` to `## Status: COMPLETE`
 

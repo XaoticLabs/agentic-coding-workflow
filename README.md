@@ -134,8 +134,8 @@ Tool approvals use Claude Code's normal permission handling.
 |------|-------|--------------|
 | `dangerous_command_blocker.py` | PreToolUse | Catches dangerous commands (`rm -rf /`, `.env` access) and blocks them |
 | `ship-gate.sh` | PreToolUse | Blocks `gh pr create` unless PR description exists and user approved it |
-| `audit-logger.py` | PostToolUse | Logs all tool calls to `.claude/logs/tool-calls.jsonl` for audit and debugging |
-| `lint-on-stop.sh` | Stop | Runs linting and tests when Claude stops — blocks and asks Claude to fix errors |
+| `audit-logger.py` | PostToolUse / PostToolUseFailure | Logs all tool calls to `.claude/logs/tool-calls.jsonl` for audit and debugging |
+| `lint-on-stop.sh` | Stop | Checks formatting, lint, types, and tests across committed and working files without running fixes; records the verified revision and worktree fingerprint |
 | `rule-capture-on-stop.sh` | Stop | After implementation, prompts about capturing learned patterns as rules |
 | `ralph-on-stop.sh` | Stop | In Ralph mode, manages iteration handoff and plan updates |
 | `validate-output.py` | Stop | Validates command output artifacts exist and contain required sections |
@@ -162,11 +162,20 @@ Project commands are configured in `.claude/project-commands.json`:
 ```json
 {
   "test": "uv run pytest",
-  "lint": "uv run ruff check . && uv run basedpyright"
+  "lint": "uv run ruff format --check . && uv run ruff check --no-fix . && uv run basedpyright",
+  "format": "uv run ruff format ."
 }
 ```
 
 Supported keys are `build`, `test`, `lint`, `format`, and `run`. Missing test/lint keys use framework auto-detection; `null` or `""` explicitly disables an action. Invalid configuration stops verification. Ralph's `generate-agents-md.sh` initializes detected defaults, preserves existing overrides, and renders `.claude/AGENTS.md` from the same values. Move custom commands previously kept in the Markdown guide into this JSON file. Both files are copied into worker worktrees.
+
+Formatting is an explicit action: `"${CLAUDE_PLUGIN_ROOT}/scripts/format-project.sh"` runs the configured `format` command, with Python/Elixir defaults when it is absent. Stop checks use `ruff format --check`, `ruff check --no-fix`, and `mix format --check-formatted`. Python tools run with `uv run --frozen --no-sync` so verification does not update lockfiles or install dependencies. They check the whole project on every branch, so a clean working tree does not hide committed failures. Verification records in `.claude/verification/<session-hash>.json` identify `HEAD` and a SHA-256 of the working files before and after checks. `scope: "revision"` means the checked source tree is clean; `scope: "worktree"` identifies additional edits. Runtime files under `.claude/` are excluded except project commands, rules, and guidance. Changed inputs invalidate the result; missing test infrastructure records `incomplete`, never `passed`. A new attempt first records `running`; state capture failures record `unavailable`, so a crash cannot leave a stale success as the latest attempt.
+
+Hook feedback follows the [Claude Code hook protocol](https://code.claude.com/docs/en/hooks). Style feedback uses PostToolUse `hookSpecificOutput.additionalContext`. Failed tool calls are audited through PostToolUseFailure. StopFailure logs API errors, including the rendered error message, to `.claude/logs/stop-failures.jsonl`; it provides observability and notifications, with no automatic retry or worker lifecycle transition.
+
+Ralph plans use a fenced JSON `{"tasks": [...]}` index under `## Task Index`. Each task has `id`, `name`, `status` (`pending`/`done`), `priority`, `deps` (integer IDs), and `files` (path strings), with optional `spec` and `completed_in`. The shared `scripts/task-plan.py` parser validates the entire dependency graph before scheduling. Unknown IDs, duplicates, self-dependencies, and cycles are errors. Existing checkbox plans remain supported; all comma-separated dependencies are preserved. Completed dependencies are already satisfied. The planner, progress displays, stop validator, and scheduler use the same task model.
+
+Parallel run artifacts live under `.claude/ralph/<slug>/runs/<run>/`. `trace.jsonl` contains orchestrator events. Worker inputs are preserved as `worker-traces/<wave-worker>/<worker-run>/trace.jsonl`. `unified-trace.jsonl` combines every input in timestamp order and labels events with `source` and `worker_run`. It is refreshed on exit to include final verification, evaluation, and completion events, and remains after worker cleanup. The retrospective and analysis tools consume this combined artifact. To reproduce it, run `scripts/stitch-traces.sh <run>/worker-traces <slug> <run>/trace.jsonl <run>/unified-trace.jsonl`. Invalid input fails visibly and leaves any prior combined artifact intact.
 
 ### Interactive (human-in-the-loop)
 

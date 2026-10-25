@@ -13,8 +13,11 @@ description: Rules for writing and modifying hooks
 
 ## Script Hooks (type: "command")
 - Read JSON from stdin to get hook context (tool_name, tool_input, session_id, etc.)
-- Exit codes: 0 = allow, 1 = error (logged, doesn't block), 2 = block execution
-- For Stop hooks: output `{"decision": "block", "reason": "..."}` JSON to block
+- Follow the event-specific contract in the [current hook reference](https://code.claude.com/docs/en/hooks). Prefer exit 0 with structured JSON, or exit 2 with stderr for an intentional block. Other exits are hook errors; they are not a portable permission decision.
+- For Stop hooks: output `{"decision": "block", "reason": "..."}` JSON to continue work on an unmet requirement. Plain stdout is not model feedback. Use `systemMessage` for a user-facing notice; Stop `additionalContext` also continues the conversation.
+- For PostToolUse/PostToolUseFailure feedback, use `{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"..."}}` with the matching event name. PostToolUse only runs for successful calls; register PostToolUseFailure to observe failures and interruptions.
+- StopFailure replaces Stop after API errors. Output and exit code cannot resume, pause, or retry the turn. Log `error`, optional `error_details`, and optional `last_assistant_message` (which is the API error text for this event).
+- At Stop, use `last_assistant_message` for notifications. The transcript may not yet contain the final response; never infer pending approvals from stale transcript tool calls.
 - Always handle JSON parse errors gracefully — exit 0 on failure, never block on hook bugs
 
 ## Prompt Hooks (type: "prompt")
@@ -29,6 +32,7 @@ description: Rules for writing and modifying hooks
 ## Infinite Loop Prevention
 - Stop hooks MUST check for `stop_hook_active` flag to prevent re-triggering
 - If your hook blocks, Claude will try again — make sure the second attempt can succeed
+- Verification uses check-only formatter flags and must never run fixes. Check committed code as well as worktree edits; bind results to the HEAD revision and worktree fingerprint, and invalidate them if either changes. Keep formatting in an explicit action.
 
 ## Testing
 - Test hooks manually with: `echo '{"tool_name":"Bash","tool_input":{"command":"test"}}' | python hook.py`

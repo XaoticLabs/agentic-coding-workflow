@@ -50,11 +50,11 @@ ALWAYS_CHECK = [
     ),
     (
         r"logger\.\w+\(f[\"']",
-        "f-string in logger call — use %-style: `logger.info(\"User %s\", name)`",
+        'f-string in logger call — use %-style: `logger.info("User %s", name)`',
     ),
     (
         r"logging\.\w+\(f[\"']",
-        "f-string in logging call — use %-style: `logging.info(\"User %s\", name)`",
+        'f-string in logging call — use %-style: `logging.info("User %s", name)`',
     ),
     (
         r"\.dict\(\)",
@@ -93,6 +93,7 @@ NON_TEST_CHECK = [
 
 # ── Patterns that need the full file (Write only) ──────────────────
 
+
 def check_function_length(content: str) -> list[str]:
     """Find functions longer than 40 lines."""
     warnings = []
@@ -120,7 +121,9 @@ def check_function_length(content: str) -> list[str]:
         # Check if we've exited the current function (dedent to same or less)
         if func_start is not None and line.strip():
             current_indent = len(line) - len(line.lstrip())
-            if current_indent <= func_indent and not line.strip().startswith((")", "]", "}")):
+            if current_indent <= func_indent and not line.strip().startswith(
+                (")", "]", "}")
+            ):
                 length = i - func_start
                 if length > 40:
                     warnings.append(
@@ -165,6 +168,9 @@ def main():
     except (json.JSONDecodeError, Exception):
         sys.exit(0)
 
+    if not isinstance(input_data, dict):
+        sys.exit(0)
+
     tool_name = input_data.get("tool_name", "")
     tool_input = input_data.get("tool_input", {})
 
@@ -193,10 +199,20 @@ def main():
 
     if warnings:
         basename = os.path.basename(file_path)
-        print(f"Python style violations in {basename}:")
-        for w in warnings:
-            print(f"  - {w}")
-        print(f"\nFix before continuing (see .claude/rules/python.md)")
+        context = f"Python style violations in {basename}:\n" + "\n".join(
+            f"  - {warning}" for warning in warnings
+        )
+        context += "\nFix before continuing (see .claude/rules/python.md)"
+        print(
+            json.dumps(
+                {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PostToolUse",
+                        "additionalContext": context,
+                    }
+                }
+            )
+        )
 
     sys.exit(0)
 

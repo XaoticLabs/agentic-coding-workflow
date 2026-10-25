@@ -66,6 +66,9 @@ STATUS_FILE="${PROJECT_DIR}/.claude/ralph/status.md"
 PID_FILE="${PROJECT_DIR}/.claude/ralph/${SLUG}/orchestrator.pid"
 LOG_FILE="${RUN_DIR}/orchestrator.log"
 TRACE_FILE="${RUN_DIR}/trace.jsonl"
+UNIFIED_TRACE="${RUN_DIR}/unified-trace.jsonl"
+WORKER_TRACE_DIR="${RUN_DIR}/worker-traces"
+STITCH_SCRIPT="${SCRIPT_DIR}/../../../scripts/stitch-traces.sh"
 
 mkdir -p "$RUN_DIR"
 
@@ -73,9 +76,30 @@ echo $$ > "$PID_FILE"
 # Tee all output to the log file while keeping it visible in the tmux pane
 exec > >(tee -a "$LOG_FILE") 2>&1
 cleanup_pid() { rm -f "$PID_FILE"; }
+preserve_worker_traces() {
+  local worktree_path worker_name trace worker_run
+  for worktree_path in "${ALL_WORKTREE_PATHS[@]:-}"; do
+    [ -d "$worktree_path" ] || continue
+    worker_name=$(basename "$worktree_path")
+    worker_name="${worker_name#"${SLUG}-"}"
+    for trace in "${worktree_path}/.claude/ralph/${SLUG}/runs/"*/trace.jsonl; do
+      [ -f "$trace" ] || continue
+      worker_run=$(basename "$(dirname "$trace")")
+      mkdir -p "${WORKER_TRACE_DIR}/${worker_name}/${worker_run}" || return 1
+      cp "$trace" "${WORKER_TRACE_DIR}/${worker_name}/${worker_run}/trace.jsonl" || return 1
+    done
+  done
+}
 cleanup_orchestrator() {
+  local status=$?
   cleanup_pid
-  if [ -n "${WORKER_TRACE_DIR:-}" ]; then rm -rf "$WORKER_TRACE_DIR"; fi
+  # Run after final verification/evaluation/end events, including failure exits.
+  # Inputs stay under the run directory so the combined artifact is reproducible.
+  preserve_worker_traces || status=1
+  if [ -f "$TRACE_FILE" ] && [ -f "$STITCH_SCRIPT" ]; then
+    "$STITCH_SCRIPT" "$WORKER_TRACE_DIR" "$SLUG" "$TRACE_FILE" "$UNIFIED_TRACE" || status=1
+  fi
+  return "$status"
 }
 trap cleanup_orchestrator EXIT
 
@@ -566,23 +590,13 @@ if [ ! -f "$PERSISTENT_JOURNAL" ]; then
   printf "timestamp\tworker\toutcome\ttask\tmetric\tnotes\n" > "$PERSISTENT_JOURNAL"
 fi
 
-# Stitch worker traces into the run trace and append worker journals
-STITCH_SCRIPT="${SCRIPT_DIR}/../../../scripts/stitch-traces.sh"
-[ ! -f "$STITCH_SCRIPT" ] && STITCH_SCRIPT="${CLAUDE_PLUGIN_ROOT:-${SCRIPT_DIR}/../../..}/scripts/stitch-traces.sh"
-
 # Collect worker trace files and journals from worktrees
-WORKER_TRACE_DIR=$(mktemp -d)
+mkdir -p "$WORKER_TRACE_DIR"
+preserve_worker_traces
 
 for worktree_path in "${ALL_WORKTREE_PATHS[@]}"; do
   [ -d "$worktree_path" ] || continue
   worker_name=$(basename "$worktree_path" | sed "s/^${SLUG}-//")
-  WORKER_SUB="${WORKER_TRACE_DIR}/${worker_name}"
-  mkdir -p "$WORKER_SUB"
-
-  # Copy trace for stitching
-  for tf in "${worktree_path}/.claude/ralph/${SLUG}/runs/"*/trace.jsonl; do
-    [ -f "$tf" ] && cp "$tf" "$WORKER_SUB/" 2>/dev/null || true
-  done
 
   # Append worker journal to persistent journal (with worker prefix)
   WORKER_JOURNAL="${worktree_path}/.claude/ralph/${SLUG}/journal.tsv"
@@ -606,10 +620,11 @@ for worktree_path in "${ALL_WORKTREE_PATHS[@]}"; do
   echo "Preserved: ${worker_name}"
 done
 
-# Stitch all worker traces + orchestrator trace into unified run trace
+# Build an interim combined trace for the retrospective. The EXIT trap refreshes
+# it after final events have been written, without ever rewriting trace.jsonl.
 if [ -f "$STITCH_SCRIPT" ]; then
   echo "Stitching traces..."
-  "$STITCH_SCRIPT" "$WORKER_TRACE_DIR" "$SLUG" "$TRACE_FILE" 2>/dev/null || echo "Trace stitching had issues (non-fatal)"
+  "$STITCH_SCRIPT" "$WORKER_TRACE_DIR" "$SLUG" "$TRACE_FILE" "$UNIFIED_TRACE"
 fi
 
 # Save merge results into run dir (single file with all waves)
@@ -636,8 +651,6 @@ if [ -f "$RETRO_SCRIPT" ]; then
   echo "Running retrospective..."
   "$RETRO_SCRIPT" "$RUN_DIR" "$RALPH_BASE" "$SLUG" 2>/dev/null || echo "Retrospective had issues (non-fatal)"
 fi
-
-rm -rf "$WORKER_TRACE_DIR"
 
 # ── Auto-harvest ───────────────────────────────────────────────────────
 # Run harvest to extract patterns, write RALPH_OVERRIDES.md, and produce

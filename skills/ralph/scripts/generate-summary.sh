@@ -6,6 +6,7 @@
 # Usage: generate-summary.sh <spec-dir> <journal-file> <iterations> <commits-at-start> <start-time>
 
 set -euo pipefail
+TASK_PLAN="$(dirname "$(realpath "$0")")/../../../scripts/task-plan.py"
 
 SPEC_DIR="${1:?Usage: generate-summary.sh <spec-dir> <journal-file> <iterations> <commits-at-start> <start-time> [trace-file]}"
 JOURNAL_FILE="${2:?}"
@@ -53,9 +54,10 @@ TOTAL_TASKS=0
 DONE_TASKS=0
 SKIPPED_TASKS=""
 if [ -f "$PLAN_FILE" ]; then
-  TOTAL_TASKS=$(grep -c '^\- \[[ x]\] \*\*Task' "$PLAN_FILE" 2>/dev/null || echo "0")
-  DONE_TASKS=$(grep -c '^\- \[x\] \*\*Task' "$PLAN_FILE" 2>/dev/null || echo "0")
-  SKIPPED_TASKS=$(grep '^\- \[ \] \*\*Task' "$PLAN_FILE" 2>/dev/null || true)
+  task_stats=$(python3 "$TASK_PLAN" stats "$PLAN_FILE")
+  read -r TOTAL_TASKS DONE_TASKS _ <<< "$task_stats"
+
+  SKIPPED_TASKS=$(python3 "$TASK_PLAN" remaining "$PLAN_FILE")
 fi
 
 PLAN_STATUS="UNKNOWN"

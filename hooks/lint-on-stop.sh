@@ -3,7 +3,7 @@
 # Detects project type (Python/Elixir) and delegates to language-specific subscripts
 #
 # Smart behavior:
-#   - Skips on main/master/develop/release branches (nothing to gate)
+#   - Checks the entire project, including code committed before Stop
 #   - Probes infrastructure (postgres, redis, docker) before running tests
 #   - Blocks on real code errors (lint failures, type errors, test logic failures)
 #   - Does NOT block on infrastructure failures (db down, docker missing, connection limits)
@@ -12,14 +12,10 @@ SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 source "${SCRIPT_DIR}/lib/common.sh"
 
 input=$(read_hook_input)
+echo "$input" | jq -e 'type == "object"' >/dev/null 2>&1 || exit 0
 check_stop_hook_active "$input" && exit 0
 cd_project
-
-# Skip on main/master/develop/release — these branches don't need stop-gating
-current_branch=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
-case "$current_branch" in
-  main|master|develop|release|release/*) exit 0 ;;
-esac
+STATE_SCRIPT="${SCRIPT_DIR}/verification-state.py"
 
 # Detect project type
 if [ -f "mix.exs" ]; then
@@ -30,16 +26,20 @@ else
   exit 0
 fi
 
-# Get staged, unstaged, and untracked changes, deduplicate, filter to existing files
-CHANGED_FILES=$(git diff --name-only 2>/dev/null; git diff --cached --name-only 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null)
-CHANGED_FILES=$(echo "$CHANGED_FILES" | sort -u | grep -v '^$' | while read -r f; do [ -f "$f" ] && echo "$f"; done)
-
-if [ -z "$CHANGED_FILES" ]; then
+session_id=$(echo "$input" | jq -r '.session_id // "unknown"')
+if ! before_state=$(python3 "$STATE_SCRIPT" snapshot); then
+  python3 "$STATE_SCRIPT" record '{}' '{}' unavailable "$session_id" || true
   exit 0
 fi
+# A timeout or crash must not leave an earlier success looking current.
+python3 "$STATE_SCRIPT" record "$before_state" '{}' running "$session_id" || true
 
-# Shared state for subscripts
-export CHANGED_FILES
+# NUL-delimited paths and arrays preserve whitespace and shell metacharacters.
+# Whole-project selection catches committed changes and config-only changes.
+PROJECT_FILES=()
+while IFS= read -r -d '' file; do
+  [ -f "$file" ] && PROJECT_FILES+=("$file")
+done < <(git ls-files --cached --others --exclude-standard -z)
 output=""
 has_code_errors=false
 has_infra_warnings=false
@@ -93,6 +93,20 @@ esac
 
 # ── Report results ───────────────────────────────────────────────────
 
+if ! after_state=$(python3 "$STATE_SCRIPT" snapshot); then
+  python3 "$STATE_SCRIPT" record "$before_state" '{}' unavailable "$session_id" || true
+  exit 0
+fi
+status=passed
+if [ "$has_infra_warnings" = true ]; then status=incomplete; fi
+if [ "$has_code_errors" = true ]; then status=failed; fi
+if [ "$before_state" != "$after_state" ]; then
+  has_code_errors=true
+  status=changed
+  output+="Verification inputs changed while checks ran. Run formatting separately, then verify again.\n"
+fi
+python3 "$STATE_SCRIPT" record "$before_state" "$after_state" "$status" "$session_id" || true
+
 if [ "$has_code_errors" = true ]; then
   if [ "$has_infra_warnings" = true ]; then
     output+="\nNote: Some failures are infrastructure-related (${infra_warnings%%, }). Ignore those — focus only on code errors above.\n"
@@ -103,11 +117,9 @@ if [ "$has_code_errors" = true ]; then
 fi
 
 if [ "$has_infra_warnings" = true ]; then
-  echo -e "$output"
-  echo ""
-  echo "Note: Tests could not run fully (${infra_warnings%%, }). Lint/type checks passed. Re-run tests once infrastructure is available."
+  message="Tests could not run fully (${infra_warnings%%, }). Verification is incomplete; re-run when infrastructure is available."
+  jq -n --arg message "$message" '{systemMessage: $message}'
   exit 0
 fi
 
-echo -e "$output"
 exit 0

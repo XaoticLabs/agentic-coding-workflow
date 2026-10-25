@@ -8,6 +8,7 @@
 # Output: markdown briefing on stdout
 
 set -euo pipefail
+TASK_PLAN="$(dirname "$(realpath "$0")")/../../../scripts/task-plan.py"
 
 PLAN_FILE="${1:?Usage: generate-briefing.sh <plan-file> <journal-file> <iteration> [trace-file]}"
 JOURNAL_FILE="${2:?}"
@@ -37,7 +38,7 @@ echo ""
 
 echo "### Remaining Tasks"
 if [ -f "$PLAN_FILE" ]; then
-  REMAINING=$(grep '^\- \[ \] \*\*Task' "$PLAN_FILE" || true)
+  REMAINING=$(python3 "$TASK_PLAN" remaining "$PLAN_FILE")
   if [ -n "$REMAINING" ]; then
     echo "$REMAINING"
   else
@@ -169,8 +170,8 @@ fi
 
 if [ -f "$PLAN_FILE" ] && [ "$ITERATION" -gt 1 ]; then
   # Get current task's spec file
-  NEXT_TASK_SPEC=$(grep -m1 '^\- \[ \] \*\*Task' "$PLAN_FILE" 2>/dev/null | grep -oE 'Spec: [^ ,]+' | sed 's/Spec: //' || true)
-  NEXT_TASK_NAME=$(grep -m1 '^\- \[ \] \*\*Task' "$PLAN_FILE" 2>/dev/null | sed 's/.*\*\*Task [0-9]*: \(.*\)\*\*.*/\1/' || true)
+  NEXT_TASK_SPEC=$(python3 "$TASK_PLAN" next "$PLAN_FILE" --field spec)
+  NEXT_TASK_NAME=$(python3 "$TASK_PLAN" next "$PLAN_FILE")
 
   if [ -n "$NEXT_TASK_SPEC" ] && [ -n "$TRACE_FILE" ] && [ -f "$TRACE_FILE" ]; then
     # Get last iteration's committed files

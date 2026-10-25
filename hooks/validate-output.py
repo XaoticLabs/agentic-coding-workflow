@@ -46,6 +46,7 @@ import glob as glob_mod
 import json
 import os
 import sys
+import importlib.util
 from pathlib import Path
 
 
@@ -84,7 +85,10 @@ def validate_file_min_lines(rule: dict, project_dir: str) -> tuple[bool, str]:
     """Check that a file has at least N lines (guards against empty/stub output)."""
     path = os.path.join(project_dir, rule["path"])
     if not os.path.isfile(path):
-        return False, f"Cannot validate line count — file does not exist: {rule['path']}"
+        return (
+            False,
+            f"Cannot validate line count — file does not exist: {rule['path']}",
+        )
 
     try:
         line_count = len(Path(path).read_text().splitlines())
@@ -150,48 +154,25 @@ def validate_dir_files_contain(rule: dict, project_dir: str) -> tuple[bool, str]
 
 
 def validate_task_index_format(rule: dict, project_dir: str) -> tuple[bool, str]:
-    """Check that an IMPLEMENTATION_PLAN.md has a parseable Task Index section.
-
-    The partition-tasks.sh and loop.sh scripts parse task lines with regex:
-      ^- \\[ \\] \\*\\*Task [0-9]
-    If no lines match this pattern, parallel mode silently treats all tasks as
-    complete and does nothing. This validator catches that at plan-creation time.
-    """
+    """Use the scheduler's parser and graph validation at plan creation time."""
     path = os.path.join(project_dir, rule["path"])
     if not os.path.isfile(path):
-        return False, f"Cannot validate task index — file does not exist: {rule['path']}"
-
-    try:
-        content = Path(path).read_text()
-    except Exception as e:
-        return False, f"Cannot read {rule['path']}: {e}"
-
-    import re
-
-    task_line_pattern = re.compile(
-        r"^- \[[ x]\] \*\*Task \d+: .+\*\* — Priority: (?:HIGH|MEDIUM|LOW), Deps: .+, (?:Spec: .+, )?Files: .+",
-        re.MULTILINE,
-    )
-    matches = task_line_pattern.findall(content)
-
-    min_tasks = rule.get("min_tasks", 1)
-    if len(matches) < min_tasks:
-        return False, (
-            f"File {rule['path']} has {len(matches)} parseable task index lines "
-            f"(expected at least {min_tasks}). Each task MUST appear as a line in "
-            f"the '## Task Index' section matching: "
-            f"'- [ ] **Task N: <name>** — Priority: HIGH, Deps: none, Files: path/to/file.ts'. "
-            f"The partitioner and loop.sh parse these lines with regex — other formats "
-            f"(### headers, **Status:** lines) are NOT recognized."
+        return (
+            False,
+            f"Cannot validate task index — file does not exist: {rule['path']}",
         )
 
-    # Also check that at least one task is incomplete (not all [x])
-    incomplete_pattern = re.compile(r"^- \[ \] \*\*Task \d+:", re.MULTILINE)
-    incomplete = incomplete_pattern.findall(content)
-    if len(incomplete) == 0 and len(matches) > 0:
-        # All tasks marked complete — this is fine, not a format error
-        pass
-
+    try:
+        module_path = Path(__file__).resolve().parents[1] / "scripts/task-plan.py"
+        spec = importlib.util.spec_from_file_location("workflow_task_plan", module_path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        tasks = module.load_plan(Path(path))
+        if len(tasks) < rule.get("min_tasks", 1):
+            return False, f"File {rule['path']} has too few tasks"
+    except (OSError, ValueError) as error:
+        return False, f"Invalid task graph in {rule['path']}: {error}"
     return True, ""
 
 
@@ -208,6 +189,9 @@ def main():
     try:
         input_data = json.load(sys.stdin)
     except (json.JSONDecodeError, Exception):
+        sys.exit(0)
+
+    if not isinstance(input_data, dict):
         sys.exit(0)
 
     # Prevent infinite loops

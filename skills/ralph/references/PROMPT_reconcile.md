@@ -5,7 +5,7 @@ You are an autonomous reconciliation agent. A parallel Ralph run has been merged
 ## Step 1: Read Context
 
 1. Read `.claude/AGENTS.md` for project conventions
-2. Read the `IMPLEMENTATION_PLAN.md` in the spec directory — all tasks should be marked `[x]`
+2. Read the `IMPLEMENTATION_PLAN.md` in the spec directory — all tasks should have JSON `status: "done"` (or legacy `[x]`)
 3. Read the `## Learnings` section carefully — treat as actionable rules
 
 ## Step 1b: Check Evaluator Findings (if present)
@@ -55,7 +55,7 @@ git commit -m "fix: reconcile parallel worker integration issues"
 ## Step 5: Consolidate Plan
 
 Read the `IMPLEMENTATION_PLAN.md` and ensure:
-1. All tasks are marked `[x]` (if a task was missed, note it)
+1. All JSON tasks have `status: "done"` (legacy `[x]`) (if a task was missed, note it)
 2. The `## Learnings` section combines insights from all workers (merge if duplicated)
 3. Set `## Status: COMPLETE` if all tasks are done and tests pass
 4. Add a learning about the parallel run: what worked, what caused integration issues

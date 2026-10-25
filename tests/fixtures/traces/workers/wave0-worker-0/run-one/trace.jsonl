@@ -1,0 +1,2 @@
+{"ts":"2026-10-25T12:00:01Z","type":"run_start"}
+{"ts":"2026-10-25T12:00:02Z","type":"verdict","outcome":"KEEP","files_changed":"one.py"}

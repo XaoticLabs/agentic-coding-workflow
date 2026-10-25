@@ -25,18 +25,22 @@ Use parallel subagents for codebase searches to be efficient.
 
 Write `IMPLEMENTATION_PLAN.md` in the spec directory.
 
-**CRITICAL FORMAT REQUIREMENT:** The plan MUST contain a `## Task Index` section with one line per task in EXACTLY this format. The parallel partitioner and loop.sh parse these lines with regex — any deviation causes tasks to be invisible (treated as "all complete") and the build loop will do nothing.
+**Task contract:** Put one fenced JSON object in `## Task Index`. `scripts/task-plan.py` is the shared parser for planning validation, scheduling, progress, and task selection. It rejects duplicate IDs, missing dependencies, self-dependencies, and cycles before execution. Existing checkbox indexes remain readable for compatibility; generate JSON for new plans.
 
-```markdown
+````markdown
 # Implementation Plan: <Feature Name>
 
 ## Status: IN_PROGRESS
 
 ## Task Index
 
-- [ ] **Task 1: <name>** — Priority: HIGH, Deps: none, Spec: 01-topic.md, Files: src/auth/login.ts src/auth/types.ts
-- [ ] **Task 2: <name>** — Priority: HIGH, Deps: Task 1, Spec: 02-topic.md, Files: src/auth/session.ts src/middleware/auth.ts
-- [ ] **Task 3: <name>** — Priority: MEDIUM, Deps: none, Spec: 03-topic.md, Files: src/api/routes.ts src/api/handlers.ts
+```json
+{"tasks": [
+  {"id": 1, "name": "Login", "status": "pending", "priority": "HIGH", "deps": [], "spec": "01-topic.md", "files": ["src/auth/login.ts", "src/auth/types.ts"]},
+  {"id": 2, "name": "Sessions", "status": "pending", "priority": "HIGH", "deps": [1], "spec": "02-topic.md", "files": ["src/auth/session.ts"]},
+  {"id": 3, "name": "API routes", "status": "pending", "priority": "MEDIUM", "deps": [1, 2], "spec": "03-topic.md", "files": ["src/api/routes.ts"]}
+]}
+```
 
 ## Tasks
 
@@ -69,14 +73,11 @@ Write `IMPLEMENTATION_PLAN.md` in the spec directory.
 | 01-topic.md | Not started | No existing code found |
 | 02-topic.md | Partial | Base module exists, needs extension |
 | 03-topic.md | Complete | Already implemented, verified |
-```
+````
 
-Each Task Index line MUST match this exact pattern (the partitioner uses regex):
-```
-- [ ] **Task <N>: <name>** — Priority: <HIGH|MEDIUM|LOW>, Deps: <none|Task N[, Task M...]>, Spec: <file>, Files: <space-separated paths>
-```
+Required task fields: positive integer `id`, nonempty `name`, `status` (`pending` or `done`), `priority` (`HIGH`, `MEDIUM`, `LOW`), integer array `deps`, and path array `files`. Optional strings: `spec`, `completed_in`. Every dependency must name a task in this index, including completed tasks. A completed dependency is satisfied and adds no pending wave. Paths with spaces are preserved in arrays.
 
-The `## Tasks` section below the index contains the detailed descriptions and acceptance criteria for each task. The index is the machine-readable summary; the task details are the human/agent-readable specification.
+Keep descriptions and acceptance criteria under `## Tasks`; the JSON index is the scheduling source of truth. Validate the result with `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/task-plan.py" validate <plan-file>`.
 
 ## Step 5: Identify AI Feature Opportunities
 

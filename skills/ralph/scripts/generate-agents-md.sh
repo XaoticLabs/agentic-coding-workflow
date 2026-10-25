@@ -44,12 +44,12 @@ detect_project() {
       if command -v uv >/dev/null 2>&1; then
         build_cmd="uv sync"
         test_cmd="uv run pytest"
-        lint_cmd="uv run ruff check ."
+        lint_cmd="uv run ruff check --no-fix ."
         format_cmd="uv run ruff format ."
       else
         build_cmd="pip install -e ."
         test_cmd="pytest"
-        lint_cmd="ruff check ."
+        lint_cmd="ruff check --no-fix ."
         format_cmd="ruff format ."
       fi
       if grep -q "basedpyright\|pyright" "${PROJECT_DIR}/pyproject.toml" 2>/dev/null; then

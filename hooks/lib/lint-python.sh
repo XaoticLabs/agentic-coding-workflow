@@ -1,29 +1,30 @@
 #!/bin/bash
 # Python lint/test runner — called by lint-on-stop.sh
-# Expects: $CHANGED_FILES, $skip_tests, $infra_warnings set by caller
+# Expects: PROJECT_FILES array and infrastructure state set by caller
 # Sets: has_code_errors, has_infra_warnings, infra_warnings, output (appends)
 
 # Source infra classifier
 SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 source "${SCRIPT_DIR}/infra-patterns.sh"
 
-python_files=""
-while IFS= read -r file; do
-  [[ "$file" =~ \.py$ ]] && python_files="$python_files $file"
-done <<< "$CHANGED_FILES"
-python_files=$(echo "$python_files" | xargs)
+python_files=()
+for file in "${PROJECT_FILES[@]}"; do
+  [[ "$file" =~ \.py$ ]] && python_files+=("$file")
+done
 
-if [ -z "$python_files" ]; then
-  exit 0
+if [ ${#python_files[@]} -eq 0 ]; then
+  return 0
 fi
 
 # Lint and type checks (no infrastructure needed)
-output+="=== ruff format ===\n"
-format_output=$(uv run ruff format $python_files 2>&1)
+output+="=== ruff format --check ===\n"
+format_output=$(uv run --frozen --no-sync ruff format --check -- "${python_files[@]}" 2>&1)
+format_exit=$?
 output+="$format_output\n\n"
+if [ $format_exit -ne 0 ]; then has_code_errors=true; fi
 
 output+="=== ruff check ===\n"
-check_output=$(uv run ruff check $python_files 2>&1)
+check_output=$(uv run --frozen --no-sync ruff check --no-fix -- "${python_files[@]}" 2>&1)
 check_exit=$?
 output+="$check_output\n\n"
 if [ $check_exit -ne 0 ]; then
@@ -31,7 +32,7 @@ if [ $check_exit -ne 0 ]; then
 fi
 
 output+="=== basedpyright ===\n"
-pyright_output=$(uv run basedpyright $python_files 2>&1)
+pyright_output=$(uv run --frozen --no-sync basedpyright "${python_files[@]}" 2>&1)
 pyright_exit=$?
 output+="$pyright_output\n\n"
 if [ $pyright_exit -ne 0 ]; then
@@ -44,36 +45,13 @@ if [ "${SKIP_TESTS_PYTHON:-false}" = true ]; then
   return 0 2>/dev/null || exit 0
 fi
 
-# Find test files for changed files
-test_files=""
-while IFS= read -r file; do
-  [[ ! "$file" =~ \.py$ ]] && continue
-
-  if [[ "$file" =~ test_.*\.py$|.*_test\.py$|tests/.*\.py$ ]]; then
-    test_files="$test_files $file"
-  else
-    dir=$(dirname "$file")
-    basename_noext=$(basename "$file" .py)
-    for pattern in "test_${basename_noext}.py" "${basename_noext}_test.py" "tests/test_${basename_noext}.py" "${dir}/test_${basename_noext}.py"; do
-      if [ -f "$pattern" ]; then
-        test_files="$test_files $pattern"
-        break
-      fi
-    done
-  fi
-done <<< "$CHANGED_FILES"
-test_files=$(echo "$test_files" | xargs | tr ' ' '\n' | sort -u | tr '\n' ' ')
-
-if [ -z "$test_files" ]; then
-  output+="=== pytest ===\nNo test files found for changed code\n\n"
-  return 0 2>/dev/null || exit 0
-fi
-
 output+="=== pytest ===\n"
-pytest_output=$(uv run pytest -q --tb=short $test_files 2>&1)
+pytest_output=$(uv run --frozen --no-sync pytest -q --tb=short 2>&1)
 pytest_exit=$?
 summary_line=$(echo "$pytest_output" | grep -E '(passed|failed|skipped|error)' | tail -1)
-if [ $pytest_exit -ne 0 ]; then
+if [ $pytest_exit -eq 5 ]; then
+  output+="No tests collected\n\n"
+elif [ $pytest_exit -ne 0 ]; then
   if is_infra_failure "$pytest_output"; then
     has_infra_warnings=true
     infra_warnings+="tests failed (infrastructure), "

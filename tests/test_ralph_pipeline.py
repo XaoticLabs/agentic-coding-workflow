@@ -41,6 +41,9 @@ def plugin(tmp_path: Path) -> Path:
         Path("scripts/lib/parallel-primitives.sh"),
         Path("scripts/lib/worktree-safety.sh"),
         Path("scripts/project-commands.py"),
+        Path("scripts/task-plan.py"),
+        Path("scripts/stitch-traces.sh"),
+        Path("scripts/stitch-traces.py"),
     ):
         destination = plugin_dir / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -199,6 +202,41 @@ def test_verification_gate_keeps_pipefail_enabled(project: Path) -> None:
     assert git(project, "rev-parse", "HEAD") == initial_commit
     assert not (project / "changed.txt").exists()
     assert_outcome(project, "reverted", "REVERT", journal_outcome="REVERT_TESTS")
+
+
+def test_loop_reads_structured_task_progress_and_selects_a_ready_task(
+    project: Path,
+) -> None:
+    tasks = [
+        {
+            "id": 1,
+            "name": "Foundation",
+            "status": "done",
+            "priority": "HIGH",
+            "deps": [],
+            "files": [],
+        },
+        {
+            "id": 2,
+            "name": "Pipeline status",
+            "status": "pending",
+            "priority": "HIGH",
+            "deps": [1],
+            "files": [],
+        },
+    ]
+    (project / ".claude/specs/status-test/IMPLEMENTATION_PLAN.md").write_text(
+        "## Task Index\n```json\n" + json.dumps({"tasks": tasks}) + "\n```\n## Tasks\n"
+    )
+    result = run_loop(project)
+    assert result.returncode == 0, result.stderr
+    assert_outcome(project, "success", "NO_COMMIT")
+    run = next((project / ".claude/ralph/status-test/runs").iterdir())
+    events = [
+        json.loads(line) for line in (run / "trace.jsonl").read_text().splitlines()
+    ]
+    state = next(event for event in events if event["type"] == "plan_state")
+    assert (state["total"], state["done"], state["remaining"]) == (2, 1, 1)
 
 
 def run_single_track(
@@ -482,6 +520,16 @@ fi
         assert (project / "changed.txt").exists()
         assert git(project, "branch", "--list", branch) == ""
         run = next((project / ".claude/ralph/status-test/runs").iterdir())
+        unified = [
+            json.loads(line)
+            for line in (run / "unified-trace.jsonl").read_text().splitlines()
+        ]
+        assert any(event["source"] == "wave0-worker-0" for event in unified)
+        assert any(
+            event["type"] == "parallel_end" and event["source"] == "orchestrator"
+            for event in unified
+        )
+        assert list((run / "worker-traces/wave0-worker-0").glob("*/trace.jsonl"))
         assert (run / "eval-verdict.json").exists()
         assert (
             run

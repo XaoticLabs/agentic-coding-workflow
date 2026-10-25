@@ -15,7 +15,7 @@ if [ -z "$transcript_path" ] || [ ! -f "$transcript_path" ]; then
 fi
 
 # Check for meaningful conversation (need at least a few exchanges)
-message_count=$(jq -s '[.[] | select(.type == "human" or .type == "assistant")] | length' "$transcript_path" 2>/dev/null)
+message_count=$(jq -s '[.[] | select(.type == "user" or .type == "human" or .type == "assistant")] | length' "$transcript_path" 2>/dev/null)
 if [ -z "$message_count" ] || [ "$message_count" -lt 4 ]; then
     exit 0
 fi
@@ -23,7 +23,7 @@ fi
 # Look for correction signals in user messages
 # Common patterns: "no", "don't", "stop", "wrong", "instead", "actually", "not that"
 correction_count=$(jq -rs '
-    [.[] | select(.type == "human") |
+    [.[] | select(.type == "user" or .type == "human") |
         .message.content |
         if type == "array" then
             map(select(.type == "text") | .text) | join(" ")
@@ -37,7 +37,7 @@ correction_count=$(jq -rs '
 ' "$transcript_path" 2>/dev/null)
 
 if [ -n "$correction_count" ] && [ "$correction_count" -gt 0 ]; then
-    echo "Note: This session had ~${correction_count} user correction(s). Consider running /agentic-coding-workflow:update-rules to capture any patterns worth remembering."
+    jq -n --arg message "This session had ~${correction_count} user correction(s). Consider running /agentic-coding-workflow:update-rules to capture patterns worth remembering." '{systemMessage: $message}'
 fi
 
 exit 0

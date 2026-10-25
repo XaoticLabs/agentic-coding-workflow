@@ -15,7 +15,7 @@ cd_project
 # ── Gate 1: Plan update enforcement ──────────────────────────────────
 
 plan_file=""
-for candidate in IMPLEMENTATION_PLAN.md .claude/plans/IMPLEMENTATION_PLAN.md; do
+for candidate in "${RALPH_PLAN_FILE:-}" IMPLEMENTATION_PLAN.md .claude/plans/IMPLEMENTATION_PLAN.md; do
   if [ -f "$candidate" ]; then
     plan_file="$candidate"
     break
@@ -23,8 +23,14 @@ for candidate in IMPLEMENTATION_PLAN.md .claude/plans/IMPLEMENTATION_PLAN.md; do
 done
 
 if [ -n "$plan_file" ]; then
-  plan_changed=$(git diff --name-only -- "$plan_file" 2>/dev/null; git diff --cached --name-only -- "$plan_file" 2>/dev/null)
-  code_changes=$(git diff --name-only 2>/dev/null; git diff --cached --name-only 2>/dev/null)
+  # Ralph supplies the exact iteration base; an arbitrary HEAD~2 misses short
+  # histories and can review commits belonging to previous iterations.
+  base="${RALPH_PRE_COMMIT:-HEAD}"
+  plan_changed=$(git diff --name-only "$base" -- "$plan_file" 2>/dev/null)
+  if [ -n "${RALPH_PLAN_BLOB:-}" ] && [ "$(git hash-object -- "$plan_file")" != "$RALPH_PLAN_BLOB" ]; then
+    plan_changed="$plan_file"
+  fi
+  code_changes=$(git diff --name-only "$base" 2>/dev/null)
 
   if [ -z "$plan_changed" ] && [ -n "$code_changes" ]; then
     echo '{"decision": "block", "reason": "Ralph mode: IMPLEMENTATION_PLAN.md was not updated. Mark the completed task as done and add any learnings before exiting."}'
@@ -34,7 +40,8 @@ fi
 
 # ── Gate 2: Quality judge ────────────────────────────────────────────
 
-DIFF=$(git diff HEAD~2..HEAD 2>/dev/null)
+[ -n "${RALPH_PRE_COMMIT:-}" ] || exit 0
+DIFF=$(git diff "$RALPH_PRE_COMMIT" HEAD 2>/dev/null)
 if [ -z "$DIFF" ]; then
   exit 0
 fi
@@ -82,7 +89,7 @@ VERDICT=$(echo "$JUDGE_PROMPT" | claude -p --model haiku --output-format text 2>
 
 if echo "$VERDICT" | grep -q "^FAIL:"; then
   REASON=$(echo "$VERDICT" | sed 's/^FAIL: //')
-  echo "{\"decision\": \"block\", \"reason\": \"Quality review: ${REASON}\"}"
+  jq -n --arg reason "Quality review: ${REASON}" '{decision: "block", reason: $reason}'
   exit 0
 fi
 

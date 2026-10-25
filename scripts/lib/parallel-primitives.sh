@@ -211,7 +211,7 @@ detect_lint_command() {
       lint_cmd="npx eslint ."
     elif [ -f "${project_dir}/pyproject.toml" ]; then
       if grep -q 'ruff' "${project_dir}/pyproject.toml" 2>/dev/null; then
-        lint_cmd="ruff check ."
+        lint_cmd="ruff check --no-fix ."
       fi
     fi
   fi

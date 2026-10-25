@@ -55,6 +55,18 @@
         ]
       }
     ],
+    "PostToolUseFailure": [
+      {
+        "description": "Records failed and interrupted tool calls using the failure event payload",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/audit-logger.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
     "SessionEnd": [
       {
         "description": "Removes orphaned pr-review-* worktrees left by crashed or interrupted review sessions",
@@ -90,7 +102,8 @@
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/lint-on-stop.sh"
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/lint-on-stop.sh",
+            "timeout": 600
           },
           {
             "type": "command",

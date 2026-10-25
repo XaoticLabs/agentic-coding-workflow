@@ -395,24 +395,37 @@ These tests are written before implementation and become immutable once committe
 
 Write `.claude/specs/<slug>/IMPLEMENTATION_PLAN.md`:
 
-```markdown
+Use the structured `## Task Index` contract from `skills/ralph/references/PROMPT_plan.md`. Keep task details and acceptance criteria under `## Tasks`.
+
+````markdown
 # Implementation Plan: <Feature Name>
 
 ## Status: IN_PROGRESS
 
+## Task Index
+
+```json
+{"tasks": [
+  {"id": 1, "name": "Foundation", "status": "pending", "priority": "HIGH", "deps": [], "spec": "01-topic.md", "files": ["src/model.py"]},
+  {"id": 2, "name": "Feature", "status": "pending", "priority": "HIGH", "deps": [1], "spec": "02-topic.md", "files": ["src/feature.py"]}
+]}
+```
+
 ## Tasks
 
-- [ ] **Task 1: <name>** — Priority: HIGH, Deps: none, Spec: 01-topic.md
-  - <1-2 line description of concrete deliverable>
-- [ ] **Task 2: <name>** — Priority: HIGH, Deps: Task 1, Spec: 02-topic.md
-  - <1-2 line description>
-- [ ] **Task 3: <name>** — Priority: MEDIUM, Deps: none, Spec: 03-topic.md
-  - <1-2 line description>
+### Task 1: Foundation
+- <Concrete deliverable and testable acceptance criteria>
+
+### Task 2: Feature
+- <Concrete deliverable and testable acceptance criteria>
 
 ## Learnings
 
 (Populated by Ralph build iterations)
-```
+````
+
+Validate the index and dependency graph before finishing:
+`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/task-plan.py" validate .claude/specs/<slug>/IMPLEMENTATION_PLAN.md`.
 
 **Prioritization rules for tasks:**
 1. Dependencies first — if B depends on A, A gets higher priority
