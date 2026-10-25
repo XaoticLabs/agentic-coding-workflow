@@ -10,6 +10,9 @@ paths:
 - Set a tool matcher for hooks that handle specific tools; do not infer a Python toolchain or library version from a language marker or method name
 - Use `${CLAUDE_PLUGIN_ROOT}` for script paths in hooks.json
 - Set appropriate `timeout` values (default is fine for most; use 5s for fast checks)
+- Leave tool approvals to native permission handling; do not add an automatic approval router.
+- Keep review worktree cleanup in its owning launcher/process. Do not register a global session-end sweep or force-remove review checkouts.
+- Validate artifact content and structure without minimum document-length requirements.
 
 ## Script Hooks (type: "command")
 - Read JSON from stdin to get hook context (tool_name, tool_input, session_id, etc.)

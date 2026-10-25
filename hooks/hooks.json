@@ -1,5 +1,5 @@
 {
-  "description": "Core agentic coding workflow hooks - security, testing, permissions, and audit",
+  "description": "Core agentic coding workflow hooks - security, testing, and audit",
   "hooks": {
     "PreToolUse": [
       {
@@ -34,18 +34,6 @@
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/audit-logger.py",
             "timeout": 5
-          }
-        ]
-      }
-    ],
-    "SessionEnd": [
-      {
-        "description": "Removes orphaned pr-review-* worktrees left by crashed or interrupted review sessions",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/cleanup-review-worktrees.sh",
-            "timeout": 10
           }
         ]
       }

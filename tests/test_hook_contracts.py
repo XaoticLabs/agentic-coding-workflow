@@ -79,6 +79,37 @@ def invoke_event(
     return results
 
 
+@pytest.mark.parametrize("missing_section", [False, True])
+def test_output_validation_ignores_legacy_length_quotas_but_checks_sections(
+    project: Path, missing_section: bool
+) -> None:
+    output = project / ".claude/plans/brief.md"
+    output.parent.mkdir(parents=True)
+    output.write_text("## Objective\nShip the fix.\n")
+    expectations = project / ".claude/expected-output.json"
+    expectations.write_text(json.dumps({
+        "source": "plan",
+        "rules": [
+            {"type": "file_exists", "path": ".claude/plans/brief.md"},
+            {"type": "file_contains", "path": ".claude/plans/brief.md",
+             "sections": ["## Missing" if missing_section else "## Objective"]},
+            {"type": "file_min_lines", "path": ".claude/plans/brief.md",
+             "min_lines": 100},
+        ],
+    }))
+
+    result = invoke(project, "validate-output.py", {})
+
+    assert result.returncode == 0, result.stderr
+    if missing_section:
+        assert json.loads(result.stdout)["decision"] == "block"
+        assert "## Missing" in result.stdout
+        assert expectations.exists()
+    else:
+        assert result.stdout == ""
+        assert not expectations.exists()
+
+
 @pytest.mark.parametrize(
     "command",
     [

@@ -66,6 +66,10 @@ preserve_worktree_artifacts "$REPO_ROOT" "$WORKTREE_PATH" "${REPO_ROOT}/.claude/
 
 Carry the same `WORKTREE_OWNER_TOKEN` across setup and cleanup calls. If ownership,
 activity, cleanliness, ancestry, or preservation checks fail, report the retained path.
+The review launcher (`scripts/launch-reviews.sh`) and its review process own exit
+cleanup for the exact worktrees they create; no global SessionEnd hook sweeps reviews.
+After uncatchable termination, retain the checkout for explicit recovery with the
+same ownership and preservation checks. Never force-remove it by name.
 
 ## Review Workflow — PERFECT Phases
 

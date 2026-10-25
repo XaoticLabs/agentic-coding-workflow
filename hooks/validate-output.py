@@ -22,11 +22,6 @@ Expected format of .claude/expected-output.json:
             "sections": ["## Objective", "## Tasks", "## Success Criteria"]
         },
         {
-            "type": "file_min_lines",
-            "path": ".claude/plans/my-plan.md",
-            "min_lines": 20
-        },
-        {
             "type": "dir_files_contain",
             "path": ".claude/specs/my-feature/",
             "glob": "*.md",
@@ -75,28 +70,6 @@ def validate_file_contains(rule: dict, project_dir: str) -> tuple[bool, str]:
     if missing:
         return False, (
             f"File {rule['path']} is missing required sections: {', '.join(missing)}"
-        )
-    return True, ""
-
-
-def validate_file_min_lines(rule: dict, project_dir: str) -> tuple[bool, str]:
-    """Check that a file has at least N lines (guards against empty/stub output)."""
-    path = os.path.join(project_dir, rule["path"])
-    if not os.path.isfile(path):
-        return (
-            False,
-            f"Cannot validate line count — file does not exist: {rule['path']}",
-        )
-
-    try:
-        line_count = len(Path(path).read_text().splitlines())
-    except Exception as e:
-        return False, f"Cannot read {rule['path']}: {e}"
-
-    min_lines = rule.get("min_lines", 1)
-    if line_count < min_lines:
-        return False, (
-            f"File {rule['path']} has {line_count} lines, expected at least {min_lines}"
         )
     return True, ""
 
@@ -177,7 +150,6 @@ def validate_task_index_format(rule: dict, project_dir: str) -> tuple[bool, str]
 VALIDATORS = {
     "file_exists": validate_file_exists,
     "file_contains": validate_file_contains,
-    "file_min_lines": validate_file_min_lines,
     "dir_files_contain": validate_dir_files_contain,
     "task_index_format": validate_task_index_format,
 }

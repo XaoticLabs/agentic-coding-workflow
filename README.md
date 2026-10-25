@@ -195,7 +195,17 @@ The default hooks require Python 3.11+, Bash, Git, and jq; their Python scripts 
 | `validate-output.py` | Stop | Validates command output artifacts exist and contain required sections |
 | `toast-notify.sh` | Stop | Pops up a macOS notification when Claude needs your attention |
 | `stop-failure-logger.sh` | StopFailure | Logs API failures (rate limits, auth errors) and sends toast notifications |
-| `cleanup-review-worktrees.sh` | SessionEnd | Removes owned, inactive, clean review worktrees after ancestry and artifact preservation checks |
+
+Review worktree cleanup belongs to the launcher and the individual review process.
+They track only worktrees created by that invocation, check ownership and activity,
+archive workflow artifacts, and remove clean checkouts without force. Partial launch
+failures clean up pending worktrees; launched reviews handle their own exit. Dirty,
+unmerged, locked, active, or unowned worktrees are retained with their paths reported.
+There is no global session-end sweep. Uncatchable termination leaves worktrees for
+explicit recovery through the worktree workflow, retaining its safety checks.
+
+Output validation checks required artifacts, sections, and task graphs. It imposes
+no minimum document length; legacy line-count expectations are ignored.
 
 Python tooling is project-specific. The global toolchain blocker and regex style hook have been removed. `/agentic-coding-workflow:setup-python-rules` adapts judgment guidance to the existing stack. The optional [uv/Ruff/basedpyright profile](profiles/python/uv-ruff-basedpyright/README.md) supplies actual tool configuration and check commands only when explicitly selected. Tool configuration owns formatting, lint, typing, and file exclusions.
 

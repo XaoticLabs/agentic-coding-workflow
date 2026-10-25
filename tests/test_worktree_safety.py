@@ -1,5 +1,6 @@
 """Exercise cleanup against real Git worktrees, including refusal paths."""
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -191,21 +192,137 @@ def test_live_child_prevents_cleanup_after_launcher_exits(
         process.wait(timeout=5)
 
 
-def test_hook_does_not_claim_named_but_unowned_review(project: Path) -> None:
-    worktree = project / ".claude/worktrees/pr-review-other-session"
-    git(project, "worktree", "add", "--detach", str(worktree))
+def test_global_hooks_do_not_route_permissions_or_sweep_review_worktrees() -> None:
+    hooks = json.loads((PLUGIN_ROOT / "hooks/hooks.json").read_text())["hooks"]
+    assert not hooks.get("PermissionRequest")
+    assert not hooks.get("SessionEnd")
 
-    result = subprocess.run(
-        ["bash", str(PLUGIN_ROOT / "hooks/cleanup-review-worktrees.sh")],
+
+@pytest.fixture
+def review_environment(project: Path, tmp_path: Path) -> dict[str, str]:
+    # Fetch real refs locally; these lifecycle tests do not use a network or model.
+    git(project, "remote", "add", "origin", str(project))
+    for branch in ("review-one", "review-two"):
+        git(project, "branch", branch)
+    tools = tmp_path / "bin"
+    write_executable(tools / "gh", "exit 0\n")
+    write_executable(tools / "tmux", "exit 0\n")
+    write_executable(
+        tools / "claude",
+        'mkdir -p .claude/review\n'
+        'echo "Review evidence" > .claude/review/report.md\n'
+        'if [ -n "${TEST_REVIEW_SIGNAL:-}" ]; then\n'
+        '  kill -s "$TEST_REVIEW_SIGNAL" "$PPID"\n'
+        'fi\n'
+        'exit "${TEST_REVIEW_EXIT:-0}"\n',
+    )
+    return {
+        **os.environ,
+        "PATH": f"{tools}{os.pathsep}{os.environ['PATH']}",
+        "WORKTREE_OWNER_TOKEN": "test-owner",
+        "TMUX": "",
+    }
+
+
+def launch_reviews(
+    project: Path, environment: dict[str, str], *branches: str
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["bash", str(PLUGIN_ROOT / "scripts/launch-reviews.sh"), "python", *branches],
         cwd=project,
-        input='{"session_id": "different-session"}',
+        env=environment,
         capture_output=True,
         text=True,
         check=False,
+        timeout=15,
     )
 
-    assert result.returncode == 0
+
+@pytest.mark.parametrize("exit_code, signal", [(0, ""), (7, ""), (143, "TERM"), (129, "HUP")])
+def test_review_exit_cleans_only_its_owned_worktree_and_archives_evidence(
+    project: Path, review_environment: dict[str, str], exit_code: int, signal: str
+) -> None:
+    unrelated = project / ".claude/worktrees/pr-review-unrelated"
+    result = shell(
+        project, 'create_worker_worktree "$2" "$3" unrelated "" "" "" main',
+        str(unrelated),
+    )
+    assert result.returncode == 0, result.stderr
+    review_environment.update(TEST_REVIEW_EXIT=str(exit_code), TEST_REVIEW_SIGNAL=signal)
+
+    result = launch_reviews(project, review_environment, "review-one")
+
+    assert result.returncode == exit_code, result.stdout + result.stderr
+    assert not (project / ".claude/worktrees/pr-review-review-one").exists()
+    assert unrelated.is_dir()  # Even a clean, inactive checkout with the same owner.
+    report = next((project / ".claude/worktree-archives").glob("*/.claude/review/report.md"))
+    assert report.read_text() == "Review evidence\n"
+
+
+@pytest.mark.parametrize("change", ["dirty", "unmerged"])
+def test_review_exit_preserves_changes(
+    project: Path, review_environment: dict[str, str], tmp_path: Path, change: str
+) -> None:
+    code = 'echo "Unfinished review work" > .gitignore\n'
+    if change == "unmerged":
+        code += "git add .gitignore\ngit commit --quiet -m 'Review change'\n"
+    write_executable(tmp_path / "bin/claude", code)
+
+    result = launch_reviews(project, review_environment, "review-one")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    worktree = project / ".claude/worktrees/pr-review-review-one"
+    assert (worktree / ".gitignore").read_text() == "Unfinished review work\n"
+    assert f"Worktree preserved: {worktree}" in result.stdout + result.stderr
+
+
+def test_partial_review_setup_cleans_created_checkout_and_preserves_existing_path(
+    project: Path, review_environment: dict[str, str]
+) -> None:
+    existing = project / ".claude/worktrees/pr-review-review-two"
+    git(project, "worktree", "add", "--detach", str(existing))
+    (existing / "unfinished.txt").write_text("Existing work")
+
+    result = launch_reviews(project, review_environment, "review-one", "review-two")
+
+    assert result.returncode != 0
+    assert not (project / ".claude/worktrees/pr-review-review-one").exists()
+    assert (existing / "unfinished.txt").read_text() == "Existing work"
+
+
+@pytest.mark.parametrize("failure", ["new-session", "split-window"])
+def test_failed_tmux_launch_cleans_only_pending_reviews(
+    project: Path, review_environment: dict[str, str], tmp_path: Path, failure: str
+) -> None:
+    write_executable(
+        tmp_path / "bin/tmux",
+        f'if [ "$1" = "{failure}" ]; then exit 5; fi\n',
+    )
+
+    result = launch_reviews(project, review_environment, "review-one", "review-two")
+
+    assert result.returncode == 5, result.stdout + result.stderr
+    first = project / ".claude/worktrees/pr-review-review-one"
+    # A successful tmux handoff belongs to its review process, even before it starts.
+    assert first.exists() == (failure == "split-window")
+    assert not (project / ".claude/worktrees/pr-review-review-two").exists()
+
+
+def test_review_process_refuses_another_owners_worktree(
+    project: Path, worktree: Path, review_environment: dict[str, str]
+) -> None:
+    result = subprocess.run(
+        ["bash", str(PLUGIN_ROOT / "scripts/review-in-worktree.sh"),
+         str(project), str(worktree), "worker", "python"],
+        cwd=project,
+        env={**review_environment, "WORKTREE_OWNER_TOKEN": "different-owner"},
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode != 0
     assert worktree.is_dir()
+    assert not (worktree / ".claude/review/report.md").exists()
 
 
 def test_merge_checkout_failure_preserves_target_worktree(

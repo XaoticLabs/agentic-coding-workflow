@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # review-in-worktree.sh — Launch an interactive Claude review session in a
-# worktree and guarantee cleanup on exit (normal, SIGINT, SIGTERM, crash).
+# worktree and attempt owned cleanup on exit, SIGINT, SIGTERM, or SIGHUP.
+# Uncatchable termination leaves the checkout for explicit recovery.
 #
 # This script is intentionally dumb: worktree lifecycle + launch Claude.
 # All review logic lives in the pr-reviewer skill (loaded via --append-system-prompt).
@@ -22,9 +23,13 @@ PR_NUMBER="${5:-}"
 
 cleanup() {
   local exit_code=$?
+  trap - EXIT INT TERM HUP
   echo ""
   echo "--- Cleaning up worktree: $(basename "$WORKTREE_PATH") ---"
-  cd "$REPO_ROOT" 2>/dev/null || true
+  if ! cd "$REPO_ROOT"; then
+    echo "Worktree preserved: ${WORKTREE_PATH}" >&2
+    exit "$exit_code"
+  fi
   release_worktree "$REPO_ROOT" "$WORKTREE_PATH" || true
   if preserve_worktree_artifacts "$REPO_ROOT" "$WORKTREE_PATH" "${REPO_ROOT}/.claude/worktree-archives/$(date +%s)-$(basename "$WORKTREE_PATH")" &&
     remove_owned_worktree "$REPO_ROOT" "$WORKTREE_PATH" "" --keep-branch; then
@@ -32,7 +37,7 @@ cleanup() {
   else
     echo "Worktree preserved: ${WORKTREE_PATH}"
   fi
-  exit $exit_code
+  exit "$exit_code"
 }
 
 worktree_owned "$REPO_ROOT" "$WORKTREE_PATH" || { echo "Unowned worktree preserved: $WORKTREE_PATH" >&2; exit 1; }
