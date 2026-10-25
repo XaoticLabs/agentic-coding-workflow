@@ -772,7 +772,6 @@ ${BRIEFING}
   #   processor stderr (display)  -> terminal (tmux pane)
   #   processor also appends tool_call events to TRACE_FILE
   set +e
-  set -o pipefail
   if [ -n "$TIMEOUT_CMD" ]; then
     echo "$PROMPT" | $TIMEOUT_CMD $CLAUDE_CMD 2>/dev/null \
       | "$STREAM_PROCESSOR" --trace-file "$TRACE_FILE" > "$LOG_FILE"
@@ -781,13 +780,13 @@ ${BRIEFING}
       | "$STREAM_PROCESSOR" --trace-file "$TRACE_FILE" > "$LOG_FILE"
   fi
   PIPELINE_STATUS=("${PIPESTATUS[@]}")
-  set +o pipefail
-  CLAUDE_EXIT=${PIPELINE_STATUS[0]}
-  PROCESSOR_EXIT=${PIPELINE_STATUS[1]:-0}
+  set -e
+  # Pipeline stages: prompt writer (0), Claude/timeout (1), stream processor (2).
+  CLAUDE_EXIT=${PIPELINE_STATUS[1]}
+  PROCESSOR_EXIT=${PIPELINE_STATUS[2]}
   if [ "$PROCESSOR_EXIT" -ne 0 ]; then
     echo "WARNING: Stream processor exited with code ${PROCESSOR_EXIT} — log output may be incomplete." >&2
   fi
-  set -e
 
   if [ "$CLAUDE_EXIT" -eq 0 ]; then
     echo "Iteration ${ITERATION} completed successfully."
