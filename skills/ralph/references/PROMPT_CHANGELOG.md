@@ -24,6 +24,14 @@ Each entry follows this structure:
 
 ## Changelog
 
+### 2026-10-25 — PROMPT_build.md / PROMPT_evaluate.md — Review verification integrity
+
+**Changed:** Replaced RED-commit file freezes with preserved acceptance criteria, provenance for human-approved expectations, justified test corrections, and mandatory independent integrity review for every committed build iteration. RED/GREEN commits are optional; the controller retains original verification inputs and supplies intermediate patches. Nonzero checks cannot be ignored into success.
+**Intended effect:** Allow legitimate case additions and mistaken-test/fixture corrections while rejecting coverage weakening, invented approval, and verification bypasses.
+**Observed effect:** Pending — no live model run performed.
+**Model:** N/A — controller regressions use a fake CLI.
+**Evidence:** Automated controller/evaluator regression tests; semantic review effectiveness requires observation in real runs.
+
 ### 2026-10-25 — PROMPT_build.md / PROMPT_plan.md — Task-based delegation
 
 **Changed:** Replaced mandatory exploration subagents with direct reads for a few relevant files, delegation for independent investigations with overwhelming intermediate output, parallel work with clear interfaces, and independent verification when its expected benefit justifies its cost. Build placement now depends on tools, permissions, turn budget, isolation, and oversight.

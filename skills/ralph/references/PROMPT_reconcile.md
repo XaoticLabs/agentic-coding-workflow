@@ -69,6 +69,8 @@ git commit -m "docs: consolidate plan after parallel reconciliation"
 
 ## Rules
 
+- **Preserve verification integrity.** Follow **Test and Verification Integrity** in `commands/shared-patterns.md`. Preserve acceptance criteria and human-approved expectations; justify and independently review any correction or possible coverage reduction. Never resolve integration failures by disabling checks or weakening tests. If a human-approved expectation needs changing, preserve the proposed correction and evidence and stop for human review with the task pending.
+
 - **No questions.** Fix issues autonomously.
 - **Test everything.** Never finish without a passing test suite.
 - **Minimal changes.** Don't refactor or improve — only fix what's broken.

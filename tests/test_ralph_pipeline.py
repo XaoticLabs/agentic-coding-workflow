@@ -38,6 +38,10 @@ EVALUATION = {
     "issues": [],
     "summary": "Full run report",
     "revise_guidance": "",
+    "verification_integrity": {
+        "status": "PASS",
+        "notes": "Criteria and runnable coverage preserved; no approved expectation changed",
+    },
 }
 
 
@@ -97,8 +101,24 @@ def plugin(tmp_path: Path) -> Path:
     )
     write_executable(
         tmp_path / "bin/claude",
-        'cat > "$CLAUDE_PROJECT_DIR/prompt.txt"\n'
+        "prompt=$(cat)\n"
+        'if [[ " $* " == *" --json-schema "* ]]; then\n'
+        '  printf "%s" "$prompt" > "$CLAUDE_PROJECT_DIR/.claude/integrity-prompt.txt"\n'
+        '  if [ "${TEST_REVIEW_MODE:-}" = missing ]; then exit 0; fi\n'
+        "  python3 - <<'PYVERDICT'\n"
+        "import json, os\n"
+        "payload = json.loads(os.environ['TEST_VALID_EVALUATION'])\n"
+        "if os.environ.get('TEST_REVIEW_MODE') == 'reject':\n"
+        "    payload['verification_integrity'] = {'status': 'FAIL', 'notes': 'Coverage weakened without justification'}\n"
+        "    payload['verdict'] = 'REVISE'\n"
+        "    payload['revise_guidance'] = 'Restore coverage or supply correction evidence and required approval'\n"
+        "print(json.dumps({'subtype': 'success', 'is_error': False, 'structured_output': payload}))\n"
+        "PYVERDICT\n"
+        "  exit 0\n"
+        "fi\n"
+        'printf "%s" "$prompt" > "$CLAUDE_PROJECT_DIR/prompt.txt"\n'
         'printf "%s" "${RALPH_MODE:-}" > "$CLAUDE_PROJECT_DIR/ralph-mode.txt"\n'
+        'if [ -n "${TEST_AGENT_SCRIPT:-}" ]; then source "$TEST_AGENT_SCRIPT"; fi\n'
         'if [ "$TEST_COMMIT" = true ]; then\n'
         '  printf "change\\n" > changed.txt\n'
         "  git add changed.txt\n"
@@ -120,7 +140,9 @@ def project(plugin: Path) -> Path:
     (spec / "IMPLEMENTATION_PLAN.md").write_text(
         "## Status: IN_PROGRESS\n- [ ] **Task 1: Pipeline status**\n"
     )
-    (project_dir / ".gitignore").write_text(".claude/\nprompt.txt\nralph-mode.txt\n")
+    (project_dir / ".gitignore").write_text(
+        ".claude/\nprompt.txt\nralph-mode.txt\n__pycache__/\n.pytest_cache/\n"
+    )
     git(project_dir, "init", "--quiet")
     git(project_dir, "config", "user.name", "Test")
     git(project_dir, "config", "user.email", "test@example.com")
@@ -137,6 +159,7 @@ def run_loop(
     processor_exit: int = 0,
     hang: bool = False,
     commit: bool = False,
+    variables: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
@@ -159,6 +182,9 @@ def run_loop(
             "TEST_PROCESSOR_EXIT": str(processor_exit),
             "TEST_HANG": str(hang).lower(),
             "TEST_COMMIT": str(commit).lower(),
+            "TEST_VALID_EVALUATION": json.dumps(EVALUATION),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            **(variables or {}),
         },
         capture_output=True,
         text=True,
@@ -316,9 +342,10 @@ if run_claude_pipeline prompt "$2" "$3" 0 "$4" -p; then exit 99; fi
     assert "producer failed" in Path(str(log) + ".prompt-stderr.log").read_text()
 
 
-def test_verification_gate_keeps_pipefail_enabled(project: Path) -> None:
+@pytest.mark.parametrize("command", ["false | true", "exit 1"])
+def test_verification_gate_records_failed_commands(project: Path, command: str) -> None:
     (project / ".claude/project-commands.json").write_text(
-        json.dumps({"test": "false | true", "lint": None})
+        json.dumps({"test": command, "lint": None})
     )
     initial_commit = git(project, "rev-parse", "HEAD")
 
@@ -329,6 +356,183 @@ def test_verification_gate_keeps_pipefail_enabled(project: Path) -> None:
     assert git(project, "rev-parse", "HEAD") == initial_commit
     assert not (project / "changed.txt").exists()
     assert_outcome(project, "reverted", "REVERT", journal_outcome="REVERT_TESTS")
+
+
+def test_verification_commands_cannot_change_controller_variables(
+    project: Path,
+) -> None:
+    config = project / ".claude/project-commands.json"
+    config.write_text(
+        json.dumps(
+            {
+                "test": "VERIFICATION_CONTEXT=forged; GATE_PASSED=false; true",
+                "lint": None,
+            }
+        )
+    )
+    result = run_loop(project, commit=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert_outcome(project, "success", "KEEP")
+    run = next((project / ".claude/ralph/status-test/runs").iterdir())
+    baseline = json.loads((run / "baseline-1.json").read_text())
+    assert baseline[str(config)] == config.read_text()
+
+
+@pytest.mark.parametrize("change", ["addition", "fixture", "mistaken_expectation"])
+def test_review_allows_changes_in_a_red_test_file(project: Path, change: str) -> None:
+    (project / "example.py").write_text("def answer():\n    return None\n")
+    git(project, "add", "example.py")
+    git(project, "commit", "--quiet", "-m", "Behavior stub")
+    plan = project / ".claude/specs/status-test/IMPLEMENTATION_PLAN.md"
+    plan.write_text(plan.read_text() + "\nAcceptance: answer() returns 42.\n")
+    (project / ".claude/project-commands.json").write_text(
+        json.dumps({"test": "python3 -m pytest -q", "lint": None})
+    )
+    initial_test = (
+        "from example import answer\n\ndef test_answer():\n    assert answer() == 42\n"
+    )
+    final_test = initial_test
+    if change == "addition":
+        final_test += "\ndef test_positive():\n    assert answer() > 0\n"
+    elif change == "fixture":
+        initial_test = (
+            "import pytest\nfrom example import answer\n\n"
+            "@pytest.fixture\ndef expected():\n    return '42'\n\n"
+            "def test_answer(expected):\n    assert answer() == expected\n"
+        )
+        final_test = initial_test.replace("return '42'", "return 42")
+    else:
+        initial_test = initial_test.replace("== 42", "== 43")
+    script = project.parent / "agent.sh"
+    script.write_text(
+        "mkdir -p tests\n"
+        "cat > tests/test_behavior.py <<'PYTEST'\n" + initial_test + "PYTEST\n"
+        "if python3 -m pytest -q > .claude/red.log 2>&1; then exit 1; fi\n"
+        "git add tests/test_behavior.py\n"
+        "git commit --quiet -m 'test: RED behavior'\n"
+        "printf 'def answer():\\n    return 42\\n' > example.py\n"
+        "cat > tests/test_behavior.py <<'PYTEST'\n" + final_test + "PYTEST\n"
+        "git add example.py tests/test_behavior.py\n"
+        "git commit --quiet -m 'Implement behavior' -m 'Test correction: answer returns 42 per acceptance criterion; the original expectation or fixture was mistaken. Retain the answer assertion and validate with RED failure and the passing behavioral suite. Added cases preserve existing coverage.'\n"
+    )
+    result = run_loop(project, variables={"TEST_AGENT_SCRIPT": str(script)})
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert_outcome(project, "success", "KEEP")
+    assert (project / "tests/test_behavior.py").read_text() == final_test
+    run = next((project / ".claude/ralph/status-test/runs").iterdir())
+    baseline = json.loads((run / "baseline-1.json").read_text())
+    assert "answer() returns 42" in baseline[str(plan)]
+    history = (run / "eval-1.log.history").read_text()
+    assert "test: RED behavior" in history
+    assert "Test correction:" in history
+    if change == "mistaken_expectation":
+        assert "== 43" in history and "== 42" in history
+
+
+@pytest.mark.parametrize("change", ["weaken_assertion", "skip", "approved_expectation"])
+def test_integrity_rejection_blocks_passing_tests_without_a_red_commit(
+    project: Path, change: str
+) -> None:
+    test = project / "test_behavior.py"
+    original_test = "def test_answer():\n    assert 42 == 42\n"
+    test.write_text(original_test)
+    git(project, "add", test.name)
+    git(project, "commit", "--quiet", "-m", "Existing coverage")
+    initial = git(project, "rev-parse", "HEAD")
+    (project / ".claude/project-commands.json").write_text(
+        json.dumps({"test": "python3 -m pytest -q", "lint": None})
+    )
+    plan = project / ".claude/specs/status-test/IMPLEMENTATION_PLAN.md"
+    original_plan = plan.read_text() + "\nAcceptance: answer is exactly 42.\n"
+    if change == "approved_expectation":
+        original_plan += "Human-approved case: test_answer; baseline: existing coverage; approval: user message 1.\n"
+    plan.write_text(original_plan)
+    modified = "def test_answer():\n    assert 42 in (41, 42)\n"
+    if change == "skip":
+        modified = (
+            "import pytest\n@pytest.mark.skip(reason='hide failure')\n" + original_test
+        )
+    script = project.parent / "agent.sh"
+    script.write_text(
+        "cat > test_behavior.py <<'PYTEST'\n" + modified + "PYTEST\n"
+        "printf '\\nAcceptance: accept 41 or 42.\\n' > .claude/specs/status-test/IMPLEMENTATION_PLAN.md\n"
+        "git add test_behavior.py\ngit commit --quiet -m 'Change tests without RED'\n"
+    )
+    result = run_loop(
+        project,
+        variables={
+            "TEST_AGENT_SCRIPT": str(script),
+            "TEST_REVIEW_MODE": "reject",
+            "RALPH_EVAL_PER_ITER": "false",
+            "RALPH_EVAL_END_OF_RUN": "false",
+        },
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert git(project, "rev-parse", "HEAD") == initial
+    assert test.read_text() == original_test
+    assert plan.read_text() == original_plan
+    assert_outcome(project, "reverted (evaluator)", "REVERT_EVAL")
+    prompt = (project / ".claude/integrity-prompt.txt").read_text()
+    assert "**Evaluation mode:** VERIFICATION-INTEGRITY" in prompt
+    run = next((project / ".claude/ralph/status-test/runs").iterdir())
+    baseline = json.loads((run / "baseline-1.json").read_text())
+    assert baseline[str(plan)] == original_plan
+
+
+def test_missing_mandatory_review_preserves_work_without_keep(project: Path) -> None:
+    result = run_loop(project, commit=True, variables={"TEST_REVIEW_MODE": "missing"})
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert (project / "changed.txt").exists()
+    assert_outcome(project, "evaluation error", "ERROR_EVAL")
+
+
+def test_integrity_review_does_not_require_optional_ui_capture(project: Path) -> None:
+    result = run_loop(project, commit=True, variables={"RALPH_EVALUATE_UI": "true"})
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert_outcome(project, "success", "KEEP")
+
+
+def test_agent_cannot_disable_original_checks_or_ignore_a_nonzero_exit(
+    project: Path,
+) -> None:
+    config = project / ".claude/project-commands.json"
+    original_config = json.dumps({"test": "false", "lint": None})
+    config.write_text(original_config)
+    overrides = project / ".claude/specs/status-test/RALPH_OVERRIDES.md"
+    overrides.write_text("RALPH_GATE_IGNORE: .*\n")
+    script = project.parent / "agent.sh"
+    script.write_text(
+        'printf \'{"test":null,"lint":null}\' > .claude/project-commands.json\n'
+    )
+    result = run_loop(
+        project, commit=True, variables={"TEST_AGENT_SCRIPT": str(script)}
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not (project / "changed.txt").exists()
+    assert config.read_text() == original_config
+    assert_outcome(project, "reverted", "REVERT", journal_outcome="REVERT_TESTS")
+
+
+def test_deleting_protection_rules_does_not_authorize_protected_edits(
+    project: Path,
+) -> None:
+    guarded = project / "guarded.txt"
+    guarded.write_text("approved expectation\n")
+    git(project, "add", guarded.name)
+    git(project, "commit", "--quiet", "-m", "Protected baseline")
+    rules = project / ".claude/specs/status-test/RALPH_READONLY"
+    rules.write_text("^guarded.txt$\n")
+    script = project.parent / "agent.sh"
+    script.write_text(
+        "rm .claude/specs/status-test/RALPH_READONLY\n"
+        "echo changed > guarded.txt\ngit add guarded.txt\n"
+        "git commit --quiet -m 'Remove protection and change expectation'\n"
+    )
+    result = run_loop(project, variables={"TEST_AGENT_SCRIPT": str(script)})
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert guarded.read_text() == "approved expectation\n"
+    assert rules.read_text() == "^guarded.txt$\n"
+    assert_outcome(project, "reverted", "REVERT", journal_outcome="REVERT_PROTECTED")
 
 
 def test_loop_reads_structured_task_progress_and_selects_a_ready_task(
@@ -384,6 +588,14 @@ def run_single_track(
         project.parent / "bin/claude",
         r"""
 prompt=$(cat)
+if [[ " $* " == *' --json-schema '* ]] && [[ "$prompt" == *'**Evaluation mode:** VERIFICATION-INTEGRITY'* ]]; then
+  python3 - <<'PYINTEGRITY'
+import json, os
+print(json.dumps({'subtype': 'success', 'is_error': False,
+                  'structured_output': json.loads(os.environ['TEST_VALID_EVALUATION'])}))
+PYINTEGRITY
+  exit 0
+fi
 if [[ " $* " == *' --json-schema '* ]]; then
   echo evaluate >> "$TEST_ROOT_PROJECT/.claude/order"
   pwd > "$TEST_ROOT_PROJECT/.claude/evaluated-path"
@@ -704,6 +916,15 @@ fi
         r"""
 prompt=$(cat)
 if [[ " $* " == *' --json-schema '* ]]; then
+  if [[ "$prompt" == *'**Evaluation mode:** VERIFICATION-INTEGRITY'* ]]; then
+    echo integrity >> "$TEST_ROOT_PROJECT/.claude/order"
+    python3 - <<'PYINTEGRITY'
+import json, os
+print(json.dumps({'subtype': 'success', 'is_error': False,
+                  'structured_output': json.loads(os.environ['TEST_VALID_EVALUATION'])}))
+PYINTEGRITY
+    exit 0
+  fi
   echo evaluate >> "$TEST_ROOT_PROJECT/.claude/order"
   python3 - <<'PYRESULT'
 import json, os
@@ -879,7 +1100,7 @@ def test_parallel_required_accept_gate_rejects_revise(
     assert list((project / ".claude/worktrees").iterdir())
 
 
-def test_parallel_options_reach_workers_and_disable_all_evaluators(
+def test_parallel_options_disable_quality_evaluation_but_keep_integrity_review(
     plugin: Path, project: Path
 ) -> None:
     result = run_parallel(
@@ -902,6 +1123,7 @@ def test_parallel_options_reach_workers_and_disable_all_evaluators(
     assert "Checkpoint: every 2 iterations" in output
     assert (project / ".claude/worker-mode").read_text() == "1"
     assert "evaluate" not in (project / ".claude/order").read_text().splitlines()
+    assert (project / ".claude/order").read_text().splitlines().count("integrity") == 1
     assert json.loads((run / "eval-verdict.json").read_text())["verdict"] == "NOT_RUN"
 
 

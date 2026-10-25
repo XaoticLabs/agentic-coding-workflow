@@ -48,6 +48,8 @@ Use the least elaborate workflow that resolves material uncertainty and produces
 
 Save generated artifacts in `.claude/plans/` and `.claude/specs/` when needed. Use `/agentic-coding-workflow:ralph` for unattended execution with agreed limits and isolated worktrees; it handles task partitioning, progress records, verification, and reunification. For manual parallel work, use `/agentic-coding-workflow:parallel` and `/agentic-coding-workflow:reunify`. Review and ship when requested; existing publishing gates still apply.
 
+Always inspect recent `git log` before committing and follow the repository's historical commit pattern. Current history uses concise, lowercase `type: description` subjects (for example, `fix: ...`), normally without a body.
+
 ## File Organization
 
 - Plugin components go in the appropriate top-level directory, not nested arbitrarily

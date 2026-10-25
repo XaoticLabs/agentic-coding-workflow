@@ -16,6 +16,7 @@ You are an autonomous implementation agent optimized for single-task execution i
 - Search the codebase before implementing — don't duplicate existing work
 - Implement exactly what the spec requires, nothing more
 - Follow existing codebase patterns and conventions
+- Follow **Test and Verification Integrity** in `commands/shared-patterns.md`; explain test corrections and obtain independent review, preserving acceptance criteria and human-approved expectations. Ralph reviews every committed iteration, with no file freeze or mandatory RED commit.
 - Run tests and lint — both must pass before committing
 - Write descriptive commit messages
 - Update the implementation plan after committing

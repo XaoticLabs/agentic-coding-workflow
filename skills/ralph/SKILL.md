@@ -114,7 +114,7 @@ The evaluator is a separate Claude session that reviews implementation quality i
 
 ### End-of-Run Evaluation (default)
 
-By default, the evaluator runs **once at the end of the run**, reviewing the full body of work:
+Full quality evaluation runs **once at the end of the run** by default, in addition to mandatory integrity review of each committed build iteration:
 - Reviews the entire diff from run start to HEAD
 - Grades against full spec and plan acceptance criteria
 - Produces an advisory quality report (does NOT trigger reverts)
@@ -129,13 +129,34 @@ under the main project's run directory before removal.
 
 This is the recommended mode for current models (Opus 4.6), per the Anthropic harness design findings: tasks within the model's comfort zone don't need per-iteration evaluation.
 
-### Per-Iteration Evaluation (opt-in)
+### Verification Integrity (mandatory)
+
+Every committed build iteration gets a separate read-only review before KEEP, including
+workers, `--once`, iterations without a RED commit, and runs with quality evaluation disabled.
+The controller captures original specs/plan and verification policy before the builder runs,
+keeps the original test/lint commands, and supplies the final diff plus intermediate commit
+patches. Nonzero check exits remain failures; `RALPH_GATE_IGNORE` cannot turn them into passes.
+Rejected iterations restore ignored acceptance/configuration inputs as well as tracked code.
+
+Follow **Test and Verification Integrity** in `commands/shared-patterns.md`. Protect criteria
+and human-approved behavioral expectations, not whole files. Add cases in existing files;
+justify and independently review mistaken agent tests or changes that could weaken coverage.
+A human-approved expectation needs human approval to change; unattended agents leave it
+pending and stop with a proposed correction. Agent-authored RED tests are not human approval,
+and separate failing commits are optional unless requested. REVISE rolls back with guidance;
+missing/malformed review, errors, or timeout preserve work and stop without acceptance.
+
+These are controller and review safeguards, not an OS security boundary against an agent
+with the controller's filesystem/process privileges. Keep the controller and authoritative
+CI/acceptance checks outside the builder's write permissions when enforcing against a hostile agent.
+
+### Per-Iteration Quality Evaluation (opt-in)
 
 For tasks at the edge of what the model handles reliably, enable per-iteration evaluation:
 - Set `RALPH_EVAL_PER_ITER=true`
-- Evaluator runs after each iteration that passes mechanical gates
+- Expands the mandatory integrity review to a full quality review after mechanical gates
 - REVISE verdict triggers a revert with guidance saved for next iteration
-- Triggers when diff touches >= `RALPH_EVAL_DIFF_THRESHOLD` files (default: 5)
+- Full quality scope triggers when diff touches >= `RALPH_EVAL_DIFF_THRESHOLD` files (default: 5); integrity review always runs
 
 Use this when:
 - The task is at the edge of model capability

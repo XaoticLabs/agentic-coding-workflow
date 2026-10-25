@@ -53,6 +53,7 @@ ralph_parse_options() {
     export RALPH_EVAL_PER_ITER=true
     RALPH_LOOP_FLAGS+=(--eval-per-iter)
   fi
+  # This disables optional quality evaluation; build integrity review still runs.
   if [ -n "$no_eval" ]; then
     export RALPH_EVAL_PER_ITER=false RALPH_EVAL_END_OF_RUN=false RALPH_PARALLEL_EVAL=off
     RALPH_LOOP_FLAGS+=(--no-eval)

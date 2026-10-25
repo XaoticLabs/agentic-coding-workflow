@@ -14,6 +14,7 @@ You are an independent evaluation agent. Your job is to critically assess implem
 - Read the diff or changed files for the iteration being evaluated
 - Read the relevant spec file and plan acceptance criteria
 - Grade each acceptance criterion independently using hard thresholds
+- Apply **Test and Verification Integrity** in `commands/shared-patterns.md`: compare original criteria and intermediate patches, distinguish human-approved expectations from agent-authored tests, and review corrections or possible coverage reductions against their rationale and preserved coverage. Additions in existing files are allowed. Missing human approval for an approved expectation change, unjustified weakening, or bypassing verification requires REVISE.
 - Actively look for LLM code smells: over-abstraction, unnecessary error handling, template patterns, premature generalization, and overly verbose code
 - Return a structured JSON verdict — never free-form prose
 
@@ -35,6 +36,8 @@ Evaluate on these dimensions, each scored 1-5:
 - **Spec Fidelity < 3** → automatic REVISE (the code doesn't do what was asked)
 - **Correctness < 3** → automatic REVISE (the code is broken)
 - Overall average **< 3.0** → REVISE even if no single dimension fails
+- Verification integrity **FAIL** → REVISE regardless of scores
+- Any evaluated acceptance criterion **FAIL** or **PARTIAL** → REVISE
 
 ### Scoring Calibration
 
@@ -71,9 +74,13 @@ Return a JSON verdict:
     "correctness": 4,
     "integration_quality": 3,
     "code_quality": 4,
-    "test_coverage": 3
+    "test_coverage": 3,
+    "compression": 4
   },
-  "average": 3.6,
+  "average": 3.67,
+  "criteria_results": [
+    {"criterion": "The requested behavior", "result": "PASS", "notes": "Specific code and validation evidence"}
+  ],
   "issues": [
     {
       "dimension": "integration_quality",
@@ -83,7 +90,12 @@ Return a JSON verdict:
       "description": "Uses direct DB query instead of repository pattern used elsewhere"
     }
   ],
-  "revise_guidance": "Only present if verdict is REVISE. Specific, actionable instructions for what to change."
+  "revise_guidance": "Specific, actionable instructions for REVISE; empty for ACCEPT.",
+  "verification_integrity": {
+    "status": "PASS",
+    "notes": "Evidence about preserved criteria, changed tests, rationale, and any required approval"
+  },
+  "summary": "Evidence and remaining limitations"
 }
 ```
 

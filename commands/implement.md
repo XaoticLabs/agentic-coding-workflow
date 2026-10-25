@@ -27,9 +27,9 @@ $ARGUMENTS - Either:
 Optional modes:
 - `--plan` — use plan mode and obtain plan approval before implementation
 - `--worktree` — implement in an isolated worktree
-- `--approve-tests` — write failing contract tests, commit them, and obtain explicit approval before implementation; approved contract tests are immutable
+- `--approve-tests` — prepare acceptance tests and obtain explicit approval of their behavioral expectations before implementation
 
-Parse these flags separately from the description or spec/task selector. Honor equivalent modes explicitly requested in the conversation or spec. A normal TDD request selects test-first development without automatically adding immutable contracts or a test-approval gate. Merely naming tests in a spec does not select contract mode.
+Parse these flags separately from the description or spec/task selector. Honor equivalent modes explicitly requested in the conversation or spec. A normal TDD request selects test-first development without automatically adding separate failing commits or a test-approval gate. Merely naming tests in a spec does not select contract mode.
 
 ## Instructions
 
@@ -39,7 +39,7 @@ Parse these flags separately from the description or spec/task selector. Honor e
 
 Switch to autonomous mode — skip all interactive prompts and implement exactly one task:
 
-Ralph owns isolation, execution limits, progress preservation, and its RED/GREEN contract-testing policy. Follow `skills/ralph/references/PROMPT_build.md` for its contract and verification requirements. Reject conflicting interactive `--plan` or `--approve-tests` flags before starting; do not silently drop an approval request. The interactive phases below do not change Ralph's gates.
+Ralph owns isolation, execution limits, progress preservation, and its test and verification integrity policy. Follow `skills/ralph/references/PROMPT_build.md` for its contract and verification requirements. Reject conflicting interactive `--plan` or `--approve-tests` flags before starting; do not silently drop an approval request. The interactive phases below do not change Ralph's gates.
 
 1. **Parse spec location** from `$ARGUMENTS` or environment (`RALPH_SPEC_DIR`)
 2. **Read `IMPLEMENTATION_PLAN.md`** from the spec directory
@@ -142,19 +142,19 @@ For substantial work, maintain a concise checklist of implementation steps and a
 
 Resolve test and lint commands using **Project Context: Test and Lint Command Detection** in `commands/shared-patterns.md`, including `.claude/project-commands.json` overrides and explicit disables. Honor project-required checks.
 
-**Standard mode:** Identify existing tests that demonstrate the outcome. Add behavioral or regression tests when they provide useful coverage, using the project's framework and conventions. For a bug fix, confirm a regression test fails for the reported behavior before the fix when practical. Ordinary TDD may write tests first without freezing them. No test-approval prompt or separate test commit is required. Correct erroneous tests with a reason; never weaken assertions to hide an implementation defect.
+**Standard mode:** Identify existing tests that demonstrate the outcome. Add behavioral or regression tests when they provide useful coverage, using the project's framework and conventions. For a bug fix, confirm a regression test fails for the reported behavior before the fix when practical. Ordinary TDD may write tests first without freezing them. No test-approval prompt or separate test commit is required. Follow **Test and Verification Integrity** in `commands/shared-patterns.md`: explain and independently review test corrections or changes that could weaken coverage; never weaken assertions to hide an implementation defect.
 
 For changes without testable behavior, use direct inspection or appropriate targeted validation. Do not invent tests for a reversible documentation or mechanical change simply to complete a phase.
 
 **Approved contract mode (`--approve-tests` or an explicit equivalent request):**
 
-1. Encode the acceptance criteria as failing behavioral tests. Use a spec's Contract Tests section when available.
-2. Run the tests and confirm they fail for the missing behavior, rather than syntax, import, or fixture errors.
-3. Commit only the contract tests with `test: RED — failing tests for <task name>`. Preserve unrelated changes in the index.
-4. Present the tests, criteria they establish, and failure evidence using `AskUserQuestion`. Obtain approval before implementation. If adjustments are requested, update and rerun the tests, then commit the corrections and ask again.
-5. Record the approved contract commit. Its test files are frozen: do not modify, delete, rename, skip, or mark those tests as expected failures during implementation. Additional tests may be added in new files. If the approved contract is wrong or cannot be met, stop for a user decision instead of weakening it.
+1. Encode the acceptance criteria as behavioral tests. Use a spec's Contract Tests section when available. Confirm RED for missing behavior when practical; separate failing commits are optional unless explicitly requested.
+2. Run the tests and distinguish missing behavior from syntax, import, or fixture errors.
+3. Present the cases, criteria, proposed expectations, and actual results using `AskUserQuestion`. Obtain approval before implementation. Prepare any requested adjustments and rerun before seeking approval of the revised expectations.
+4. Record the approved cases/assertions, criteria, baseline commit or diff, and the user's approval reference. Approval protects those behavioral expectations, not entire files. Add cases in existing files and correct fixtures/helpers under the shared integrity policy.
+5. If an approved expectation needs changing, prepare a concrete correction with its rationale, preserved/replacement coverage, and validation evidence, then obtain explicit human approval before treating the changed expectation as accepted. Independent review cannot substitute for that approval.
 
-If the spec selects `approved-contract`, use the approval flow above. If an existing spec selects `ralph-contract` or explicitly requires immutable contracts without approval, run the same RED/commit/lock workflow without the approval prompt; those files lock on the RED commit. A task without testable behavior skips contract creation and reports the alternative verification. Never label such work as having an approved test contract.
+If the spec selects `approved-contract`, use the approval flow above. Treat legacy `ralph-contract` as autonomous behavioral testing with independent integrity review, not human approval or a file freeze. Honor a user's explicit stricter policy when it applies. A task without testable behavior uses direct validation and reports the evidence. Never label agent-authored tests as human-approved.
 
 ### Phase 4: Implementation
 
@@ -189,9 +189,9 @@ Before writing new code, ask in this order:
 - Don't add abstractions for single use sites — inline is fine
 - Don't add error handling for conditions that can't occur
 - Don't add docstrings, comments, or type annotations to code you didn't functionally change
-- When immutable contract mode is selected, keep its test files frozen
+- Preserve acceptance criteria and human-approved expectations; explain and independently review corrections or coverage reductions under the shared integrity policy
 
-Run the relevant tests after implementation and fix failures caused by the change. In immutable contract mode, all contract tests must pass without changing their files.
+Run the relevant tests after implementation and fix failures caused by the change. Review test and verification changes against the original criteria, including discovery, fixtures, mocks, snapshots, configuration, and failure handling. All required checks must pass.
 
 **As you complete each item:**
 - Update the checklist or saved plan when one is being maintained
@@ -202,7 +202,7 @@ Run the relevant tests after implementation and fix failures caused by the chang
 If the green implementation has obvious duplication or awkwardness, clean it up now:
 - Tests must stay green after every change
 - No new behavior — refactoring is structure-only
-- Contract tests remain untouched when immutable contract mode is selected
+- Preserve behavioral expectations and coverage; review any test corrections under the shared integrity policy
 - If the code is clean enough, skip this step
 
 ### Phase 5: Verification
@@ -220,7 +220,7 @@ Go through the acceptance criteria one by one and verify:
 - Ensure no debug code or TODOs left behind
 - Verify no secrets or sensitive data exposed
 - Check that error handling is appropriate
-- In immutable contract mode, verify contract test files were not modified after the contract was locked
+- Review test and verification diffs for weakened coverage or bypasses; record rationale, independent review, and any required human approval
 
 ### Phase 6: Summary Report
 
@@ -237,9 +237,9 @@ Report what changed, what was verified with actual outcomes, and any unresolved 
 - [x] [Criterion] - [test or direct validation evidence]
 
 ### Contract Testing (only when selected)
-- Contract commit: [SHA and approval status when approval was requested]
-- Test results: [RED/GREEN evidence]
-- Contract integrity: [whether frozen test files were preserved]
+- Acceptance baseline: [cases/assertions, criteria, commit or diff, and human approval reference when selected]
+- Test results: [actual behavioral/regression evidence; RED/GREEN when used]
+- Verification integrity: [test corrections, coverage impact, independent review, and any renewed human approval]
 
 ### Test Results
 [Pass/Fail summary]
@@ -273,12 +273,12 @@ Report what changed, what was verified with actual outcomes, and any unresolved 
 ## Important Constraints
 
 - **Keep the workflow proportional** - Plan and clarify until material uncertainty is resolved; honor selected modes
-- **Honor contracts when selected** - Approved or explicitly immutable test contracts remain frozen
+- **Preserve verification integrity** - Follow the shared policy for acceptance criteria, human-approved expectations, justified corrections, and independent review
 - **Stay focused** - Implement the agreed task and preserve unrelated work
 - **Document deviations** - If you must deviate from spec, explain why
 - **Verify behavior** - Run checks appropriate to the change and all project-required gates
 - **Keep it atomic** - This should be a single, mergeable PR
-- **Commit when requested** - Standard interactive work does not require automatic commits; selected contract mode and Ralph have their own commit requirements
+- **Commit when requested** - Interactive testing or acceptance-test approval does not require separate commits; Ralph commits completed work
 
 ## Example Usage
 
@@ -318,4 +318,4 @@ Optional modes can be combined:
 ```
 /agentic-coding-workflow:implement --plan --worktree --approve-tests "add JWT validation"
 ```
-This selects plan approval, isolation, and explicit approval of immutable contract tests before implementation.
+This selects plan approval, isolation, and explicit approval of acceptance-test expectations before implementation.

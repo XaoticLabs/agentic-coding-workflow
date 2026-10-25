@@ -25,8 +25,8 @@ $ARGUMENTS - One of:
 - `<spec-slug> --checkpoint-every=N` — pause between iterations for human steering (requires a terminal)
 - `<spec-slug> --eval-gates-merge` — require a fresh end-of-run ACCEPT verdict before merge
 - `<spec-slug> --time-budget=N` — max seconds per iteration (default: 600, 0 = no limit)
-- `<spec-slug> --eval-per-iter` — enable per-iteration LLM evaluation (default: end-of-run only)
-- `<spec-slug> --no-eval` — disable all LLM evaluation (mechanical gates only)
+- `<spec-slug> --eval-per-iter` — enable full quality evaluation per iteration (default: end-of-run quality review, with mandatory integrity review each iteration)
+- `<spec-slug> --no-eval` — disable optional quality evaluation; independent integrity review remains required
 - `<spec-slug> --status` — show completion dashboard
 - `<spec-slug> --stop` — create stop sentinel to halt the loop gracefully
 
@@ -38,8 +38,8 @@ Extract from `$ARGUMENTS`:
 - **spec-slug** (required): matches a directory at `.claude/specs/<slug>/`
 - **--parallel N**: optional, number of parallel workers (2-6)
 - **--plan**: optional, planning-only mode
-- **--eval-per-iter**: optional, enable per-iteration LLM evaluation (for edge-of-capability tasks)
-- **--no-eval**: optional, disable all LLM evaluation
+- **--eval-per-iter**: optional, enable full quality evaluation per iteration (for edge-of-capability tasks)
+- **--no-eval**: optional, disable optional quality evaluation, preserving mandatory integrity review
 - **--once**: optional, one autonomous iteration in the foreground, then stop
 - **--clean-room**: optional, skip codebase search for greenfield work
 - **--harvest**: optional, extract patterns after completed run
@@ -101,7 +101,7 @@ For `--plan` or `--harvest`, proceed directly to Phase 5.
 
 Follow **Proportional Workflow** in `commands/shared-patterns.md`. Before a build, establish the scope, completion checks, allowed operations, worker count, iteration limit, per-iteration timeout, checkpoints, evaluation settings, and stop conditions. Present these concrete settings using AskUserQuestion for approval unless the same scope and settings are already authorized. Resolve missing material decisions before launch; do not repeat an approval already given.
 
-Record the agreed scope, allowed operations, completion checks, limits, and stop conditions under `## Execution Boundaries` in `IMPLEMENTATION_PLAN.md` before launching. These boundaries accompany the specs into worker worktrees. Use a finite iteration/time limit by default, and obtain explicit authorization for unlimited settings. The timeout is per iteration; do not describe it as a total-run budget. Ralph retains its isolated worktrees, immutable RED/GREEN contracts, verification gates, and durable run evidence.
+Record the agreed scope, allowed operations, completion checks, limits, and stop conditions under `## Execution Boundaries` in `IMPLEMENTATION_PLAN.md` before launching. These boundaries accompany the specs into worker worktrees. Use a finite iteration/time limit by default, and obtain explicit authorization for unlimited settings. The timeout is per iteration; do not describe it as a total-run budget. Ralph retains its isolated worktrees, behavioral tests, preserved acceptance criteria, mandatory independent verification-integrity review, verification gates, and durable run evidence.
 
 Explain that Ralph runs Claude autonomously with `--dangerously-skip-permissions`, and stops via `/agentic-coding-workflow:ralph <slug> --stop`. If a material decision exceeds the agreed scope, preserve progress and report the blocker for user input rather than expanding the work. Build authorization does not itself authorize publishing.
 
@@ -115,7 +115,7 @@ Use the same launcher for planning, harvest, foreground, tmux, and parallel exec
 bash "${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/launch.sh" "$SPEC_DIR" "${RALPH_ARGS[@]}"
 ```
 
-The launcher initializes `.claude/project-commands.json`, preserving overrides, and refreshes `.claude/AGENTS.md`. If no plan exists, it runs one planning iteration before building. `--plan` and `--harvest` run one iteration and exit; `--once` builds once in the foreground. Other builds launch a tmux window or session. `--parallel N` selects the full parallel orchestrator and forwards the same timeout, checkpoint, and evaluation options to its workers and reconciliation loops. Parallel mode is exclusive with `--once`, `--plan`, and `--harvest`. `--no-eval` disables both per-iteration and final evaluation and cannot be combined with `--eval-per-iter` or `--eval-gates-merge`.
+The launcher initializes `.claude/project-commands.json`, preserving overrides, and refreshes `.claude/AGENTS.md`. If no plan exists, it runs one planning iteration before building. `--plan` and `--harvest` run one iteration and exit; `--once` builds once in the foreground. Other builds launch a tmux window or session. `--parallel N` selects the full parallel orchestrator and forwards the same timeout, checkpoint, and evaluation options to its workers and reconciliation loops. Parallel mode is exclusive with `--once`, `--plan`, and `--harvest`. `--no-eval` disables optional per-iteration and final quality evaluation while retaining mandatory independent integrity review of committed builds and cannot be combined with `--eval-per-iter` or `--eval-gates-merge`.
 
 For example, these are shell invocations of that same entry point:
 
@@ -186,7 +186,7 @@ Creates stop sentinel — loop exits after current iteration.
 ```
 /agentic-coding-workflow:ralph auth-feature --eval-per-iter
 ```
-Per-iteration LLM evaluation for edge-of-capability tasks (default: end-of-run only).
+Full quality evaluation per iteration for edge-of-capability tasks. Independent integrity review always runs for committed builds.
 
 ```
 /agentic-coding-workflow:ralph auth-feature --harvest

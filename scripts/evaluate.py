@@ -52,6 +52,11 @@ class Issue(TypedDict):
     description: str
 
 
+class Integrity(TypedDict):
+    status: str
+    notes: str
+
+
 class Evaluation(TypedDict):
     verdict: str
     scores: dict[str, float]
@@ -60,6 +65,7 @@ class Evaluation(TypedDict):
     issues: list[Issue]
     summary: str
     revise_guidance: str
+    verification_integrity: Integrity
 
 
 class EvaluationArguments(argparse.Namespace):
@@ -85,6 +91,7 @@ SCHEMA: Schema = {
         "issues",
         "summary",
         "revise_guidance",
+        "verification_integrity",
     ],
     "properties": {
         "verdict": {"type": "string", "enum": ["ACCEPT", "REVISE"]},
@@ -132,6 +139,15 @@ SCHEMA: Schema = {
         },
         "summary": {"type": "string", "minLength": 1},
         "revise_guidance": {"type": "string"},
+        "verification_integrity": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["status", "notes"],
+            "properties": {
+                "status": {"type": "string", "enum": ["PASS", "FAIL"]},
+                "notes": {"type": "string", "minLength": 1},
+            },
+        },
     },
 }
 
@@ -180,8 +196,9 @@ def validate_verdict(value: object) -> Evaluation:
     must_revise = (
         min(payload["scores"].values()) < 3
         or average < 3
-        or sum(item["result"] == "FAIL" for item in payload["criteria_results"]) > 2
+        or any(item["result"] != "PASS" for item in payload["criteria_results"])
         or any(item["severity"] == "critical" for item in payload["issues"])
+        or payload["verification_integrity"]["status"] != "PASS"
     )
     if payload["verdict"] == "ACCEPT" and must_revise:
         raise ValueError("ACCEPT contradicts the evaluation evidence")
@@ -247,6 +264,10 @@ def report(result: Mapping[str, object]) -> str:
         f"- {item['result']}: {item['criterion']} — {item['notes']}"
         for item in payload["criteria_results"]
     )
+    integrity = payload["verification_integrity"]
+    lines.append(
+        f"- Verification integrity: {integrity['status']} — {integrity['notes']}"
+    )
     lines.extend(
         f"- {item['severity']}: {item['file']}:{item['line']}: {item['description']}"
         for item in payload["issues"]
@@ -260,6 +281,10 @@ def prepare_evidence(log: Path, base: str, revision: str) -> list[str]:
     log.parent.mkdir(parents=True, exist_ok=True)
     changed = subprocess.check_output(
         ["git", "diff", "--name-only", "-z", base, revision, "--"],
+        text=True,
+    ).split("\0")
+    changed += subprocess.check_output(
+        ["git", "log", "--format=", "--name-only", "-z", f"{base}..{revision}", "--"],
         text=True,
     ).split("\0")
     if any(protected_path(Path(name)) for name in changed if name):
@@ -288,6 +313,24 @@ def prepare_evidence(log: Path, base: str, revision: str) -> list[str]:
                 "--no-pager",
                 "log",
                 "--oneline",
+                f"{base}..{revision}",
+                "--",
+            ],
+        ),
+        # Include intermediate test edits even when the final diff hides a new
+        # test that was weakened later in the same iteration. No RED marker is
+        # required, and additions in an existing file are ordinary review data.
+        (
+            "history",
+            [
+                "git",
+                "--no-pager",
+                "log",
+                "--reverse",
+                "--format=fuller",
+                "--no-ext-diff",
+                "--no-textconv",
+                "-p",
                 f"{base}..{revision}",
                 "--",
             ],

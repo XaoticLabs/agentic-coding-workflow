@@ -21,8 +21,8 @@ $ARGUMENTS - Either:
 - An inline quoted prompt (e.g., `"add rate limiting to the API"`) — treated as a lightweight plan
 
 Optional flags:
-- `--approve-tests` — generate a spec that selects explicit approval of immutable contract tests during interactive implementation
-- `--ralph` — also generate topic specs and an implementation plan for Ralph's autonomous contract-testing workflow
+- `--approve-tests` — generate a spec that selects explicit approval of acceptance-test expectations during interactive implementation
+- `--ralph` — also generate topic specs and an implementation plan for Ralph's autonomous behavioral-verification workflow
 
 Parse flags before locating the input. Reject `--approve-tests` combined with `--ralph`: Ralph iterations cannot pause for interactive test approval. Invoking this command authorizes generating its artifacts once material decisions are clear.
 
@@ -111,7 +111,7 @@ Scan the plan document and your Phase 2 analysis for ambiguity:
 - Tasks should have minimal dependencies on other tasks
 - Tasks should be orderable (what must come before what)
 
-**Test mode:** Default to `standard`: specify behavioral and regression checks without requiring test approval, immutable tests, or separate test commits. Ordinary TDD can be used in standard mode. With `--approve-tests` or an equivalent explicit request, select `approved-contract`. With `--ralph`, select `ralph-contract`, retaining Ralph's RED/GREEN commits and immutable contracts without mid-iteration approval. Contract-mode criteria with testable behavior must be specific enough to encode as failing tests without ambiguity.
+**Test mode:** Default to `standard`: specify behavioral and regression checks without requiring test approval or separate failing commits. Ordinary TDD can be used in standard mode. With `--approve-tests` or an equivalent explicit request, select `approved-contract`. With `--ralph`, select `ralph-contract` for compatibility: autonomous behavioral verification with mandatory independent integrity review, optional RED/GREEN commits, and no mid-iteration approval. Acceptance criteria must be specific enough to verify without ambiguity. Apply **Test and Verification Integrity** in `commands/shared-patterns.md` to every mode.
 
 **Task categories to consider:**
 1. **Data/Schema tasks** - migrations, models, types
@@ -158,7 +158,7 @@ For each atomic task, write a complete specification:
 > - **Observable:** An evaluator can verify it by reading code or running a command
 > - **Binary:** It either passes or fails — no "somewhat meets" allowed
 > - **Scoped:** It references specific files, functions, or behaviors — not general qualities
-> - **Verifiable:** Name a behavioral assertion or direct validation method; contract-mode behavioral criteria must be encodable as failing tests
+> - **Verifiable:** Name a behavioral assertion or direct validation method; behavioral criteria must map to meaningful assertions
 >
 > Bad: "Authentication should work properly"
 > Good: "POST /api/login with valid credentials returns 200 with JSON body containing `token` (string) and `expires_at` (ISO 8601 timestamp)"
@@ -173,12 +173,12 @@ For each atomic task, write a complete specification:
 - Existing checks to run: [relevant tests, lint, or direct validation]
 - Behavioral or regression tests to add: [scenario and expected result, if needed]
 
-**Contract tests (RED phase, include only for selected contract modes):**
+**Acceptance tests (include approval metadata only for approved-contract mode):**
 - Test file: `[path/to/test_file]`
 - Tests to write before implementing:
   - `[test name]` — asserts [criterion from above]
   - `[test name]` — asserts [criterion from above]
-- Lock these files after user approval in `approved-contract` mode, or on the RED commit in `ralph-contract` mode; implementation must make them pass without modifying them
+- Preserve behavioral expectations and acceptance criteria, not entire files. Record case/assertion, criterion, baseline, and human approval reference when approval is selected. Explain and independently review corrections or changes that could weaken coverage; a changed human-approved expectation needs renewed human approval.
 
 **Direct validation** (if any):
 - [Items without testable behavior and the inspection or targeted validation that verifies them]
@@ -288,10 +288,10 @@ Check that the required sections contain useful task-specific content. Do not pa
 
 ## Testing Strategy
 
-Selected mode: [standard | approved-contract | ralph-contract]. Describe the relevant behavioral, regression, integration, or direct checks. For standard mode, no test approval or immutability gate is required. For approved-contract mode, tests lock after explicit approval; for Ralph, they lock on the RED commit without an interactive prompt.
+Selected mode: [standard | approved-contract | ralph-contract]. Describe the relevant behavioral, regression, integration, or direct checks. Standard mode permits ordinary TDD without approval or separate failing commits. Approved-contract mode protects explicitly approved behavioral expectations. Ralph requires independent verification-integrity review without an interactive prompt. All modes permit additions and justified corrections under the shared integrity policy; changing a human-approved expectation requires human approval.
 
 ### Verification per Task
-| Task | Evidence | Direct Validation | Contract Tests (only when selected) |
+| Task | Evidence | Direct Validation | Approved Acceptance Tests (only when selected) |
 |------|----------|-------------------|------------------------------------|
 | [Task] | [test scenarios or existing checks] | [inspection/commands if needed] | [test file and cases, or omit column] |
 
@@ -350,7 +350,7 @@ mkdir -p .claude/specs/<slug>
     "path": ".claude/specs/<slug>/",
     "glob": "*.md",
     "exclude": ["IMPLEMENTATION_PLAN.md"],
-    "sections": ["## Acceptance Criteria", "## Contract Tests (RED Phase)"],
+    "sections": ["## Acceptance Criteria", "## Behavioral Tests"],
     "min_files": 1
 }
 ```
@@ -383,7 +383,7 @@ Read the monolithic spec's Implementation Tasks section. For each task, create a
 - [ ] <Specific, verifiable criterion — must be directly encodable as a test assertion>
 - [ ] <Specific, verifiable criterion>
 
-## Contract Tests (RED Phase)
+## Behavioral Tests
 
 Test file: `<path/to/test_file>`
 
@@ -394,7 +394,7 @@ Test file: `<path/to/test_file>`
 
 Non-testable items: <list any config/wiring/deletion items that skip RED, or "none">
 
-These tests are written before implementation and become immutable once committed.
+Prefer test-first development for behavior changes and regression fixes when practical. Separate failing commits are optional. These are agent-authored tests unless explicit human approval is recorded. Preserve acceptance criteria; additions in existing files and justified corrections are allowed under the shared test and verification integrity policy.
 
 ## Edge Cases
 
@@ -464,9 +464,9 @@ Before finalizing the spec, verify:
 
 - [ ] Every task has clear acceptance criteria and an appropriate verification method
 - [ ] Every task specifies which files to modify
-- [ ] The selected test mode is explicit; standard mode does not imply contract approval or immutability
-- [ ] For selected contract modes, each task with testable behavior names its contract test file and cases
-- [ ] Each acceptance criterion maps to behavioral tests or direct validation, and to a contract test when that mode applies
+- [ ] The selected test mode is explicit; standard mode does not imply test approval or separate failing commits
+- [ ] For selected contract modes, each task with testable behavior names its behavioral test cases; human approval metadata is recorded only when explicitly approved
+- [ ] Each acceptance criterion maps to behavioral tests or direct validation, with approval provenance when that mode applies
 - [ ] Items without testable behavior name their alternative validation
 - [ ] Dependencies between tasks are explicit
 - [ ] Edge cases from the plan are assigned to specific tasks
@@ -517,4 +517,4 @@ This would read the plan doc directly and generate a spec from it.
 
 This would treat the inline prompt as a lightweight plan, analyze the codebase, and generate a spec.
 
-Add `--approve-tests` to select approval of immutable test contracts during implementation, or `--ralph` to generate autonomous topic specs with Ralph's contract policy. These modes are mutually exclusive.
+Add `--approve-tests` to select approval of acceptance-test expectations during implementation, or `--ralph` to generate autonomous topic specs with Ralph's contract policy. These modes are mutually exclusive.

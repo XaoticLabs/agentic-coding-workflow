@@ -166,6 +166,11 @@ def test_nonzero_exit_cannot_accept_a_valid_result(project: Path):
         "low_score",
         "critical_issue",
         "unknown_verdict",
+        "missing_integrity",
+        "empty_integrity_evidence",
+        "failed_integrity",
+        "failed_criterion",
+        "partial_criterion",
     ],
 )
 def test_invalid_or_contradictory_evidence_is_an_error(project: Path, defect: str):
@@ -197,6 +202,16 @@ def test_invalid_or_contradictory_evidence_is_an_error(project: Path, defect: st
                 "description": "Broken requirement",
             }
         ]
+    elif defect == "missing_integrity":
+        del payload["verification_integrity"]
+    elif defect == "empty_integrity_evidence":
+        payload["verification_integrity"]["notes"] = " "
+    elif defect == "failed_integrity":
+        payload["verification_integrity"]["status"] = "FAIL"
+    elif defect == "failed_criterion":
+        payload["criteria_results"][0]["result"] = "FAIL"
+    elif defect == "partial_criterion":
+        payload["criteria_results"][0]["result"] = "PARTIAL"
     else:
         payload["verdict"] = "UNKNOWN"
     result, verdict = evaluate(project, payload)
@@ -249,6 +264,21 @@ def test_protected_changes_do_not_leak_through_controller_diff(project: Path):
     assert "protected secret paths" in verdict["reason"]
     assert not (project / ".claude/argv.json").exists()
     assert not (project / ".claude/evaluation/cli.json.diff").exists()
+
+
+def test_intermediate_secret_changes_are_not_exposed_in_history(project: Path):
+    base = git(project, "rev-parse", "HEAD")
+    secret = project / ".env"
+    secret.write_text("EXAMPLE=private-fixture-value\n")
+    git(project, "add", ".env")
+    git(project, "commit", "--quiet", "-m", "Intermediate protected change")
+    secret.unlink()
+    git(project, "add", ".env")
+    git(project, "commit", "--quiet", "-m", "Remove intermediate protected change")
+    result, verdict = evaluate(project, base=base)
+    assert result.returncode == 3
+    assert "protected secret paths" in verdict["reason"]
+    assert not (project / ".claude/evaluation/cli.json.history").exists()
 
 
 @pytest.mark.parametrize("mode", ["", "missing"])

@@ -37,7 +37,7 @@ Scan the plugin to catalog every component that shapes autonomous behavior. For 
 - Lint gate — runs linter after each iteration
 - Diff size gate — reverts iterations touching >N files
 - Protected files gate — blocks modifications to specified files
-- Gate ignore patterns — RALPH_GATE_IGNORE exceptions
+- Verification integrity review — preserved criteria, approved expectations, justified corrections, and protection against bypasses
 
 **Safety Mechanisms** (in `loop.sh`):
 - Struggle detection — stops after N retries on same task

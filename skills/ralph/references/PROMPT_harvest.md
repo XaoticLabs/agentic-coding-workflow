@@ -85,13 +85,14 @@ This is the most important step. Write (or update) `RALPH_OVERRIDES.md` **inside
 - Failure patterns from the journal that should be avoided (e.g., "Do not use `Date.now()` in tests — use the injected clock from `test/helpers`")
 - Architecture constraints discovered during implementation (e.g., "All API routes must go through the `router/v2.ts` module, not `router/index.ts`")
 - Time budget recommendations (e.g., "Database migration tasks need --time-budget=900, default 600 is too tight")
-- **Gate ignore patterns** for warnings that cause false reverts. If the journal shows REVERT_TESTS or REVERT_LINT entries where the failure was a known, pre-existing warning (not caused by the iteration's changes), add a `RALPH_GATE_IGNORE: <regex>` line. The loop's gate will treat output matching ALL ignore patterns as a pass. Example: `RALPH_GATE_IGNORE: otel_baggage_processor.*unknown_type` for a third-party OTP warning that triggers `--warnings-as-errors`.
+- **Verification failures** and their evidence-backed fixes. Record pre-existing failures honestly. Do not generate `RALPH_GATE_IGNORE` exceptions or weaken checks to report success; nonzero exits remain failures. Verification changes require rationale, independent review, and human approval when they reduce agreed requirements.
 
 **What does NOT go in overrides:**
 - Vague advice ("write clean code", "follow best practices")
 - One-off fixes that won't recur
 - Anything already in AGENTS.md (don't duplicate)
 - Information that can be derived from reading the code
+- Changes to agreed acceptance criteria, invented human approval, or rules that bypass test/verification integrity
 
 **Format:**
 ```markdown
@@ -109,8 +110,8 @@ This is the most important step. Write (or update) `RALPH_OVERRIDES.md` **inside
 ## Project-Specific Commands
 - <command or workflow that differs from AGENTS.md defaults> <!-- verified: YYYY-MM-DD -->
 
-## Gate Ignore Patterns
-- RALPH_GATE_IGNORE: <regex matching warning output that should not trigger reverts> <!-- verified: YYYY-MM-DD -->
+## Verification Findings
+- <failure evidence and proposed correction preserving required coverage> <!-- verified: YYYY-MM-DD -->
 
 ## Time Budget Notes
 - <observations about which task types need more/less time> <!-- verified: YYYY-MM-DD -->
