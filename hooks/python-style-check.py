@@ -91,58 +91,8 @@ NON_TEST_CHECK = [
     ),
 ]
 
-# ── Patterns that need the full file (Write only) ──────────────────
 
-
-def check_function_length(content: str) -> list[str]:
-    """Find functions longer than 40 lines."""
-    warnings = []
-    lines = content.split("\n")
-    func_start = None
-    func_name = None
-    func_indent = 0
-
-    for i, line in enumerate(lines):
-        # Detect function definition
-        match = re.match(r"^(\s*)(async\s+)?def\s+(\w+)", line)
-        if match:
-            # If we were tracking a function, check its length
-            if func_start is not None:
-                length = i - func_start
-                if length > 40:
-                    warnings.append(
-                        f"`{func_name}` is {length} lines (limit: 40) — break it up"
-                    )
-            func_indent = len(match.group(1))
-            func_name = match.group(3)
-            func_start = i
-            continue
-
-        # Check if we've exited the current function (dedent to same or less)
-        if func_start is not None and line.strip():
-            current_indent = len(line) - len(line.lstrip())
-            if current_indent <= func_indent and not line.strip().startswith(
-                (")", "]", "}")
-            ):
-                length = i - func_start
-                if length > 40:
-                    warnings.append(
-                        f"`{func_name}` is {length} lines (limit: 40) — break it up"
-                    )
-                func_start = None
-
-    # Check last function in file
-    if func_start is not None:
-        length = len(lines) - func_start
-        if length > 40:
-            warnings.append(
-                f"`{func_name}` is {length} lines (limit: 40) — break it up"
-            )
-
-    return warnings
-
-
-def check_code(code: str, file_path: str, is_full_file: bool) -> list[str]:
+def check_code(code: str, file_path: str) -> list[str]:
     """Run all applicable checks on the code."""
     warnings = []
 
@@ -154,10 +104,6 @@ def check_code(code: str, file_path: str, is_full_file: bool) -> list[str]:
         for pattern, message in NON_TEST_CHECK:
             if re.search(pattern, code, re.MULTILINE):
                 warnings.append(message)
-
-    # Function length check only makes sense with the full file
-    if is_full_file:
-        warnings.extend(check_function_length(code))
 
     return warnings
 
@@ -187,15 +133,13 @@ def main():
     # Get the code to check
     if tool_name == "Edit":
         code = tool_input.get("new_string", "")
-        is_full_file = False
     else:  # Write
         code = tool_input.get("content", "")
-        is_full_file = True
 
     if not code:
         sys.exit(0)
 
-    warnings = check_code(code, file_path, is_full_file)
+    warnings = check_code(code, file_path)
 
     if warnings:
         basename = os.path.basename(file_path)

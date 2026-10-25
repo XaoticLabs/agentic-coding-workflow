@@ -160,13 +160,14 @@ If the spec selects `approved-contract`, use the approval flow above. Treat lega
 
 Implement the requested behavior with a focused, readable change that satisfies the acceptance criteria.
 
-Before writing new code, ask in this order:
-1. **Can I delete code** to make this work? Removing a special case beats adding a new one.
-2. **Can I compose existing functions/modules?** A 2-line call beats a 20-line reimplementation.
-3. **Can I add a parameter to existing code** rather than a new function/module?
-4. **Can I use stdlib/framework features** instead of custom logic?
-5. **Can I use data (maps, config) instead of code** (conditionals, new functions)?
-6. Only after exhausting 1-5: write new code, and write the minimum.
+Choose structure from the task's context:
+- Reuse existing functions, stdlib, and framework features when their semantics and contracts fit
+- Remove obsolete code or duplication when it supports the task and preserves required behavior
+- Choose functions, modules, parameters, or data structures for clear responsibilities and dependencies
+- Use named helpers, including single-use helpers, when they clarify a domain operation, isolate side effects, or separate validation from execution; keep logic inline when easier to follow
+- Retain validation and failure handling needed by the spec, trust boundaries, security, and integration contracts
+
+Judge maintainability through readability, cohesion, coupling, and ease of safe change. Line counts, file counts, and addition-to-deletion ratios do not establish quality. Apply numeric size thresholds only when our own evaluations establish their benefit for the particular workload and record that evidence.
 
 **Follow the agreed task:**
 - Implement the behavior and acceptance criteria from the request or spec
@@ -186,9 +187,9 @@ Before writing new code, ask in this order:
 - Don't refactor unrelated code
 - Don't add features outside the agreed scope
 - Follow existing codebase conventions
-- Don't add abstractions for single use sites — inline is fine
-- Don't add error handling for conditions that can't occur
-- Don't add docstrings, comments, or type annotations to code you didn't functionally change
+- Avoid abstractions and extension points without a current requirement or useful boundary
+- Flag redundant error handling only with evidence about the actual call path and invariants
+- Keep docstrings, comments, and type annotations relevant to the change and its comprehension
 - Preserve acceptance criteria and human-approved expectations; explain and independently review corrections or coverage reductions under the shared integrity policy
 
 Run the relevant tests after implementation and fix failures caused by the change. Review test and verification changes against the original criteria, including discovery, fixtures, mocks, snapshots, configuration, and failure handling. All required checks must pass.

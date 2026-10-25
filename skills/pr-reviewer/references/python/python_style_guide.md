@@ -125,7 +125,7 @@ def fetch_users(
 ## 5. Function and Class Design
 
 ### Functions
-- Under ~40 lines — decompose if longer [Google 3.18]
+- Keep responsibilities and control flow clear. Extract helpers when they clarify a domain operation, isolate effects, or separate validation; length alone is not a reason to decompose.
 - All branches return explicitly (no implicit `None` mixed with real values)
 - Use `*` for keyword-only args when 3+ optional params:
   ```python

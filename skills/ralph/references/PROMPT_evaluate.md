@@ -60,34 +60,35 @@ Score each dimension 1-5:
 | **Spec Fidelity** | Does the code do exactly what was asked? No more, no less. Check alignment with `## Strategic Context` in IMPLEMENTATION_PLAN.md if present — does the implementation honor the human's stated intent and constraints? |
 | **Correctness** | Will it work? Edge cases per spec? No obvious bugs? |
 | **Integration Quality** | Follows existing patterns? Uses existing utilities? Doesn't break other code? |
-| **Code Quality** | Minimal, readable, idiomatic? No unnecessary complexity? |
+| **Code Quality** | Clear names, readable control flow, idiomatic expressions, and understandable local logic? |
 | **Test Coverage** | Right things tested? Tests verify behavior, not implementation? Do corrections preserve criteria and runnable coverage, with justification, independent review, and human approval when required? If TDD was used, did the failure demonstrate missing behavior? |
-| **Compression** | Is this the shortest correct program? Could fewer lines, files, or abstractions achieve the same result? |
+| **Maintainability** | Are responsibilities, boundaries, and data flow clear for this task and codebase? Does the structure support safe debugging and future changes without unnecessary coupling or indirection? |
 
-### Compression Analysis
+### Contextual Maintainability Review
 
-Measure and report these metrics from the diff:
+Assess the change in context: acceptance criteria, project conventions, existing architecture, trust boundaries, and likely maintenance work. A focused bug fix, a migration, and a greenfield feature can reasonably require different amounts of code and structure.
 
-- **Lines added vs deleted** — healthy implementations often delete as much as they add. A high add:delete ratio is a smell.
-- **Lines added per acceptance criterion** — divide total lines added by number of criteria satisfied. >30 lines/criterion for typical business logic is a flag.
-- **New files created** — each new file is a structural complexity cost. Was each one necessary, or could the code live in an existing file?
-- **New abstractions introduced** (classes, modules, interfaces, base types) — was each abstraction warranted by multiple concrete use sites, or speculative?
-- **Single-use helpers** — functions/methods called exactly once. These should usually be inlined.
-- **Framework reimplementation** — custom code that duplicates stdlib or framework functionality.
+- **Focus and cohesion** — does each changed component serve the requested behavior? Identify unrelated churn, duplicated policy, or speculative extension points and explain their maintenance cost.
+- **Decomposition and boundaries** — do functions, modules, and files give responsibilities useful names and keep dependencies understandable? A single-use helper can clarify a domain operation, isolate side effects, or separate validation from execution. Judge its purpose and the cost of following the flow, not its call count.
+- **Validation and failure handling** — preserve checks required by the spec, security, input boundaries, and integration contracts. Flag redundant or unreachable handling only with evidence about the actual call path and invariants.
+- **Reuse and dependencies** — consider existing utilities, stdlib, and framework features when their semantics fit. Identify custom duplication or wrappers that obscure behavior, while recognizing adapters that enforce a useful contract.
+- **Ease of change** — would a maintainer know where to modify the behavior, trace a failure, and verify the result? Consider coupling, state ownership, and meaningful behavioral coverage.
 
-Include relevant compression measurements in the summary or criterion notes.
+Line counts, file counts, and addition-to-deletion ratios may describe scope or guide inspection; they are not evidence of poor quality by themselves. Do not score or reject a change for its size, lack of deletions, or helper use count. Do not apply universal numeric size thresholds. A workload-specific threshold needs our own evaluation evidence showing that it improves review outcomes; record the workload, method, results, tradeoffs, and when to reassess it before adopting it.
+
+Report concrete maintenance problems, their context and impact, and a correction that preserves required behavior. Credit readable decomposition and necessary validation even when they add code.
 
 ### LLM Code Smell Check
 
-Actively look for:
-- **Over-abstraction**: Helpers/utilities/base classes for one-time use
-- **Defensive excess**: Try/catch around safe code, null checks on non-nullable values
+Use these as investigation prompts, not automatic penalties. Confirm the relevant call path and explain a concrete cost:
+- **Over-abstraction**: Indirection or generic machinery that obscures responsibilities without a useful boundary
+- **Defensive excess**: Redundant checks or unreachable recovery paths given demonstrated upstream guarantees; retain necessary boundary validation
 - **Template residue**: Generic names, boilerplate comments, unused imports
 - **Feature creep**: Configurability or flags not in the spec
-- **Premature generalization**: Generic solutions for single concrete cases
-- **Wrapper bloat**: Thin wrappers that just delegate to the underlying call with no added value
+- **Premature generalization**: Extension mechanisms with no current requirement or architectural justification
+- **Wrapper bloat**: Delegation that obscures behavior without clarifying a domain operation or enforcing a contract
 - **Speculative error handling**: Catching errors that can't occur in the current call path
-- **Annotation sprawl**: Type hints, docstrings, or comments added to unchanged code
+- **Unrelated churn**: Annotation, documentation, or structural changes that do not support the requested behavior or its comprehension
 - **Verification manipulation**: Unjustified weakening of tests, criteria, discovery, fixtures, mocks, or checks; changes to human-approved expectations without approval — automatic REVISE
 - **Tests follow implementation**: Tests that assert implementation details (specific method calls, internal state) rather than behavior — a sign the tests were written after the code, not before
 
@@ -106,12 +107,11 @@ Apply these rules:
 - Any dimension **1-2** → **REVISE**
 - Spec Fidelity **< 3** → **REVISE**
 - Correctness **< 3** → **REVISE**
-- Compression **< 2** → **REVISE** (egregious bloat — the implementation is significantly longer than necessary)
 - Average across all dimensions **< 3.0** → **REVISE**
 - Any evaluated acceptance criterion **FAIL** or **PARTIAL** → **REVISE**
 - Otherwise → **ACCEPT**
 
-When compression triggers REVISE, the `revise_guidance` must include specific compression instructions: which helpers to inline, which abstractions to remove, which stdlib functions to use instead.
+When maintainability triggers REVISE, the `revise_guidance` must identify the concrete burden (such as duplicated policy, tangled responsibilities, or unjustified indirection), its impact in this codebase, and an actionable correction. Preserve useful decomposition and required validation; shortening the diff is not a correction by itself.
 
 When verification integrity triggers REVISE, identify the weakened criterion or coverage, the affected files/cases, and the correction, evidence, or human approval needed.
 

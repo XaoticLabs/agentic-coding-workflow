@@ -156,7 +156,7 @@ For tasks at the edge of what the model handles reliably, enable per-iteration e
 - Set `RALPH_EVAL_PER_ITER=true`
 - Expands the mandatory integrity review to a full quality review after mechanical gates
 - REVISE verdict triggers a revert with guidance saved for next iteration
-- Full quality scope triggers when diff touches >= `RALPH_EVAL_DIFF_THRESHOLD` files (default: 5); integrity review always runs
+- When per-iteration quality review is enabled, it covers every committed iteration by default. `RALPH_EVAL_DIFF_THRESHOLD` can filter by file count only after our own evaluations justify it for the workload; integrity review always runs
 
 Use this when:
 - The task is at the edge of model capability
@@ -226,6 +226,13 @@ diff/log evidence, validates structured CLI output against the score and evidenc
 and writes reports bound to the candidate SHA and source fingerprint. Errors preserve work
 and return failure. Per-iteration and wave reports retain separate artifact paths.
 
+The six score dimensions are spec fidelity, correctness, integration quality, code quality,
+test coverage, and maintainability. Maintainability review considers responsibilities, boundaries,
+coupling, required validation, and ease of safe change in context. Size and addition-to-deletion
+ratios do not establish quality; useful single-use helpers and greenfield additions are legitimate.
+The structured score key is `maintainability`, replacing `compression`; old verdict artifacts
+remain historical evidence and cannot satisfy the current schema without fresh evaluation.
+
 UI evaluation consumes screenshots and interaction logs captured before final verification.
 Set `RALPH_EVAL_UI_EVIDENCE` to a nonempty directory inside the project when
 `RALPH_EVALUATE_UI=true`. Missing or changed evidence is ERROR; evaluators do not launch
@@ -258,7 +265,7 @@ Disable with `RALPH_NOTIFY=false`. Disable sound with `RALPH_NOTIFY_SOUND=0`.
 - **Max iterations:** Configurable safety limit (default 50)
 - **Struggle detection:** Auto-stops after 3 failed attempts on the same task
 - **Circuit breaker (tiered):** Soft warning at <30% commit ratio; hard stop if also 3+ consecutive reverts on different tasks
-- **Diff size gate:** Reverts iterations that touch more than 20 files (configurable via RALPH_MAX_DIFF_FILES)
+- **Optional scope limit:** `RALPH_MAX_DIFF_FILES` is disabled by default (unset or `0`). Set a positive file limit only when our own evaluations show it helps the particular workload; record the workload, method, results, tradeoffs, and reassessment conditions in `RALPH_OVERRIDES.md`. The controller captures configured limits before the build; iteration edits cannot relax them
 
 ## Mid-Loop Steering
 

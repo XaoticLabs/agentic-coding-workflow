@@ -24,7 +24,7 @@ EVALUATION = {
             "integration_quality",
             "code_quality",
             "test_coverage",
-            "compression",
+            "maintainability",
         )
     },
     "average": 4,
@@ -340,6 +340,37 @@ if run_claude_pipeline prompt "$2" "$3" 0 "$4" -p; then exit 99; fi
         "outcome": "prompt error (code 13)",
     }
     assert "producer failed" in Path(str(log) + ".prompt-stderr.log").read_text()
+
+
+@pytest.mark.parametrize("limit", [None, "0", "20", "21"])
+def test_file_limit_is_opt_in_and_captured_before_the_build(
+    project: Path, limit: str | None
+) -> None:
+    script = project.parent / "agent.sh"
+    script.write_text(
+        "mkdir -p src\n"
+        "for index in {1..21}; do printf 'value = 42\\n' > src/field_$index.py; done\n"
+        "printf 'RALPH_MAX_DIFF_FILES=0\\n' > .claude/specs/status-test/RALPH_OVERRIDES.md\n"
+        "git add src\n"
+        "git commit --quiet -m 'Implement greenfield behavior'\n"
+    )
+    variables = {"TEST_AGENT_SCRIPT": str(script), "RALPH_MAX_DIFF_FILES": limit or ""}
+    result = run_loop(project, variables=variables)
+    assert result.returncode == 0, result.stdout + result.stderr
+    if limit == "20":
+        assert_outcome(project, "reverted", "REVERT", journal_outcome="REVERT_SCOPE")
+        assert not (project / "src/field_1.py").exists()
+    else:
+        assert_outcome(project, "success", "KEEP")
+        assert len(list((project / "src").glob("*.py"))) == 21
+
+
+@pytest.mark.parametrize("limit", ["-1", "invalid"])
+def test_invalid_file_limit_stops_before_the_build(project: Path, limit: str) -> None:
+    result = run_loop(project, variables={"RALPH_MAX_DIFF_FILES": limit})
+    assert result.returncode != 0
+    assert "RALPH_MAX_DIFF_FILES must be a nonnegative integer" in result.stderr
+    assert not (project / "prompt.txt").exists()
 
 
 @pytest.mark.parametrize("command", ["false | true", "exit 1"])
@@ -672,7 +703,7 @@ fi
                 "RALPH_NOTIFY": "false",
                 "RALPH_EVAL_END_OF_RUN": str(evaluate).lower(),
                 "RALPH_EVAL_PER_ITER": str(per_iteration).lower(),
-                "RALPH_EVAL_DIFF_THRESHOLD": "1",
+                "RALPH_EVAL_DIFF_THRESHOLD": "",
                 "RALPH_EVAL_TIMEOUT": "1" if verdict == "timeout" else "10",
                 "AUTO_HARVEST": "false",
                 "TEST_PROCESSOR_EXIT": "0",

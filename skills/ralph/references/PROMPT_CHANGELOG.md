@@ -24,6 +24,14 @@ Each entry follows this structure:
 
 ## Changelog
 
+### 2026-10-25 — PROMPT_build.md / PROMPT_evaluate.md — Contextual maintainability review
+
+**Changed:** Replaced compression scoring with maintainability in prompts and the evaluator schema. Removed shortest-program, deletion-ratio, lines-per-criterion, and single-use inlining incentives. Updated calibration, interactive implementation, and language review guidance; removed the Python function-length warning. Ralph no longer imposes a default file-count rejection limit or a file-count filter on enabled quality review. Optional workload-specific size thresholds require our own evaluation evidence.
+**Intended effect:** Keep changes focused while crediting readable decomposition, necessary validation, and legitimate greenfield work. Require concrete maintenance costs and behavior-preserving corrections rather than size-based penalties.
+**Observed effect:** Pending — no live model run performed; no workload-specific size threshold has been validated by this revision.
+**Model:** N/A — controller and hook regressions use deterministic fixtures and a fake CLI.
+**Evidence:** Regressions cover the maintainability schema, actionable revision results, optional scope limits captured before the build, and retained Python validation warnings without length penalties. Model review quality remains unmeasured.
+
 ### 2026-10-25 — PROMPT_build.md / PROMPT_evaluate.md — Review verification integrity
 
 **Changed:** Replaced RED-commit file freezes with preserved acceptance criteria, provenance for human-approved expectations, justified test corrections, and mandatory independent integrity review for every committed build iteration. RED/GREEN commits are optional; the controller retains original verification inputs and supplies intermediate patches. Nonzero checks cannot be ignored into success.
@@ -78,7 +86,7 @@ Document prompt phrases with observed behavioral impact:
 |--------|--------|--------|----------------|
 | "One task per iteration" | PROMPT_build.md | Prevents scope creep but may cause artificial task splitting | Pre-changelog |
 | "Never give up" | PROMPT_build.md | Reduces no-commit iterations but may cause thrashing on impossible tasks | Pre-changelog |
-| ">100 lines added" check | PROMPT_build.md | Triggers self-review but threshold may be too high/low for some projects | Pre-changelog |
+| ">100 lines added" check (retired) | PROMPT_build.md | Historical size heuristic; no workload evaluation evidence recorded. Replaced by contextual maintainability review | Pre-changelog |
 | "No praise" | PROMPT_evaluate.md | (pending observation) | 2026-03-26 |
 | "museum quality" equivalent | N/A | Known from Anthropic article to cause visual convergence — avoid aspirational superlatives in criteria | External finding |
 

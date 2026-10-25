@@ -69,7 +69,7 @@ EVAL_SUMMARY_FILE="${RUN_DIR}/eval-summary.md"
 RALPH_EVALUATE_UI="${RALPH_EVALUATE_UI:-false}"
 # Full quality evaluation per iteration (opt-in for hard tasks)
 EVAL_PER_ITER="${RALPH_EVAL_PER_ITER:-false}"            # Full quality review per iteration (integrity review always runs)
-EVAL_DIFF_THRESHOLD="${RALPH_EVAL_DIFF_THRESHOLD:-5}"    # Files changed to trigger per-iter eval (when enabled)
+EVAL_DIFF_THRESHOLD="${RALPH_EVAL_DIFF_THRESHOLD:-0}"    # Optional workload-calibrated filter; enabled review covers every commit by default
 # End-of-run evaluation (default: on)
 EVAL_END_OF_RUN="${RALPH_EVAL_END_OF_RUN:-true}"         # Run evaluator once at end of run
 WORKER_ID="${RALPH_WORKER_ID:-}"
@@ -668,10 +668,14 @@ $( [ -n "$TASK_SPEC" ] && echo "**Current task spec file:** ${SPEC_DIR}/${TASK_S
     TEST_CMD=$(detect_test_command "$PROJECT_DIR")
     LINT_CMD=$(detect_lint_command "$PROJECT_DIR")
     PROTECTED_PATTERNS=$(cat "$READONLY_FILE" 2>/dev/null || true)
-    MAX_DIFF_FILES="${RALPH_MAX_DIFF_FILES:-20}"
+    MAX_DIFF_FILES="${RALPH_MAX_DIFF_FILES:-0}"
     if [ -f "$OVERRIDES_FILE" ]; then
       OVERRIDE_MAX=$(grep 'RALPH_MAX_DIFF_FILES' "$OVERRIDES_FILE" 2>/dev/null | grep -o '[0-9]*' | head -1 || true)
       [ -z "$OVERRIDE_MAX" ] || MAX_DIFF_FILES="$OVERRIDE_MAX"
+    fi
+    if ! [[ "$MAX_DIFF_FILES" =~ ^[0-9]+$ ]]; then
+      echo "ERROR: RALPH_MAX_DIFF_FILES must be a nonnegative integer (0 disables the limit)." >&2
+      exit 1
     fi
   fi
   export RALPH_PRE_COMMIT="$PRE_COMMIT" RALPH_PLAN_FILE="$PLAN_FILE"
@@ -759,8 +763,9 @@ ${BRIEFING}
       fi
     fi
 
-    # Gate 2: Diff size check (prevent sprawling iterations)
-    if [ "$GATE_PASSED" = true ]; then
+    # Gate 2: Optional workload-specific scope limit, captured before the build.
+    # File count alone is not a quality signal; no universal limit is imposed.
+    if [ "$GATE_PASSED" = true ] && [ "$MAX_DIFF_FILES" -gt 0 ]; then
       DIFF_FILE_COUNT=$(git diff --name-only "$PRE_COMMIT" HEAD | wc -l | tr -d ' ')
       if [ "$DIFF_FILE_COUNT" -gt "$MAX_DIFF_FILES" ]; then
         GATE_PASSED=false

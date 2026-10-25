@@ -67,7 +67,7 @@ Human role: Minimal — this is the AI's strongest area.
 **Does the code clearly communicate its intent?**
 
 - [ ] Variable/function names are self-documenting
-- [ ] Functions are short enough to understand at a glance
+- [ ] Functions have clear responsibilities and readable control flow
 - [ ] Comments explain "why" not "what" (no parroting the code)
 - [ ] Complex logic has explanatory comments or is decomposed
 - [ ] File/module organization supports diagonal reading
@@ -76,7 +76,7 @@ Human role: Minimal — this is the AI's strongest area.
 
 Severity: **MINOR**.
 
-AI role: Flag unclear naming, excessive function length, missing docs.
+AI role: Flag unclear naming, tangled responsibilities, obscured control flow, and missing docs. Explain the maintenance cost in context; length alone is not a finding.
 Human role: Validate — readability is ultimately a human judgment.
 
 ---

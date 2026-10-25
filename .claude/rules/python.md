@@ -34,7 +34,7 @@ paths:
 - `ConfigDict(strict=True)` where type coercion is undesirable
 
 ### Design
-- Functions under 40 lines, nesting under 3 levels
+- Keep responsibilities and control flow clear; choose decomposition from cohesion and readability rather than fixed length or nesting limits
 - Never `@staticmethod` — use module-level function
 - `@classmethod` only for alternative constructors
 - `@property` only for computed attributes — not wrapping trivial private attrs

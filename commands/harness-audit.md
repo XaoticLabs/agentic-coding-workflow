@@ -35,7 +35,7 @@ Scan the plugin to catalog every component that shapes autonomous behavior. For 
 **Quality Gates** (in `loop.sh`):
 - Test gate — runs test suite after each iteration
 - Lint gate — runs linter after each iteration
-- Diff size gate — reverts iterations touching >N files
+- Optional scope limit — disabled by default; inspect workload-specific evaluation evidence for any configured `RALPH_MAX_DIFF_FILES` limit
 - Protected files gate — blocks modifications to specified files
 - Verification integrity review — preserved criteria, approved expectations, justified corrections, and protection against bypasses
 

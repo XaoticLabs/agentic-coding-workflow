@@ -114,7 +114,7 @@ end
 ### Module Design
 - **Single responsibility**: One module, one purpose
 - **Public API**: Clear separation between public and private functions
-- **Function length**: Keep functions short and focused (< 10 lines ideal)
+- **Function cohesion**: Keep responsibilities and data flow clear; decompose where names and boundaries improve readability, without a fixed length target
 - **Nested modules**: Use for namespacing related functionality
 
 ### Function Design

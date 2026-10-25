@@ -94,7 +94,7 @@ Skip Taste (non-blocking, not scored). If `--focus` is specified, only present t
 **Common misses:**
 - Generic variable names in complex logic (data, result, temp, x)
 - Comments that parrot the code instead of explaining why
-- Functions over ~20 lines that could be decomposed
+- Tangled responsibilities or control flow that useful named helpers could clarify
 - Missing @doc/@moduledoc or docstrings on public functions
 
 ---

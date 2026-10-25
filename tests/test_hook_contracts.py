@@ -52,6 +52,33 @@ def invoke(
     )
 
 
+@pytest.mark.parametrize("unsafe_assertion", [False, True])
+def test_python_style_reviews_behavior_without_a_function_length_limit(
+    project: Path, unsafe_assertion: bool
+) -> None:
+    (project / "pyproject.toml").touch()
+    content = "def collect():\n    values = []\n"
+    content += "".join(f"    values.append({index})\n" for index in range(45))
+    if unsafe_assertion:
+        content += "    assert values\n"
+    content += "    return values\n"
+    result = invoke(
+        project,
+        "python-style-check.py",
+        {
+            "tool_name": "Write",
+            "tool_input": {"file_path": "collect.py", "content": content},
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    if unsafe_assertion:
+        feedback = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+        assert "`assert` outside tests" in feedback
+        assert "limit: 40" not in feedback
+    else:
+        assert result.stdout == ""
+
+
 @pytest.mark.parametrize("mode", ["0", "1"])
 def test_ralph_plan_update_gate_is_active_only_for_builds(
     project: Path, mode: str

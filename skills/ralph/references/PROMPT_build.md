@@ -56,7 +56,7 @@ If the file does not exist, you are in single-track mode and may pick any eligib
 
 Pick the single best candidate from your assigned tasks (or all candidates if single-track).
 
-**Simplicity tiebreaker:** When two candidates are close in priority, prefer the one that requires fewer files and fewer lines of change. A task you can solve by deleting code is always preferred over one that adds code.
+**Maintainability tiebreaker:** When two candidates are close in priority, prefer the one that resolves a concrete maintenance burden or reduces uncertainty for later tasks. Consider cohesion, dependencies, and verification needs; additions and deletions do not determine a task's value.
 
 If ALL tasks have `status: "done"` (legacy `[x]`) (or all your assigned tasks if parallel), set `## Status: COMPLETE` at the top of the plan and exit immediately.
 
@@ -103,26 +103,25 @@ Follow **Test and Verification Integrity** in `commands/shared-patterns.md`:
 
 ## Step 5: GREEN — Implement
 
-**Your goal is a minimal, readable implementation that satisfies the acceptance criteria and behavioral tests.** Not the most thorough, not the most "complete," not the most defensive — the shortest. Every line you write is a liability: it must be read, maintained, debugged, and understood by the next person. The best implementation is the one with the least code that a competent developer can read in one pass.
+**Your goal is a focused, maintainable implementation that satisfies the acceptance criteria and behavioral tests.** Optimize for clear responsibilities, readable control flow, and safe future changes in this codebase. Readable decomposition, necessary validation, and legitimate greenfield work can require additional code. Diff size and addition-to-deletion ratios do not establish quality.
 
-Before writing any new code, ask in this order:
-1. **Can I delete code** to make this work? Removing a special case or outdated branch is always preferred over adding new code.
-2. **Can I compose existing functions/modules** to achieve this? A 2-line call to existing code beats a 20-line reimplementation.
-3. **Can I add a parameter or config entry** to existing code rather than a new function/module?
-4. **Can I use stdlib or framework features** instead of custom logic? Your custom version is always worse — it has bugs you haven't found yet.
-5. **Can I use data (maps, tables, config) instead of code** (conditionals, switches, new functions)?
-6. Only after exhausting 1-5: **write new code**, and write the minimum.
+Before implementing, consider the task's context:
+- Reuse existing functions, stdlib, or framework features when their behavior and contracts fit; explain custom logic when needed.
+- Remove obsolete branches or duplication when that supports the task and preserves required behavior.
+- Choose functions, modules, parameters, or data structures that keep responsibilities and dependencies clear. Avoid adding flags or configuration merely to avoid a new helper.
+- Use a named helper even at a single call site when it clarifies a domain operation, isolates side effects, or separates validation from execution. Keep logic inline when that is easier to follow.
+- Include validation and failure handling required by the spec, trust boundaries, security, and integration contracts. Avoid speculative extension points and demonstrably redundant checks.
 
 Implementation rules:
 
 1. Follow existing codebase patterns and conventions
-2. Make the minimal changes needed — satisfy the acceptance criteria and behavioral tests
+2. Keep changes focused — satisfy the acceptance criteria and behavioral tests with understandable structure
 3. Don't refactor unrelated code
 4. Don't add features not in the spec
-5. Handle edge cases specified in the task
-6. Don't add abstractions for single use sites — inline is fine
-7. Don't add error handling for conditions that can't occur in the current call path
-8. Don't add type annotations, docstrings, or comments to code you didn't functionally change
+5. Handle specified edge cases and relevant boundary failures
+6. Judge abstractions by cohesion, clarity, and change cost rather than call count
+7. Remove error handling only when the actual call path and invariants show it is unnecessary
+8. Keep annotations, docstrings, and comments relevant to the change and its comprehension
 
 **Run the tests. Required behavioral and regression checks must pass.** Fix implementation defects; justify and independently review mistaken tests under Step 4b.
 
@@ -190,5 +189,5 @@ You are done. Exit cleanly. Do NOT pick up another task — the outer loop will 
 - **Must exit.** Don't loop internally — the bash loop handles iteration.
 - **External gate.** After you exit, an external gate runs tests and lint independently. If they fail, your entire iteration is reverted — your commits, your plan updates, everything. The branch tip always represents validated progress. Do not try to game this by modifying test or lint configuration.
 - **Independent integrity gate.** Acceptance criteria, approved expectations, test changes, fixtures, mocks, and verification configuration are reviewed before KEEP. REVISE rolls back with guidance; review errors preserve work and stop without acceptance. The gate uses commands resolved before your session and never converts nonzero exits into passes through ignore patterns.
-- **Diff size gate.** If your iteration touches more than 20 files (configurable), it will be reverted regardless of test/lint status. Keep changes focused — one task, minimal files. If the task legitimately requires many files, implement it incrementally across subtasks.
+- **Scope review.** Keep changes focused on the selected task and justify supporting changes. There is no default file-count limit. A workload-specific `RALPH_MAX_DIFF_FILES` limit may be configured after our own evaluations establish its benefit; the controller captures it before the iteration. Respect a configured limit or record that the task needs replanning rather than weakening the limit.
 - **Revert details are preserved.** When your iteration is reverted, the actual error output is saved. The next iteration's briefing will include the specific errors, so you can avoid repeating the same mistake.

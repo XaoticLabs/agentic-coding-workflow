@@ -38,6 +38,8 @@ Give delegated work a clear scope, inputs, output format, and verification crite
 
 Use the least elaborate workflow that resolves material uncertainty and produces verifiable results. Choose by uncertainty, impact, reversibility, and scope; reassess after inspection. The shared policy is in `commands/shared-patterns.md` under **Proportional Workflow**.
 
+Keep changes focused and review maintainability in context: clear responsibilities, readable flow, appropriate validation, and ease of safe change. Code size, addition-to-deletion ratios, and helper call counts do not establish quality. Retain useful decomposition, including single-use helpers. Adopt numeric size thresholds only when our own evaluations demonstrate a benefit for a particular workload, with recorded methods, results, tradeoffs, and reassessment conditions.
+
 | Task | Default workflow |
 |------|------------------|
 | Small, clear change | Inspect relevant context → implement → verify → report |

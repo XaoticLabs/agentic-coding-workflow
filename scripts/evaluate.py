@@ -21,7 +21,7 @@ DIMENSIONS = (
     "integration_quality",
     "code_quality",
     "test_coverage",
-    "compression",
+    "maintainability",
 )
 
 

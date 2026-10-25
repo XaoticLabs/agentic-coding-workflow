@@ -164,6 +164,9 @@ def test_nonzero_exit_cannot_accept_a_valid_result(project: Path):
         "boolean_score",
         "nan",
         "low_score",
+        "low_maintainability",
+        "missing_maintainability",
+        "legacy_compression",
         "critical_issue",
         "unknown_verdict",
         "missing_integrity",
@@ -192,6 +195,13 @@ def test_invalid_or_contradictory_evidence_is_an_error(project: Path, defect: st
     elif defect == "low_score":
         payload["scores"] = {name: 2 for name in payload["scores"]}
         payload["average"] = 2
+    elif defect == "low_maintainability":
+        payload["scores"]["maintainability"] = 2
+        payload["average"] = round(sum(payload["scores"].values()) / 6, 2)
+    elif defect == "missing_maintainability":
+        del payload["scores"]["maintainability"]
+    elif defect == "legacy_compression":
+        payload["scores"]["compression"] = payload["scores"].pop("maintainability")
     elif defect == "critical_issue":
         payload["issues"] = [
             {
@@ -217,6 +227,33 @@ def test_invalid_or_contradictory_evidence_is_an_error(project: Path, defect: st
     result, verdict = evaluate(project, payload)
     assert result.returncode == 3
     assert verdict["verdict"] == "ERROR"
+
+
+def test_maintainability_issue_can_request_revision(project: Path):
+    payload = copy.deepcopy(EVALUATION)
+    payload["scores"]["maintainability"] = 2
+    payload["average"] = round(sum(payload["scores"].values()) / 6, 2)
+    payload["verdict"] = "REVISE"
+    payload["revise_guidance"] = (
+        "Keep validation in one boundary helper to avoid policy drift"
+    )
+    payload["issues"] = [
+        {
+            "dimension": "maintainability",
+            "severity": "major",
+            "file": "source.py",
+            "line": 1,
+            "description": "Duplicated boundary validation can diverge between callers",
+        }
+    ]
+    result, verdict = evaluate(project, payload)
+    assert result.returncode == 1
+    assert verdict["verdict"] == "REVISE"
+    assert verdict["scores"]["maintainability"] == 2
+    assert (
+        "maintainability: 2/5"
+        in (project / ".claude/evaluation/summary.md").read_text()
+    )
 
 
 def test_valid_revise_is_distinct_from_error(project: Path):
