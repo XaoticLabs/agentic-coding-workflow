@@ -9,6 +9,7 @@ Loaded only in `--learn` mode. Provides per-phase quiz prompts, scoring rules, a
 - A user finding "matches" an AI finding if it identifies the same general issue, even if worded differently
 - **Bonus** findings (user found something AI missed) are recorded and praised but don't affect the denominator
 - Taste phase is not scored
+- Use the framework's local-evidence confidence definitions. External URLs and pattern matches alone do not verify findings. Record unavailable checks as verification limitations, continue the walk-through, and do not score missing infrastructure as a code defect.
 
 ## Phase Order for Walk-Through
 
@@ -36,6 +37,8 @@ Skip Taste (non-blocking, not scored). If `--focus` is specified, only present t
 **What to show:** Test output, linting output, CI status. Show actual tool output, not just pass/fail.
 
 **What good looks like:** User identifies specific test failures, notices skipped tests, spots linting warnings that indicate deeper issues, notices missing test coverage for new code.
+
+Distinguish observed failures from checks that could not run. State what remains unverified and continue with independent code inspection.
 
 **Common misses:** Skipped tests that should be running, new warnings introduced (not just failures), test files that should exist but don't.
 
@@ -70,10 +73,10 @@ Skip Taste (non-blocking, not scored). If `--focus` is specified, only present t
 
 **What to show:** New modules/classes, modified function signatures, import changes, module structure changes. Also show 1-2 examples of existing similar code for comparison.
 
-**What good looks like:** User identifies pattern deviations by comparing to existing code, spots unnecessary abstractions, notices coupling issues, flags public API changes.
+**What good looks like:** User explains the concrete compatibility or maintenance impact of a deviation using repository rules and affected usages, identifies costly abstractions or coupling, or flags unintended public API changes.
 
 **Common misses:**
-- Subtle pattern deviations (doing the same thing differently than existing code)
+- Pattern deviations that violate an applicable repository rule or impose a concrete maintenance cost
 - Over-abstraction or premature generalization
 - Breaking the module's single responsibility
 - Accidental public API exposure
@@ -142,10 +145,11 @@ Skip Taste (non-blocking, not scored). If `--focus` is specified, only present t
 
 When the user misses a finding, present it using this structure:
 
-```markdown
+````markdown
 ### Missed: {Issue Title}
 
 **What:** {One-sentence description of the issue}
+**Confidence:** {Verified | Likely}
 
 **Where:** `{file_path}:{line_number}`
 ```{lang}
@@ -154,17 +158,23 @@ When the user misses a finding, present it using this structure:
 
 **Why it matters:** {Consequence — what would happen in production, not just "it's bad practice"}
 
+**Trigger:** {input, state, or event that exposes the issue}
+**Execution path:** {entry point/caller → guards → affected operation, or affected maintenance task}
+**Repository evidence / reproduction:** {file:line references and causal reasoning, or input/command with expected vs actual results}
+**Uncertainty:** {unresolved assumptions or verification limits, or "None"}
+
 **How to spot it:** {A pattern the user can look for next time}
 > "{recognizable trigger}" → check for {what to look for}
 
-**Source:** [{source name}]({URL})
-```
+**Reference (optional):** [{documentation name}]({URL}) — {relevant semantics or adopted rule; omit when unnecessary}
+````
 
 Example:
-```markdown
+````markdown
 ### Missed: N+1 Query in User List
 
 **What:** Each user triggers a separate query to load their profile, creating N+1 database calls.
+**Confidence:** Likely
 
 **Where:** `lib/app_web/controllers/user_controller.ex:45`
 ```elixir
@@ -172,12 +182,17 @@ users = Repo.all(User)
 Enum.map(users, fn user -> Repo.preload(user, :profile) end)
 ```
 
-**Why it matters:** With 1000 users, this makes 1001 queries instead of 2. Page load time scales linearly with user count.
+**Why it matters:** If the profiles are initially unloaded, 1000 users would cause 1001 queries instead of 2. The extra database round trips increase with user count.
+
+**Trigger:** A user-list request returns N users whose profiles are not preloaded.
+**Execution path:** The user-list handler fetches users, then iterates through them and preloads each profile individually.
+**Repository evidence / reproduction:** The handler snippet at `lib/app_web/controllers/user_controller.ex:45` shows one initial query and one per-user preload inside the loop.
+**Uncertainty:** Query counts assume no earlier profile preload; confirm the handler's preceding code and the model's profile association.
 
 **How to spot it:** "Repo.all followed by Enum.map with Repo calls inside" → check for N+1. Use Repo.preload or a join in the original query.
 
-**Source:** [Ecto.Query.preload/3](https://hexdocs.pm/ecto/Ecto.Query.html#preload/3)
-```
+**Reference:** [Ecto.Query.preload/3](https://hexdocs.pm/ecto/Ecto.Query.html#preload/3) — preload semantics; the repository call path establishes the repeated queries.
+````
 
 ---
 
@@ -236,10 +251,12 @@ Append one line per session to `.claude/reviews/learning-log.jsonl`:
     "purpose": {"found": 0, "total": 0}
   },
   "misses": [
-    {"phase": "phase-name", "description": "what was missed", "pattern": "how to spot it", "source": "URL"}
+    {"phase": "phase-name", "description": "what was missed", "pattern": "how to spot it", "evidence": "repository locations or reproduction", "uncertainty": "unresolved assumptions or None", "source": null}
   ],
   "bonuses": [
     {"phase": "phase-name", "description": "what user found that AI missed"}
   ]
 }
 ```
+
+Set `source` to a relevant external reference URL when used, otherwise `null`. Keep repository evidence in `evidence`; a URL alone is not proof of a local defect. Existing log entries with a URL in `source` remain readable.

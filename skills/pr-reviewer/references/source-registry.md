@@ -1,6 +1,6 @@
 # Source Registry — Authoritative References for Code Review
 
-Verified, linkable sources organized by PERFECT phase. Use these to ground review findings with citations. Load this file when you need to look up a source URL for a finding.
+External references organized by PERFECT phase. Load this file when documentation is needed to establish relevant API, language, security, or adopted-rule semantics. Cite the specific semantics a reference supports separately from the repository evidence or reproduction that establishes the local finding. CWE/OWASP pages classify weaknesses, and style guides describe conventions; neither proves a local defect or raises confidence by itself. Ordinary local correctness findings do not require a source URL or web verification.
 
 ## Deep-Link Patterns
 

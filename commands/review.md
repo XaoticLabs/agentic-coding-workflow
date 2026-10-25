@@ -71,9 +71,9 @@ Interactive training mode where each PR review becomes a learning rep. You revie
 
 ### 3. Silent Pre-Scan
 
-Run the full PERFECT review internally **without displaying results**. Follow the pr-reviewer skill's PERFECT phases (Evidence through Purpose). For each finding, tag with Phase, Confidence, and Source.
+Run the full PERFECT review internally **without displaying results**. Follow the pr-reviewer skill's PERFECT phases (Evidence through Purpose), continuing code inspection when automated checks fail or are unavailable. For each finding, record Phase, Confidence, trigger, affected execution path, consequence, repository evidence or reproduction, and uncertainty.
 
-Read `references/perfect-framework.md` for phase definitions and `references/source-registry.md` for source URLs.
+Read `references/perfect-framework.md` for phase and confidence definitions. Load `references/source-registry.md` only when external documentation is needed for relevant semantics; source URLs do not verify local findings.
 
 **Important**: Only **Verified** and **Likely** findings will be used for scoring. Be conservative — better to have 5 well-grounded findings than 15 questionable ones.
 
@@ -98,8 +98,8 @@ For each phase (in order: Evidence, Reliability, Form, Clarity, Edge Cases, Purp
   - **Bonus**: User found something AI missed (praise this!)
 
 **Step C — Teach:**
-- For each **Caught** finding: brief confirmation with the source link
-- For each **Missed** finding: use the teaching template from learn-mode-prompts.md (What, Where, Why it matters, How to spot it, Source URL)
+- For each **Caught** finding: brief confirmation with repository evidence and a reference link only when it clarifies relevant semantics
+- For each **Missed** finding: use the teaching template from learn-mode-prompts.md (What, Where, Trigger, Execution path, Why it matters, Repository evidence / reproduction, Uncertainty, How to spot it, optional Reference)
 - For each **Bonus** finding: acknowledge and record
 
 **Step D — Phase Score:**
@@ -119,7 +119,7 @@ After all phases, present the full scorecard (template in learn-mode-prompts.md)
 mkdir -p "$(git rev-parse --show-toplevel)/.claude/reviews"
 ```
 
-Append one JSON line to `.claude/reviews/learning-log.jsonl` following the schema in learn-mode-prompts.md. Include timestamp, branch, language, phase scores, missed patterns with source URLs, and bonus finds.
+Append one JSON line to `.claude/reviews/learning-log.jsonl` following the schema in learn-mode-prompts.md. Include timestamp, branch, language, phase scores, missed patterns with repository evidence and uncertainty, optional reference URLs, and bonus finds.
 
 ### 7. Next Steps
 
@@ -257,13 +257,15 @@ For each acceptance criterion: read relevant code, mark as PASS/FAIL/PARTIAL wit
 
 ### 4. Quality & Pattern Review
 
-- Search for similar implementations in codebase; flag deviations from established patterns
+- Search for similar implementations and repository rules; explain the concrete compatibility or maintenance consequence of any flagged deviation
 - Assess readability, maintainability, edge cases, error handling, security, performance
 - Auto-detect language and load the relevant review guidance; delegate an independent language-specific review when its expected benefit justifies its cost
 
 ### 5. Run Verification
 
 Detect project type and run the project's test and lint commands.
+
+Record commands, outcomes, and verification scope. If checks fail or cannot run, report failures or verification limitations and continue useful inspection; unavailable infrastructure does not establish a code defect. Use the pr-reviewer skill's evidence and confidence requirements for findings.
 
 ### 6. Generate Report
 
@@ -286,7 +288,7 @@ Detect project type and run the project's test and lint commands.
 **Assessment criteria:**
 - **APPROVE:** All criteria pass, no blockers, patterns followed, tests pass
 - **REQUEST CHANGES:** Criteria fail, blockers exist, tests fail
-- **NEEDS DISCUSSION:** Spec ambiguous, trade-offs need team input
+- **NEEDS DISCUSSION:** Spec ambiguous, trade-offs need team input, or required verification unavailable without an established blocker
 
 ### 7. PR Creation Offer
 

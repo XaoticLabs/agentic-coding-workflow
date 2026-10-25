@@ -120,7 +120,7 @@ For interactive work, a conversational plan is often enough. Save a plan or gene
 | `/agentic-coding-workflow:skill-forge` | Build, fix, and optimize Claude Code skills — scaffolding, progressive disclosure, eval-driven iteration |
 | `tmux-multiplexer` | Controls tmux for spinning up multi-agent workflows and parallel tasks |
 | `neovim-controller` | Talks to a running Neovim instance via RPC — open files, run LSP commands, navigate symbols |
-| `pr-reviewer` | The brains behind `/agentic-coding-workflow:review` — uses the PERFECT framework (Purpose, Edge Cases, Reliability, Form, Evidence, Clarity, Taste) with source-grounded findings. Knows Elixir and Python patterns, auto-detects language |
+| `pr-reviewer` | The brains behind `/agentic-coding-workflow:review` — uses the PERFECT framework (Purpose, Edge Cases, Reliability, Form, Evidence, Clarity, Taste) with repository-grounded findings and explicit verification limits. Knows Elixir and Python patterns, auto-detects language |
 | `ralph` | Orchestrates autonomous Ralph loop iterations with separated evaluator, tiered evaluation modes, pre-flight checks (override staleness, plan-spec alignment), and desktop notifications |
 | `data-analytics` | Database querying and data analysis support — MCP server config, connection setup, SQL help |
 
