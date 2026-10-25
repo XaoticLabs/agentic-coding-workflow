@@ -12,6 +12,7 @@
 [[ -n "${_PARALLEL_PRIMITIVES_LOADED:-}" ]] && return 0
 _PARALLEL_PRIMITIVES_LOADED=1
 source "$(dirname "${BASH_SOURCE[0]}")/worktree-safety.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/claude-runner.sh"
 _PROJECT_COMMANDS_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/project-commands.py"
 
 # ── Worktree lifecycle ─────────────────────────────────────────────────

@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -169,7 +170,7 @@ def test_mutation_during_verification_invalidates_the_result(project: Path) -> N
     assert record["checked"] != record["after"]
 
 
-@pytest.mark.parametrize("payload", [[], {"stop_hook_active": True}])
+@pytest.mark.parametrize("payload", [[], None])
 def test_invalid_or_recursive_stop_input_does_no_work(
     project: Path, payload: object
 ) -> None:
@@ -179,6 +180,129 @@ def test_invalid_or_recursive_stop_input_does_no_work(
     assert result.returncode == 0
     assert result.stdout == ""
     assert not Path(environment["TEST_CALLS"]).exists()
+
+
+def test_correction_turn_rechecks_changed_inputs_and_can_pass(project: Path) -> None:
+    source = setup_source(project, "python")
+    environment = tool_environment(project, "python", fail_format=True)
+    first = invoke(project, "lint-on-stop.sh", {"session_id": "retry"}, **environment)
+    assert json.loads(first.stdout)["decision"] == "block"
+    source.write_text("corrected source\n")
+    environment["TEST_FAIL_FORMAT"] = "false"
+    second = invoke(
+        project,
+        "lint-on-stop.sh",
+        {"session_id": "retry", "stop_hook_active": True},
+        **environment,
+    )
+    assert second.stdout == ""
+    record = json.loads(
+        next((project / ".claude/verification").glob("*.json")).read_text()
+    )
+    assert record["status"] == "passed"
+    assert record["attempt"] == 2
+    calls = Path(environment["TEST_CALLS"]).read_text()
+    third = invoke(
+        project,
+        "lint-on-stop.sh",
+        {"session_id": "retry", "stop_hook_active": True},
+        **environment,
+    )
+    assert third.stdout == ""
+    assert Path(environment["TEST_CALLS"]).read_text() == calls
+    # An earlier success does not verify a subsequent committed change.
+    source.write_text("new source\n")
+    git(project, "add", source.name)
+    git(project, "commit", "--quiet", "-m", "New revision")
+    fourth = invoke(
+        project,
+        "lint-on-stop.sh",
+        {"session_id": "retry", "stop_hook_active": True},
+        **environment,
+    )
+    assert fourth.stdout == ""
+    assert Path(environment["TEST_CALLS"]).read_text() != calls
+
+
+def test_failed_corrections_have_bounded_retries_and_explicit_blocked_result(
+    project: Path,
+) -> None:
+    setup_source(project, "python")
+    environment = tool_environment(project, "python", fail_format=True)
+    for attempt in range(3):
+        result = invoke(
+            project,
+            "lint-on-stop.sh",
+            {"session_id": "retry", "stop_hook_active": attempt > 0},
+            **environment,
+        )
+        assert json.loads(result.stdout)["decision"] == "block"
+    calls = Path(environment["TEST_CALLS"]).read_text()
+    blocked = invoke(
+        project,
+        "lint-on-stop.sh",
+        {"session_id": "retry", "stop_hook_active": True},
+        **environment,
+    )
+    output = json.loads(blocked.stdout)
+    assert output["continue"] is False
+    assert "blocked after three attempts" in output["stopReason"]
+    assert Path(environment["TEST_CALLS"]).read_text() == calls
+    record = json.loads(
+        next((project / ".claude/verification").glob("*.json")).read_text()
+    )
+    assert record["status"] == "blocked"
+    # A new user turn may retry after repairing infrastructure or configuration.
+    environment["TEST_FAIL_FORMAT"] = "false"
+    assert (
+        invoke(
+            project, "lint-on-stop.sh", {"session_id": "retry"}, **environment
+        ).stdout
+        == ""
+    )
+
+
+@pytest.mark.parametrize("credo_exit", [0, 1, 2, 127])
+@pytest.mark.parametrize("diff_fails", [False, True])
+def test_ship_gate_delivers_credo_failure_as_a_block(
+    project: Path, credo_exit: int, diff_fails: bool
+) -> None:
+    (project / "mix.exs").write_text("initial\n")
+    git(project, "add", ".")
+    git(project, "commit", "--quiet", "-m", "Initial")
+    git(project, "checkout", "--quiet", "-b", "feature")
+    (project / "changed 'with spaces'.ex").write_text("changed\n")
+    git(project, "add", ".")
+    git(project, "commit", "--quiet", "-m", "Implementation")
+    (project / ".claude").mkdir()
+    (project / ".claude/pr-description.md").write_text(
+        "<!-- user-approved -->\nFixture\n"
+    )
+    tool = project.parent / "bin/mix"
+    executable(
+        tool,
+        f"import json, sys\nprint(json.dumps(sys.argv[1:]))\nsys.exit({credo_exit})\n",
+    )
+    if diff_fails:
+        executable(
+            tool.parent / "git",
+            f"import os, sys\nif 'diff' in sys.argv: sys.exit(7)\nos.execv({shutil.which('git')!r}, sys.argv)\n",
+        )
+    result = invoke(
+        project,
+        "ship-gate.sh",
+        {
+            "tool_name": "Bash",
+            "tool_input": {"command": 'gh pr create --title "Fixture"'},
+        },
+        PATH=f"{tool.parent}{os.pathsep}{os.environ['PATH']}",
+    )
+    assert result.returncode == (0 if credo_exit == 0 and not diff_fails else 2)
+    if diff_fails:
+        assert "BLOCKED: ship-gate failed" in result.stderr
+    elif credo_exit:
+        assert "BLOCKED: Credo found issues" in result.stderr
+        assert "changed 'with spaces'.ex" in result.stderr
 
 
 def test_style_warnings_use_post_tool_context(project: Path) -> None:

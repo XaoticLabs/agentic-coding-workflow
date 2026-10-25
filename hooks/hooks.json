@@ -14,11 +14,13 @@
       },
       {
         "description": "Blocks gh pr create unless PR description exists and user approved it",
+        "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/ship-gate.sh",
-            "timeout": 5
+            "timeout": 120,
+            "onFailure": "block"
           }
         ]
       },

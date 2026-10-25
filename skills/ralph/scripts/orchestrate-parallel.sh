@@ -23,9 +23,11 @@ NUM_WORKERS="${3:?Usage: orchestrate-parallel.sh <spec-dir> <slug> <num-workers>
 MAX_ITERATIONS="${4:-50}"
 
 CLEAN_ROOM_FLAG=""
+EVAL_GATES_MERGE=""
 for arg in "$@"; do
   case "$arg" in
     --clean-room) CLEAN_ROOM_FLAG="--clean-room" ;;
+    --eval-gates-merge) EVAL_GATES_MERGE=1 ;;
   esac
 done
 
@@ -59,7 +61,8 @@ MERGE_STRICTNESS="${RALPH_MERGE_STRICTNESS:-normal}"
 
 # ── Artifact paths (simplified model) ─────────────────────────────────
 RALPH_BASE="${PROJECT_DIR}/.claude/ralph/${SLUG}"
-RUN_TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+RUN_TIMESTAMP="$(date +%Y%m%d-%H%M%S)-$$-${RANDOM}"
+WORKTREE_RUN_PREFIX="${SLUG}-${RUN_TIMESTAMP}"
 RUN_DIR="${RALPH_BASE}/runs/${RUN_TIMESTAMP}"
 STOP_SENTINEL="${PROJECT_DIR}/.claude/ralph/stop"
 STATUS_FILE="${PROJECT_DIR}/.claude/ralph/status.md"
@@ -72,6 +75,10 @@ STITCH_SCRIPT="${SCRIPT_DIR}/../../../scripts/stitch-traces.sh"
 
 mkdir -p "$RUN_DIR"
 
+if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+  echo "An orchestrator for ${SLUG} is already active; its run is preserved." >&2
+  exit 1
+fi
 echo $$ > "$PID_FILE"
 # Tee all output to the log file while keeping it visible in the tmux pane
 exec > >(tee -a "$LOG_FILE") 2>&1
@@ -81,7 +88,7 @@ preserve_worker_traces() {
   for worktree_path in "${ALL_WORKTREE_PATHS[@]:-}"; do
     [ -d "$worktree_path" ] || continue
     worker_name=$(basename "$worktree_path")
-    worker_name="${worker_name#"${SLUG}-"}"
+    worker_name="${worker_name#"${WORKTREE_RUN_PREFIX}-"}"
     for trace in "${worktree_path}/.claude/ralph/${SLUG}/runs/"*/trace.jsonl; do
       [ -f "$trace" ] || continue
       worker_run=$(basename "$(dirname "$trace")")
@@ -209,7 +216,7 @@ else
 fi
 RUN_START_COMMIT=$(git rev-parse "$TARGET_BRANCH")
 
-BRANCH_PREFIX="ralph-${SLUG}"
+BRANCH_PREFIX="ralph-${SLUG}/${RUN_TIMESTAMP}"
 BASH_PATH=$(command -v bash)
 FLAGS=""
 [ -n "$CLEAN_ROOM_FLAG" ] && FLAGS="$FLAGS --clean-room"
@@ -262,7 +269,7 @@ for w in waves:
     fi
 
     BRANCH="${BRANCH_PREFIX}/wave-${wave}/worker-${i}"
-    WORKTREE_PATH="${WORKTREE_BASE}/${SLUG}-wave${wave}-worker-${i}"
+    WORKTREE_PATH="${WORKTREE_BASE}/${WORKTREE_RUN_PREFIX}-wave${wave}-worker-${i}"
 
     # Wave 0 branches from current HEAD; wave N+1 branches from TARGET_BRANCH
     # which has all prior waves' merged code
@@ -291,12 +298,12 @@ for w in waves:
 
   # ── Launch workers in tmux ────────────────────────────────────────
 
-  SESSION_NAME="ralph-${SLUG}-w${wave}"
+  SESSION_NAME="ralph-${SLUG}-${RUN_TIMESTAMP}-w${wave}"
   update_phase "WAVE ${wave}" "${#WAVE_WORKERS[@]} workers running"
 
   for idx in "${!WAVE_WORKERS[@]}"; do
     i="${WAVE_WORKERS[$idx]}"
-    WORKTREE_PATH="${WORKTREE_BASE}/${SLUG}-wave${wave}-worker-${i}"
+    WORKTREE_PATH="${WORKTREE_BASE}/${WORKTREE_RUN_PREFIX}-wave${wave}-worker-${i}"
     WORKER_SPEC_DIR=".claude/specs/${SLUG}"
 
     LAUNCHER="${WORKTREE_PATH}/.claude/ralph-launcher.sh"
@@ -342,7 +349,7 @@ LAUNCHER_EOF
     DONE_COUNT=0
     NOW=$(date +%s)
     for i in "${WAVE_WORKERS[@]}"; do
-      WORKTREE_PATH="${WORKTREE_BASE}/${SLUG}-wave${wave}-worker-${i}"
+      WORKTREE_PATH="${WORKTREE_BASE}/${WORKTREE_RUN_PREFIX}-wave${wave}-worker-${i}"
       MARKER="${WORKTREE_PATH}/.claude/ralph-worker-done-worker-${i}"
 
       if [ -f "$MARKER" ]; then
@@ -409,7 +416,7 @@ LAUNCHER_EOF
   # Completion markers do not prove that timed-out workers have exited.
   WAVE_STILL_ACTIVE=false
   for i in "${WAVE_WORKERS[@]}"; do
-    if worktree_lease_active "$REPO_ROOT" "${WORKTREE_BASE}/${SLUG}-wave${wave}-worker-${i}"; then
+    if worktree_lease_active "$REPO_ROOT" "${WORKTREE_BASE}/${WORKTREE_RUN_PREFIX}-wave${wave}-worker-${i}"; then
       WAVE_STILL_ACTIVE=true
     fi
   done
@@ -424,8 +431,23 @@ LAUNCHER_EOF
   EMPTY_WORKERS=0
   ACTIVE_BRANCHES=()
   for i in "${WAVE_WORKERS[@]}"; do
-    WORKTREE_PATH="${WORKTREE_BASE}/${SLUG}-wave${wave}-worker-${i}"
+    WORKTREE_PATH="${WORKTREE_BASE}/${WORKTREE_RUN_PREFIX}-wave${wave}-worker-${i}"
     WORKER_BRANCH="${BRANCH_PREFIX}/wave-${wave}/worker-${i}"
+    MARKER="${WORKTREE_PATH}/.claude/ralph-worker-done-worker-${i}"
+    if ! python3 - "$MARKER" <<'PYWORKER'
+import json
+import sys
+try:
+    status = json.load(open(sys.argv[1])).get("status")
+    sys.exit(0 if status == "done" else 1)
+except (OSError, ValueError, AttributeError):
+    sys.exit(1)
+PYWORKER
+    then
+      echo "Worker worker-${i} failed or timed out; work preserved and dependent waves blocked."
+      update_phase "WORKER_FAILED" "Wave ${wave}, worker ${i}; inspect the preserved worktree"
+      exit 1
+    fi
     COMMIT_COUNT=$(git -C "$WORKTREE_PATH" rev-list --count "${TARGET_BRANCH}..HEAD" 2>/dev/null || echo "0")
     if [ "$COMMIT_COUNT" -eq 0 ]; then
       EMPTY_WORKERS=$((EMPTY_WORKERS + 1))
@@ -456,31 +478,37 @@ LAUNCHER_EOF
 
   cd "$REPO_ROOT"
 
+  MERGE_EXIT=0
   MERGE_RESULT_JSON=$("$SCRIPT_DIR/merge-workers.sh" \
     --target "$TARGET_BRANCH" \
     --branches "${ACTIVE_BRANCHES[@]}" \
     --spec-dir "$SPEC_DIR" \
     --project-dir "$PROJECT_DIR" \
     --strictness "$MERGE_STRICTNESS" \
-    2>"${RUN_DIR}/wave${wave}-merge-stderr.log" || true)
+    2>"${RUN_DIR}/wave${wave}-merge-stderr.log") || MERGE_EXIT=$?
 
-  WAVE_MERGE_STATUS=$(echo "$MERGE_RESULT_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "unknown")
-  WAVE_MERGE_COUNT=$(echo "$MERGE_RESULT_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('merged',0))" 2>/dev/null || echo "0")
-  WAVE_MERGE_FAILED=$(echo "$MERGE_RESULT_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('failed',0))" 2>/dev/null || echo "0")
+  printf '%s\n' "$MERGE_RESULT_JSON" > "${RUN_DIR}/wave${wave}-merge-result.json"
+  if ! MERGE_SUMMARY=$(printf '%s\n' "$MERGE_RESULT_JSON" | python3 -c '
+import json, sys
+value = json.load(sys.stdin)
+if not isinstance(value, dict) or value.get("status") not in ("success", "partial", "failed", "aborted"):
+    raise ValueError("invalid merge status")
+if not all(type(value.get(key)) is int and value[key] >= 0 for key in ("merged", "failed")):
+    raise ValueError("invalid merge counts")
+print(value["status"], value["merged"], value["failed"])
+'); then
+    update_phase "MERGE_ERROR" "Invalid merge result; all worker worktrees preserved"
+    exit 1
+  fi
+  read -r WAVE_MERGE_STATUS WAVE_MERGE_COUNT WAVE_MERGE_FAILED <<< "$MERGE_SUMMARY"
 
   echo "Wave ${wave} merge: ${WAVE_MERGE_STATUS} (${WAVE_MERGE_COUNT} merged, ${WAVE_MERGE_FAILED} failed)"
   trace_event "wave_merge" "wave=${wave}" "status=${WAVE_MERGE_STATUS}" "merged=${WAVE_MERGE_COUNT}" "failed=${WAVE_MERGE_FAILED}"
 
-  # Save wave merge result
-  echo "$MERGE_RESULT_JSON" > "${RUN_DIR}/wave${wave}-merge-result.json" 2>/dev/null || true
-
-  if [ "$WAVE_MERGE_STATUS" = "failed" ]; then
-    echo "Wave ${wave}: all merges failed."
-    if [ "$MERGE_STRICTNESS" = "strict" ]; then
-      update_phase "MERGE_FAILED" "Wave ${wave} merge failed"
-      exit 1
-    fi
-    echo "Continuing to next wave despite failures."
+  if [ "$MERGE_EXIT" -ne 0 ] || [ "$WAVE_MERGE_STATUS" != success ] || [ "$WAVE_MERGE_FAILED" -ne 0 ]; then
+    echo "Wave ${wave}: merge incomplete; work preserved and dependent waves blocked."
+    update_phase "MERGE_FAILED" "Wave ${wave} merge incomplete"
+    exit 1
   fi
 
   # ── Post-wave test gate + evaluator loop ─────────────────────────
@@ -498,7 +526,7 @@ LAUNCHER_EOF
   # Evaluator loop: eval → reconcile(guided) → re-eval (max 2 retries)
   EVAL_RETRY_MAX=2
   EVAL_RETRY=0
-  WAVE_EVAL_VERDICT="SKIP"
+  WAVE_EVAL_VERDICT="NOT_RUN"
 
   if [ "$PARALLEL_EVAL" = "wave" ] || [ "$PARALLEL_EVAL" = "merge" ]; then
     POST_WAVE_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")
@@ -508,6 +536,12 @@ LAUNCHER_EOF
         echo "Running post-merge evaluator (attempt $((EVAL_RETRY + 1)))..."
         update_phase "WAVE ${wave}" "Evaluating merged result"
 
+        # Reconciliation changes the candidate; verify and evaluate its new SHA.
+        POST_WAVE_COMMIT=$(git rev-parse HEAD)
+        if ! run_verification_gate "$PROJECT_DIR" "${RUN_DIR}/wave${wave}-verify-${EVAL_RETRY}"; then
+          echo "Wave ${wave}: verification failed before evaluation; work preserved."
+          exit 1
+        fi
         EVAL_MODE="WAVE"
         [ "$NUM_WAVES" -eq 1 ] && EVAL_MODE="PARALLEL-MERGE"
 
@@ -520,22 +554,17 @@ LAUNCHER_EOF
 **Post-commit:** ${POST_WAVE_COMMIT}
 **Wave:** ${wave} of $((NUM_WAVES - 1))
 **Spec directory:** ${SPEC_DIR}
-**Verdict output:** ${PROJECT_DIR}/.claude/ralph-eval-verdict.json
-**Summary output:** ${PROJECT_DIR}/.claude/ralph-eval-summary.md
 "
-        rm -f "${PROJECT_DIR}/.claude/ralph-eval-verdict.json" "${PROJECT_DIR}/.claude/ralph-eval-summary.md"
-
-        set +e
-        echo "$WAVE_EVAL_PROMPT" | timeout 600 claude -p --dangerously-skip-permissions --model sonnet 2>/dev/null \
-          > "${RUN_DIR}/wave${wave}-eval-${EVAL_RETRY}.log"
-        set -e
-
-        WAVE_EVAL_VERDICT="ACCEPT"
-        if [ -f "${PROJECT_DIR}/.claude/ralph-eval-verdict.json" ]; then
-          WAVE_EVAL_VERDICT=$(python3 -c "import json; print(json.load(open('${PROJECT_DIR}/.claude/ralph-eval-verdict.json'))['verdict'])" 2>/dev/null || echo "ACCEPT")
-          WAVE_EVAL_SCORE=$(python3 -c "import json; print(json.load(open('${PROJECT_DIR}/.claude/ralph-eval-verdict.json'))['average'])" 2>/dev/null || echo "?")
-          echo "Wave ${wave} eval: ${WAVE_EVAL_VERDICT} (score: ${WAVE_EVAL_SCORE})"
-          trace_event "wave_eval" "wave=${wave}" "verdict=${WAVE_EVAL_VERDICT}" "score=${WAVE_EVAL_SCORE}" "attempt=${EVAL_RETRY}"
+        WAVE_EVAL_FILE="${RUN_DIR}/wave${wave}-eval-${EVAL_RETRY}.json"
+        WAVE_EVAL_SUMMARY="${RUN_DIR}/wave${wave}-eval-${EVAL_RETRY}.md"
+        evaluate_candidate "$WAVE_EVAL_PROMPT" "$PRE_WAVE_COMMIT" "$POST_WAVE_COMMIT" \
+          "$WAVE_EVAL_FILE" "$WAVE_EVAL_SUMMARY" "${RUN_DIR}/wave${wave}-eval-${EVAL_RETRY}.log" "${RALPH_EVAL_TIMEOUT:-600}" || true
+        WAVE_EVAL_VERDICT="$EVALUATION_VERDICT"
+        echo "Wave ${wave} eval: ${WAVE_EVAL_VERDICT}"
+        trace_event "wave_eval" "wave=${wave}" "verdict=${WAVE_EVAL_VERDICT}" "attempt=${EVAL_RETRY}" "commit=${POST_WAVE_COMMIT}"
+        if [ "$WAVE_EVAL_VERDICT" = ERROR ]; then
+          update_phase "EVALUATION_ERROR" "Wave ${wave}; work preserved"
+          exit 1
         fi
 
         if [ "$WAVE_EVAL_VERDICT" = "ACCEPT" ]; then
@@ -545,8 +574,8 @@ LAUNCHER_EOF
         # REVISE: run eval-guided reconciliation
         echo "Evaluator says REVISE — running guided reconciliation..."
         EVAL_ISSUES=""
-        if [ -f "${PROJECT_DIR}/.claude/ralph-eval-summary.md" ]; then
-          EVAL_ISSUES=$(head -60 "${PROJECT_DIR}/.claude/ralph-eval-summary.md")
+        if [ -f "$WAVE_EVAL_SUMMARY" ]; then
+          EVAL_ISSUES=$(head -60 "$WAVE_EVAL_SUMMARY")
         fi
 
         # Inject evaluator findings into reconcile prompt
@@ -556,6 +585,10 @@ LAUNCHER_EOF
 
         EVAL_RETRY=$((EVAL_RETRY + 1))
       done
+      if [ "$WAVE_EVAL_VERDICT" != ACCEPT ]; then
+        update_phase "EVALUATION_BLOCKED" "Wave ${wave} still requires revision after bounded retries"
+        exit 1
+      fi
     fi
   fi
 
@@ -596,7 +629,8 @@ preserve_worker_traces
 
 for worktree_path in "${ALL_WORKTREE_PATHS[@]}"; do
   [ -d "$worktree_path" ] || continue
-  worker_name=$(basename "$worktree_path" | sed "s/^${SLUG}-//")
+  worker_name=$(basename "$worktree_path")
+  worker_name="${worker_name#"${WORKTREE_RUN_PREFIX}-"}"
 
   # Append worker journal to persistent journal (with worker prefix)
   WORKER_JOURNAL="${worktree_path}/.claude/ralph/${SLUG}/journal.tsv"
@@ -694,11 +728,16 @@ fi
 # Harvest finishes before the merged candidate is verified and evaluated.
 git checkout "$TARGET_BRANCH"
 FINAL_VERIFICATION_PASSED=true
+VERIFIED_COMMIT=$(git rev-parse HEAD)
+VERIFIED_STATE=$(candidate_state "$PROJECT_DIR")
 if ! run_verification_gate "$PROJECT_DIR" "${RUN_DIR}/final"; then
   FINAL_VERIFICATION_PASSED=false
   echo "WARNING: Final verification failed; review the saved logs."
 fi
-trace_event "final_verification" "passed=${FINAL_VERIFICATION_PASSED}"
+if [ "$(candidate_state "$PROJECT_DIR")" != "$VERIFIED_STATE" ]; then
+  FINAL_VERIFICATION_PASSED=false
+fi
+trace_event "final_verification" "passed=${FINAL_VERIFICATION_PASSED}" "commit=${VERIFIED_COMMIT}"
 
 # ── End-of-run evaluation ──────────────────────────────────────────────
 # Single evaluator pass reviewing the FULL body of work across all waves.
@@ -706,6 +745,9 @@ trace_event "final_verification" "passed=${FINAL_VERIFICATION_PASSED}"
 
 EVAL_END_OF_RUN="${RALPH_EVAL_END_OF_RUN:-true}"
 PARALLEL_EVAL="${RALPH_PARALLEL_EVAL:-end}"
+ENDRUN_VERDICT=NOT_RUN
+EVAL_VERDICT_FILE="${RUN_DIR}/eval-verdict.json"
+EVAL_SUMMARY_FILE="${RUN_DIR}/eval-summary.md"
 
 if [ "$EVAL_END_OF_RUN" = "true" ] || [ "$PARALLEL_EVAL" = "end" ]; then
   git checkout "$TARGET_BRANCH" 2>/dev/null || true
@@ -717,9 +759,6 @@ if [ "$EVAL_END_OF_RUN" = "true" ] || [ "$PARALLEL_EVAL" = "end" ]; then
     echo "━━━ Phase: END-OF-RUN EVALUATION ━━━"
     update_phase "EVALUATE" "Running end-of-run evaluation on merged result"
 
-    EVAL_VERDICT_FILE="${PROJECT_DIR}/.claude/ralph-eval-verdict.json"
-    EVAL_SUMMARY_FILE="${PROJECT_DIR}/.claude/ralph-eval-summary.md"
-    STREAM_PROCESSOR="${SCRIPT_DIR}/stream-processor.py"
 
     ENDRUN_EVAL_PROMPT=$(cat "${SCRIPT_DIR}/../references/PROMPT_evaluate.md")
     ENDRUN_EVAL_PROMPT="${ENDRUN_EVAL_PROMPT}
@@ -738,43 +777,30 @@ if [ "$EVAL_END_OF_RUN" = "true" ] || [ "$PARALLEL_EVAL" = "end" ]; then
 **Important:** You are reviewing the ENTIRE parallel run's output, not a single task. Grade the overall implementation against the full spec and plan acceptance criteria. Your verdict does NOT trigger a revert — it produces a quality report for the human to review before merging.
 "
 
-    rm -f "$EVAL_VERDICT_FILE" "$EVAL_SUMMARY_FILE"
-    ENDRUN_EVAL_LOG="${RUN_DIR}/eval-endofrun-$(date +%Y%m%d-%H%M%S).log"
-    ENDRUN_EVAL_TIMEOUT="${RALPH_EVAL_TIMEOUT:-600}"
+    evaluate_candidate "$ENDRUN_EVAL_PROMPT" "$START_COMMIT" "$FINAL_COMMIT" \
+      "$EVAL_VERDICT_FILE" "$EVAL_SUMMARY_FILE" "${RUN_DIR}/eval-endofrun.log" "${RALPH_EVAL_TIMEOUT:-600}" || true
+    ENDRUN_VERDICT="$EVALUATION_VERDICT"
+    echo "End-of-run evaluation: ${ENDRUN_VERDICT}"
+    trace_event "endrun_eval" "verdict=${ENDRUN_VERDICT}" "commit=${FINAL_COMMIT}"
 
-    ENDRUN_TIMEOUT_CMD=""
-    if command -v timeout >/dev/null 2>&1; then
-      ENDRUN_TIMEOUT_CMD="timeout $ENDRUN_EVAL_TIMEOUT"
-    elif command -v gtimeout >/dev/null 2>&1; then
-      ENDRUN_TIMEOUT_CMD="gtimeout $ENDRUN_EVAL_TIMEOUT"
-    fi
-
-    set +e
-    if [ -n "$ENDRUN_TIMEOUT_CMD" ]; then
-      echo "$ENDRUN_EVAL_PROMPT" | $ENDRUN_TIMEOUT_CMD claude -p --dangerously-skip-permissions --verbose --model sonnet --output-format stream-json 2>/dev/null \
-        | "$STREAM_PROCESSOR" --trace-file "$TRACE_FILE" > "$ENDRUN_EVAL_LOG"
-    else
-      echo "$ENDRUN_EVAL_PROMPT" | claude -p --dangerously-skip-permissions --verbose --model sonnet --output-format stream-json 2>/dev/null \
-        | "$STREAM_PROCESSOR" --trace-file "$TRACE_FILE" > "$ENDRUN_EVAL_LOG"
-    fi
-    set -e
-
-    if [ -f "$EVAL_VERDICT_FILE" ]; then
-      ENDRUN_VERDICT=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['verdict'])" "$EVAL_VERDICT_FILE" 2>/dev/null || echo "UNKNOWN")
-      ENDRUN_AVG=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['average'])" "$EVAL_VERDICT_FILE" 2>/dev/null || echo "?")
-      echo "End-of-run evaluation: ${ENDRUN_VERDICT} (avg score: ${ENDRUN_AVG})"
-      trace_event "endrun_eval" "verdict=${ENDRUN_VERDICT}" "avg_score=${ENDRUN_AVG}"
-
-      # Copy eval artifacts to run dir
-      cp "$EVAL_VERDICT_FILE" "${RUN_DIR}/eval-verdict.json" 2>/dev/null || true
-      cp "$EVAL_SUMMARY_FILE" "${RUN_DIR}/eval-summary.md" 2>/dev/null || true
-    else
-      echo "End-of-run evaluation did not produce a verdict (non-fatal)."
-      trace_event "endrun_eval" "verdict=error" "reason=no_verdict_file"
-    fi
   else
     echo "(No new commits on target branch — skipping end-of-run evaluation)"
   fi
+fi
+
+if [ "$ENDRUN_VERDICT" = NOT_RUN ]; then
+  python3 "${_WORKFLOW_ROOT}/scripts/evaluate.py" --revision "$VERIFIED_COMMIT" \
+    --verdict "$EVAL_VERDICT_FILE" --summary "$EVAL_SUMMARY_FILE" --skip "End-of-run evaluation was skipped." >/dev/null
+  trace_event "endrun_eval" "verdict=NOT_RUN" "commit=${VERIFIED_COMMIT}"
+fi
+if [ "$(candidate_state "$PROJECT_DIR")" != "$VERIFIED_STATE" ] ||
+  [ "$(git symbolic-ref --short HEAD)" != "$TARGET_BRANCH" ]; then
+  FINAL_VERIFICATION_PASSED=false
+  echo "Final candidate changed after verification; completion blocked."
+fi
+EVALUATION_PASSED=true
+if [ "$ENDRUN_VERDICT" = ERROR ] || { [ -n "$EVAL_GATES_MERGE" ] && [ "$ENDRUN_VERDICT" != ACCEPT ]; }; then
+  EVALUATION_PASSED=false
 fi
 
 # ── Cleanup ─────────────────────────────────────────────────────────────
@@ -788,7 +814,8 @@ PRESERVED_WORKTREES=0
 for ((idx=0; idx<${#ALL_WORKTREE_PATHS[@]}; idx++)); do
   wt_path="${ALL_WORKTREE_PATHS[$idx]}"
   wt_branch="${ALL_WORKER_BRANCHES[$idx]}"
-  if cleanup_worker_worktree "$REPO_ROOT" "$wt_path" "$wt_branch" "" "$TARGET_BRANCH" "${RUN_DIR}/worktree-artifacts/$(basename "$wt_path")"; then
+  if [ "$FINAL_VERIFICATION_PASSED" = true ] && [ "$EVALUATION_PASSED" = true ] &&
+    cleanup_worker_worktree "$REPO_ROOT" "$wt_path" "$wt_branch" "" "$TARGET_BRANCH" "${RUN_DIR}/worktree-artifacts/$(basename "$wt_path")"; then
     REMOVED_WORKTREES=$((REMOVED_WORKTREES + 1))
   else
     PRESERVED_WORKTREES=$((PRESERVED_WORKTREES + 1))
@@ -803,10 +830,14 @@ rm -f "${PROJECT_DIR}/.claude/ralph-worker-done-"*
 # Sessions with live workers remain available for recovery.
 
 # ── Final report ────────────────────────────────────────────────────────
+if [ "$(candidate_state "$PROJECT_DIR")" != "$VERIFIED_STATE" ] ||
+  [ "$(git symbolic-ref --short HEAD)" != "$TARGET_BRANCH" ]; then
+  FINAL_VERIFICATION_PASSED=false
+fi
 
 echo ""
 echo "╔══════════════════════════════════════════════════════╗"
-echo "║  RALPH PARALLEL — Complete!                          ║"
+echo "║  RALPH PARALLEL — Result                             ║"
 echo "║                                                      ║"
 echo "║  Slug:    ${SLUG}"
 echo "║  Branch:  ${TARGET_BRANCH}"
@@ -814,6 +845,7 @@ echo "║  Workers: ${NUM_WORKERS}"
 echo "║  Waves:   ${NUM_WAVES}"
 echo "║                                                      ║"
 echo "║  Final verification passed: ${FINAL_VERIFICATION_PASSED}"
+echo "║  Evaluation: ${ENDRUN_VERDICT} (revision ${VERIFIED_COMMIT})"
 echo "║  Run:     ${RUN_DIR}/"
 echo "║  Journal: ${PERSISTENT_JOURNAL}"
 echo "║  Worktrees: ${REMOVED_WORKTREES} removed, ${PRESERVED_WORKTREES} preserved"
@@ -824,5 +856,10 @@ if [ "$FINAL_VERIFICATION_PASSED" != true ]; then
   update_phase "VERIFICATION_FAILED" "Final verification failed; artifacts saved and unsafe worktrees preserved"
   exit 1
 fi
-trace_event "parallel_end" "status=done" "slug=${SLUG}" "workers=${NUM_WORKERS}" "waves=${NUM_WAVES}" "target=${TARGET_BRANCH}"
+if [ "$EVALUATION_PASSED" != true ]; then
+  trace_event "parallel_end" "status=evaluation_blocked" "evaluation=${ENDRUN_VERDICT}" "slug=${SLUG}"
+  update_phase "EVALUATION_BLOCKED" "Evaluation ${ENDRUN_VERDICT}; worker worktrees preserved"
+  exit 1
+fi
+trace_event "parallel_end" "status=done" "evaluation=${ENDRUN_VERDICT}" "commit=${VERIFIED_COMMIT}" "slug=${SLUG}" "workers=${NUM_WORKERS}" "waves=${NUM_WAVES}" "target=${TARGET_BRANCH}"
 update_phase "DONE" "Finished ${NUM_WAVES} wave(s) on ${TARGET_BRANCH}; ${REMOVED_WORKTREES} worktrees removed, ${PRESERVED_WORKTREES} preserved"

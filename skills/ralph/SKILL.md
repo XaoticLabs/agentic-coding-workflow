@@ -54,7 +54,7 @@ Manages autonomous Claude coding loops. Not user-invocable directly — invoked 
 
 ## Worktree Isolation
 
-All build/reconcile mode runs automatically create a git worktree at `.claude/worktrees/<slug>` on branch `<slug>`. This provides:
+All standalone build/reconcile runs create a worktree at `.claude/worktrees/<slug>-<run-id>` on branch `ralph-<slug>/<run-id>`. Run IDs include a timestamp, PID, and random suffix so preserved runs can coexist. This provides:
 
 - **Branch isolation** — Ralph never commits directly to main
 - **ORC integration** — ORC auto-discovers the worktree for stop/merge controls
@@ -179,7 +179,10 @@ this section carries the "why" across context boundaries and is fed into every i
 When set, the merge prompt requires a successful end-of-run evaluator pass with an ACCEPT
 verdict for the verified HEAD. REVISE, missing or malformed verdicts, evaluator errors or
 timeouts, disabled evaluation, and `--once` all leave the gate closed. Per-iteration verdicts
-cannot satisfy it. Changes after verification also block the merge. The worktree and branch
+cannot satisfy it. Changes after verification, including while the confirmation prompt is open,
+block the merge. The confirmed merge fast-forwards to the verified commit SHA and checks
+that the target has not advanced during confirmation. A diverged target requires integration
+and fresh verification before merging. The worktree and branch
 are preserved for review. A manual `git merge <branch>` bypasses this prompt gate.
 
 ### Worktree Preservation
@@ -190,6 +193,20 @@ identity, a clean checkout including untracked files, and HEAD reachable from th
 Cleanup copies and checks `.claude/` artifacts before removing a worktree. Failed checks,
 failed merges, and unknown ownership preserve both checkout and branch. Branch deletion
 uses `git branch -d`; cleanup never falls back to filesystem deletion.
+
+### Evaluation Results
+
+All evaluation modes use `scripts/evaluate.py`: `ACCEPT`, `REVISE`, `ERROR`, or `NOT_RUN`.
+The evaluator has Read, Glob, and Grep under native restricted permissions; it cannot run
+shell commands, write source or verdict files, or call MCP tools. The controller supplies
+diff/log evidence, validates structured CLI output against the score and evidence contract,
+and writes reports bound to the candidate SHA and source fingerprint. Errors preserve work
+and return failure. Per-iteration and wave reports retain separate artifact paths.
+
+UI evaluation consumes screenshots and interaction logs captured before final verification.
+Set `RALPH_EVAL_UI_EVIDENCE` to a nonempty directory inside the project when
+`RALPH_EVALUATE_UI=true`. Missing or changed evidence is ERROR; evaluators do not launch
+servers or browsers. Native restricted mode requires Claude Code v2.1.248 or later.
 
 ## Pre-Flight Checks
 

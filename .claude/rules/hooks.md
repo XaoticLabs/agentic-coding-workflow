@@ -18,7 +18,7 @@ description: Rules for writing and modifying hooks
 - For PostToolUse/PostToolUseFailure feedback, use `{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"..."}}` with the matching event name. PostToolUse only runs for successful calls; register PostToolUseFailure to observe failures and interruptions.
 - StopFailure replaces Stop after API errors. Output and exit code cannot resume, pause, or retry the turn. Log `error`, optional `error_details`, and optional `last_assistant_message` (which is the API error text for this event).
 - At Stop, use `last_assistant_message` for notifications. The transcript may not yet contain the final response; never infer pending approvals from stale transcript tool calls.
-- Always handle JSON parse errors gracefully — exit 0 on failure, never block on hook bugs
+- Optional notifications and audit hooks fail open on invalid input. Policy gates must return an intentional block when they cannot verify a requirement; use `onFailure: "block"` for eligible events so crashes and timeouts cannot bypass enforcement.
 
 ## Prompt Hooks (type: "prompt")
 - Preferred for judgment calls that need Claude's reasoning
@@ -30,8 +30,8 @@ description: Rules for writing and modifying hooks
 - Keep prompts concise — they consume context on every invocation
 
 ## Infinite Loop Prevention
-- Stop hooks MUST check for `stop_hook_active` flag to prevent re-triggering
-- If your hook blocks, Claude will try again — make sure the second attempt can succeed
+- Optional Stop hooks may skip `stop_hook_active`. Required verification must check correction turns again; reuse a success only when HEAD and the source fingerprint still match.
+- Bound correction attempts per session. After three failed attempts, record `blocked` and stop with an explicit user-visible failure using `continue: false`; never turn exhaustion into acceptance. A new user turn may start a fresh attempt.
 - Verification uses check-only formatter flags and must never run fixes. Check committed code as well as worktree edits; bind results to the HEAD revision and worktree fingerprint, and invalidate them if either changes. Keep formatting in an explicit action.
 
 ## Testing

@@ -35,6 +35,7 @@ register_worktree_owner() {
   printf '%s\n' "$(realpath "$2")" > "$metadata/path"
   printf '%s\n' "$branch" > "$metadata/branch"
   printf '%s\n' "$3" > "$metadata/target"
+  git -C "$1" rev-parse --verify "${3}^{commit}" > "$metadata/base-commit" || return 1
   printf '%s\n' "$$" > "$metadata/active-pid"
 }
 

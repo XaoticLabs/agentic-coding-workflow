@@ -49,7 +49,7 @@ STREAM_PROCESSOR="${SCRIPT_DIR}/stream-processor.py"
 # Per-run artifacts go in .claude/ralph/<slug>/runs/<timestamp>/
 # Journal appends across runs at .claude/ralph/<slug>/journal.tsv
 RALPH_BASE="${PROJECT_DIR}/.claude/ralph/${SLUG}"
-RUN_TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+RUN_TIMESTAMP="$(date +%Y%m%d-%H%M%S)-$$-${RANDOM}"
 RUN_DIR="${RALPH_BASE}/runs/${RUN_TIMESTAMP}"
 LOG_DIR="${RUN_DIR}"
 STOP_SENTINEL="${PROJECT_DIR}/.claude/ralph/stop"
@@ -104,7 +104,8 @@ TRACE_FILE="${RUN_DIR}/trace.jsonl"
 trace_event() {
   local type="$1"
   shift
-  local json="{\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"type\":\"${type}\""
+  local json
+  json="{\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"type\":\"${type}\""
   for kv in "$@"; do
     local key="${kv%%=*}"
     local val="${kv#*=}"
@@ -153,6 +154,24 @@ esac
 if [ ! -f "$PROMPT_TEMPLATE" ]; then
   echo "Error: prompt template not found: $PROMPT_TEMPLATE"
   exit 1
+fi
+
+if [ "$MODE" = evaluate ]; then
+  EVALUATED_COMMIT=$(git rev-parse HEAD)
+  EVALUATION_BASE="${RALPH_EVAL_BASE:-$(git rev-parse --verify HEAD^ 2>/dev/null || git rev-parse HEAD)}"
+  EVALUATION_PROMPT="$(cat "$PROMPT_TEMPLATE")
+
+**Evaluation mode:** DIRECT
+**Spec directory:** ${SPEC_DIR}
+**Pre-commit:** ${EVALUATION_BASE}
+**Post-commit:** ${EVALUATED_COMMIT}
+"
+  EVALUATION_STATUS=0
+  evaluate_candidate "$EVALUATION_PROMPT" "$EVALUATION_BASE" "$EVALUATED_COMMIT" \
+    "$EVAL_VERDICT_FILE" "$EVAL_SUMMARY_FILE" "${RUN_DIR}/eval-direct.log" "${RALPH_EVAL_TIMEOUT:-600}" || EVALUATION_STATUS=$?
+  trace_event "endrun_eval" "verdict=${EVALUATION_VERDICT}" "commit=${EVALUATED_COMMIT}"
+  echo "Evaluation: ${EVALUATION_VERDICT}. Report: ${EVAL_SUMMARY_FILE}"
+  exit "$EVALUATION_STATUS"
 fi
 
 # ── Safety warning ──────────────────────────────────────────────────────
@@ -258,9 +277,9 @@ MAIN_STOP_SENTINEL="$STOP_SENTINEL"
 if [ -z "${RALPH_WORKER_ID:-}" ] && [[ "$MODE" == "build" || "$MODE" == "reconcile" ]]; then
   TARGET_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "main")
   REPO_ROOT=$(git rev-parse --show-toplevel)
-  WORKTREE_BRANCH="${SLUG}"
+  WORKTREE_BRANCH="ralph-${SLUG}/${RUN_TIMESTAMP}"
   WORKTREE_BASE="${REPO_ROOT}/.claude/worktrees"
-  WORKTREE_PATH="${WORKTREE_BASE}/${SLUG}"
+  WORKTREE_PATH="${WORKTREE_BASE}/${SLUG}-${RUN_TIMESTAMP}"
 
   # Ensure .claude/worktrees/ is gitignored
   ensure_worktrees_gitignored "$REPO_ROOT"
@@ -390,103 +409,31 @@ track_success() {
   CONSECUTIVE_REVERT_TASKS=""
 }
 
-# ── Evaluator phase (tiered: light vs full) ───────────────────────────
-# Returns 0 = ACCEPT, 1 = REVISE, 2 = skipped (light eval)
+# ── Evaluator phase ───────────────────────────────────────────────────
+# 0 = ACCEPT, 1 = REVISE, 2 = NOT_RUN, 3 = ERROR.
 run_evaluator() {
-  local pre_commit="$1"
-  local post_commit="$2"
-  local task_label="$3"
-  local iteration="$4"
-
-  # Determine whether to run full evaluation
-  local diff_file_count
+  local pre_commit="$1" post_commit="$2" task_label="$3" iteration="$4"
+  local diff_file_count eval_prompt result=0
   diff_file_count=$(git diff --name-only "$pre_commit" "$post_commit" | wc -l | tr -d ' ')
-  # Per-iteration evaluation must be explicitly enabled.
-  # Default is end-of-run only (per Anthropic harness design findings).
-  local run_full=false
-  if [ "$EVAL_PER_ITER" = "true" ]; then
-    if [ "$diff_file_count" -ge "$EVAL_DIFF_THRESHOLD" ]; then
-      run_full=true
-    fi
-  fi
-
-  if [ "$run_full" = "false" ]; then
-    echo "  Evaluator: LIGHT mode (${diff_file_count} files changed, threshold ${EVAL_DIFF_THRESHOLD}). Skipping LLM evaluation."
-    trace_event "evaluator" "tier=light" "files_changed=${diff_file_count}"
+  if [ "$EVAL_PER_ITER" != true ] || [ "$diff_file_count" -lt "$EVAL_DIFF_THRESHOLD" ]; then
+    trace_event "eval_verdict" "verdict=NOT_RUN" "reason=below_threshold" "commit=${post_commit}"
     return 2
   fi
+  eval_prompt="$(cat "${PROMPT_DIR}/PROMPT_evaluate.md")
 
-  echo "  Evaluator: FULL mode (${diff_file_count} files changed). Launching evaluation..."
-  trace_event "evaluator" "tier=full" "files_changed=${diff_file_count}"
-
-  # Build evaluator prompt
-  local eval_prompt
-  eval_prompt=$(cat "${PROMPT_DIR}/PROMPT_evaluate.md")
-
-  # Append context metadata
-  eval_prompt="${eval_prompt}
-
----
 **Pre-commit:** ${pre_commit}
 **Post-commit:** ${post_commit}
 **Task:** ${task_label}
 **Iteration:** ${iteration}
 **Spec directory:** ${SPEC_DIR}
-**UI evaluation:** ${RALPH_EVALUATE_UI}
-**Verdict output:** ${EVAL_VERDICT_FILE}
-**Summary output:** ${EVAL_SUMMARY_FILE}
 "
-
-  # Run evaluator as a separate Claude session
-  rm -f "$EVAL_VERDICT_FILE" "$EVAL_SUMMARY_FILE"
-
-  local eval_log="${LOG_DIR}/eval-${iteration}-$(date +%Y%m%d-%H%M%S).log"
-  local eval_timeout="${RALPH_EVAL_TIMEOUT:-300}"  # 5 min default for evaluation
-
-  local EVAL_TIMEOUT_CMD=""
-  if command -v timeout >/dev/null 2>&1; then
-    EVAL_TIMEOUT_CMD="timeout $eval_timeout"
-  elif command -v gtimeout >/dev/null 2>&1; then
-    EVAL_TIMEOUT_CMD="gtimeout $eval_timeout"
-  fi
-
-  set +e
-  if [ -n "$EVAL_TIMEOUT_CMD" ]; then
-    echo "$eval_prompt" | $EVAL_TIMEOUT_CMD claude -p --dangerously-skip-permissions --verbose --model sonnet --output-format stream-json 2>/dev/null \
-      | "$STREAM_PROCESSOR" --trace-file "$TRACE_FILE" > "$eval_log"
-  else
-    echo "$eval_prompt" | claude -p --dangerously-skip-permissions --verbose --model sonnet --output-format stream-json 2>/dev/null \
-      | "$STREAM_PROCESSOR" --trace-file "$TRACE_FILE" > "$eval_log"
-  fi
-  local eval_exit=$?
-  set -e
-
-  # Parse verdict
-  if [ -f "$EVAL_VERDICT_FILE" ]; then
-    local verdict
-    verdict=$(python3 -c "import json; print(json.load(open('${EVAL_VERDICT_FILE}'))['verdict'])" 2>/dev/null || echo "UNKNOWN")
-    local avg_score
-    avg_score=$(python3 -c "import json; print(json.load(open('${EVAL_VERDICT_FILE}'))['average'])" 2>/dev/null || echo "?")
-
-    echo "  Evaluator verdict: ${verdict} (avg score: ${avg_score})"
-    trace_event "eval_verdict" "verdict=${verdict}" "avg_score=${avg_score}" "task=${task_label}" "iter=${iteration}"
-
-    if [ "$verdict" = "ACCEPT" ]; then
-      return 0
-    elif [ "$verdict" = "REVISE" ]; then
-      local guidance
-      guidance=$(python3 -c "import json; v=json.load(open('${EVAL_VERDICT_FILE}')); print(v.get('revise_guidance','No guidance provided'))" 2>/dev/null || echo "Check eval summary")
-      echo "  Evaluator says REVISE: ${guidance:0:200}"
-      return 1
-    else
-      echo "  Evaluator returned unknown verdict: ${verdict}. Treating as ACCEPT."
-      return 0
-    fi
-  else
-    echo "  Evaluator did not produce a verdict file. Treating as ACCEPT (evaluation error, not blocking)."
-    trace_event "eval_error" "reason=no_verdict_file" "exit_code=${eval_exit}"
-    return 0
-  fi
+  EVAL_VERDICT_FILE="${LOG_DIR}/eval-${iteration}-verdict.json"
+  EVAL_SUMMARY_FILE="${LOG_DIR}/eval-${iteration}-summary.md"
+  evaluate_candidate "$eval_prompt" "$pre_commit" "$post_commit" "$EVAL_VERDICT_FILE" "$EVAL_SUMMARY_FILE" \
+    "${LOG_DIR}/eval-${iteration}.log" "${RALPH_EVAL_TIMEOUT:-300}" || result=$?
+  echo "  Evaluator verdict: ${EVALUATION_VERDICT}"
+  trace_event "eval_verdict" "verdict=${EVALUATION_VERDICT}" "task=${task_label}" "iter=${iteration}" "commit=${post_commit}"
+  return "$result"
 }
 
 # ── Progress dashboard writer ───────────────────────────────────────────
@@ -542,6 +489,7 @@ trace_event "run_start" "slug=${SLUG}" "mode=${MODE}" "max_iters=${MAX_ITERATION
 # Run start marker in journal (if this is a fresh journal)
 echo "# Ralph Run — $(date) — ${MODE} mode" >> "${RUN_DIR}/orchestrator.log" 2>/dev/null || true
 
+RUN_FAILED=false
 while :; do
   ITERATION=$((ITERATION + 1))
   ITER_START_TIME=$(date +%s)
@@ -704,20 +652,7 @@ ${BRIEFING}
   trace_event "prompt_built" "iter=${ITERATION}" "prompt_bytes=${PROMPT_BYTES}" "has_overrides=$( [ -f "$OVERRIDES_FILE" ] && echo true || echo false )" "has_injection=$( [ -n "${INJECTION_CONSUMED:-}" ] && echo true || echo false )" "has_briefing=$( [ -n "$BRIEFING" ] && echo true || echo false )"
   echo "Launching Claude (${MODE} mode, budget: $( [ "$TIME_BUDGET" = "0" ] && echo "unlimited" || echo "${TIME_BUDGET}s" ), prompt: ${PROMPT_BYTES} bytes)..."
   ITER_RESULT="success"
-  CLAUDE_CMD="claude -p --dangerously-skip-permissions --verbose --model sonnet --output-format stream-json"
-
-  # Trace: iteration start
   trace_event "iteration_start" "iter=${ITERATION}" "task=${CURRENT_TASK:-plan}" "pre_commit=${PRE_COMMIT}"
-
-  # Resolve timeout command
-  TIMEOUT_CMD=""
-  if [ "$TIME_BUDGET" != "0" ]; then
-    if command -v timeout >/dev/null 2>&1; then
-      TIMEOUT_CMD="timeout $TIME_BUDGET"
-    elif command -v gtimeout >/dev/null 2>&1; then
-      TIMEOUT_CMD="gtimeout $TIME_BUDGET"
-    fi
-  fi
 
   # Re-check stop sentinel immediately before launching Claude (prompt build can take time)
   if [ -f "$STOP_SENTINEL" ] || [ -f "$MAIN_STOP_SENTINEL" ]; then
@@ -726,44 +661,28 @@ ${BRIEFING}
     break
   fi
 
-  # Run Claude piped through the stream processor:
-  #   claude stdout (stream-json) -> processor stdin
-  #   processor stdout (text)     -> LOG_FILE
-  #   processor stderr (display)  -> terminal (tmux pane)
-  #   processor also appends tool_call events to TRACE_FILE
-  set +e
-  if [ -n "$TIMEOUT_CMD" ]; then
-    echo "$PROMPT" | $TIMEOUT_CMD $CLAUDE_CMD 2>/dev/null \
-      | "$STREAM_PROCESSOR" --trace-file "$TRACE_FILE" > "$LOG_FILE"
-  else
-    echo "$PROMPT" | $CLAUDE_CMD 2>/dev/null \
-      | "$STREAM_PROCESSOR" --trace-file "$TRACE_FILE" > "$LOG_FILE"
-  fi
-  PIPELINE_STATUS=("${PIPESTATUS[@]}")
-  set -e
-  # Pipeline stages: prompt writer (0), Claude/timeout (1), stream processor (2).
-  CLAUDE_EXIT=${PIPELINE_STATUS[1]}
-  PROCESSOR_EXIT=${PIPELINE_STATUS[2]}
-  if [ "$PROCESSOR_EXIT" -ne 0 ]; then
-    echo "WARNING: Stream processor exited with code ${PROCESSOR_EXIT} — log output may be incomplete." >&2
-  fi
-
-  if [ "$CLAUDE_EXIT" -eq 0 ]; then
+  if run_claude_pipeline "$PROMPT" "$LOG_FILE" "$TRACE_FILE" "$TIME_BUDGET" "$STREAM_PROCESSOR" \
+    -p --dangerously-skip-permissions --verbose --model sonnet --output-format stream-json; then
     echo "Iteration ${ITERATION} completed successfully."
-  elif [ "$CLAUDE_EXIT" -eq 124 ]; then
-    ITER_RESULT="timeout"
-    echo "Iteration ${ITERATION} timed out after ${TIME_BUDGET}s."
   else
-    ITER_RESULT="error (code ${CLAUDE_EXIT})"
-    echo "Iteration ${ITERATION} exited with error (code ${CLAUDE_EXIT}). Check ${LOG_FILE}"
+    echo "Iteration ${ITERATION}: ${PIPELINE_RESULT}. Diagnostics: ${LOG_FILE}.*-stderr.log" >&2
   fi
+  ITER_RESULT="$PIPELINE_RESULT"
+  trace_event "pipeline_status" "iter=${ITERATION}" "prompt_exit=${PROMPT_EXIT}" "claude_exit=${CLAUDE_EXIT}" "processor_exit=${PROCESSOR_EXIT}" "outcome=${ITER_RESULT}"
 
   # ── Post-iteration gate: mechanical accept/reject ────────────────
   POST_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "none")
   TASK_LABEL="${CURRENT_TASK:-plan}"
   JOURNAL_TS=$(date +"%Y-%m-%dT%H:%M:%S")
 
-  if [ "$PRE_COMMIT" != "$POST_COMMIT" ] && [ "$MODE" = "build" ]; then
+  if [ "$ITER_RESULT" != success ]; then
+    RUN_FAILED=true
+    FAILURE_VERDICT=ERROR_PIPELINE
+    [ "$ITER_RESULT" != timeout ] || FAILURE_VERDICT=TIMEOUT
+    echo "Work preserved after pipeline failure; no commit from this iteration is accepted."
+    printf "%s\t%s\t%s\t-\t%s\n" "$JOURNAL_TS" "$FAILURE_VERDICT" "$TASK_LABEL" "$ITER_RESULT" >> "$JOURNAL_FILE"
+    trace_event "verdict" "outcome=${FAILURE_VERDICT}" "task=${TASK_LABEL}" "iter=${ITERATION}"
+  elif [ "$PRE_COMMIT" != "$POST_COMMIT" ] && [ "$MODE" = "build" ]; then
     GATE_PASSED=true
 
     # Gate 1: Protected files check
@@ -961,7 +880,13 @@ ${BRIEFING}
         run_evaluator "$PRE_COMMIT" "$POST_COMMIT" "$TASK_LABEL" "$ITERATION" || EVAL_RESULT=$?
       fi
 
-      if [ "$EVAL_RESULT" -eq 1 ]; then
+      if [ "$EVAL_RESULT" -eq 3 ]; then
+        RUN_FAILED=true
+        ITER_RESULT="evaluation error"
+        echo "Evaluation failed. Work preserved for review; iteration is not accepted."
+        printf "%s\tERROR_EVAL\t%s\t-\tEvaluation error; work preserved\n" "$JOURNAL_TS" "$TASK_LABEL" >> "$JOURNAL_FILE"
+        trace_event "verdict" "outcome=ERROR_EVAL" "task=${TASK_LABEL}" "iter=${ITERATION}"
+      elif [ "$EVAL_RESULT" -eq 1 ]; then
         # REVISE verdict — revert and feed guidance to next iteration
         echo "REVERT (evaluator): Evaluation says REVISE. Rolling back to ${PRE_COMMIT:0:8}..."
         # Save evaluation guidance for next iteration's briefing
@@ -1010,17 +935,6 @@ ${BRIEFING}
       # (The reset already handles this since plan changes are reverted too)
     fi
 
-  elif [ "$ITER_RESULT" = "timeout" ]; then
-    # Timeout — revert any partial work
-    POST_COMMIT_AFTER_TIMEOUT=$(git rev-parse HEAD 2>/dev/null || echo "none")
-    if [ "$PRE_COMMIT" != "$POST_COMMIT_AFTER_TIMEOUT" ]; then
-      echo "REVERT: Timed out with uncommitted state, rolling back..."
-      git reset --hard "$PRE_COMMIT"
-    fi
-    printf "%s\tTIMEOUT\t%s\t%ss\tKilled after time budget exceeded\n" "$JOURNAL_TS" "$TASK_LABEL" "$TIME_BUDGET" >> "$JOURNAL_FILE"
-    trace_event "verdict" "outcome=TIMEOUT" "task=${TASK_LABEL}" "iter=${ITERATION}" "budget=${TIME_BUDGET}"
-    ITER_RESULT="timeout"
-
   elif [ "$PRE_COMMIT" = "$POST_COMMIT" ]; then
     # No commit produced — log as no-op
     printf "%s\tNO_COMMIT\t%s\t-\t%s\n" "$JOURNAL_TS" "$TASK_LABEL" "$ITER_RESULT" >> "$JOURNAL_FILE"
@@ -1034,6 +948,8 @@ ${BRIEFING}
 
   # Update status dashboard
   write_status "$ITERATION" "${CURRENT_TASK:-plan}" "$ITER_RESULT"
+
+  if [ "$RUN_FAILED" = true ]; then break; fi
 
   # ── Update progress scratchpad ────────────────────────────────────
   # Mechanical append after each iteration so harvest and future iterations
@@ -1152,7 +1068,7 @@ fi
 # Disable with AUTO_HARVEST=false environment variable.
 
 AUTO_HARVEST="${AUTO_HARVEST:-true}"
-if [ "$AUTO_HARVEST" = "true" ] && [ "$MODE" = "build" ] && [ -z "$ONCE_FLAG" ] && [ -z "$WORKER_ID" ]; then
+if [ "$RUN_FAILED" = false ] && [ "$AUTO_HARVEST" = "true" ] && [ "$MODE" = "build" ] && [ -z "$ONCE_FLAG" ] && [ -z "$WORKER_ID" ]; then
   SHOULD_HARVEST=false
   if [ -f "$PLAN_FILE" ] && grep -q "## Status: COMPLETE" "$PLAN_FILE"; then
     SHOULD_HARVEST=true
@@ -1172,7 +1088,7 @@ fi
 
 # ── Generate completion summary ─────────────────────────────────────────
 
-if [ "$MODE" = "build" ] && [ -z "$ONCE_FLAG" ] && [ -z "$WORKER_ID" ]; then
+if [ "$RUN_FAILED" = false ] && [ "$MODE" = "build" ] && [ -z "$ONCE_FLAG" ] && [ -z "$WORKER_ID" ]; then
   if [ -x "${SCRIPT_DIR}/generate-summary.sh" ]; then
     "${SCRIPT_DIR}/generate-summary.sh" "$SPEC_DIR" "$JOURNAL_FILE" "$ITERATION" "$COMMITS_AT_START" "$START_TIME" "$TRACE_FILE" 2>/dev/null || true
   fi
@@ -1188,24 +1104,30 @@ fi
 # Harvest and summary generation finish before verification and evaluation.
 FINAL_VERIFICATION_PASSED=true
 VERIFIED_COMMIT=$(git rev-parse HEAD)
+VERIFIED_STATE=$(candidate_state "$PROJECT_DIR")
 if [ "$USING_WORKTREE" = true ]; then
   echo "Running final verification before evaluation and merge..."
   if ! run_verification_gate "$PROJECT_DIR" "${RUN_DIR}/final"; then
     FINAL_VERIFICATION_PASSED=false
     echo "Merge blocked: final verification failed. Logs: ${RUN_DIR}/final-*.log"
   fi
+  if [ "$RUN_FAILED" = true ] || [ "$(candidate_state "$PROJECT_DIR")" != "$VERIFIED_STATE" ]; then
+    FINAL_VERIFICATION_PASSED=false
+  fi
   trace_event "final_verification" "passed=${FINAL_VERIFICATION_PASSED}" "commit=${VERIFIED_COMMIT}"
 fi
 
-ENDRUN_VERDICT="UNKNOWN"
+ENDRUN_VERDICT="NOT_RUN"
 ENDRUN_EVAL_COMMIT=""
+EVAL_VERDICT_FILE="${RUN_DIR}/eval-verdict.json"
+EVAL_SUMMARY_FILE="${RUN_DIR}/eval-summary.md"
 # ── End-of-run evaluator pass ──────────────────────────────────────────
 # Single evaluator pass reviewing the FULL body of work, not per-iteration.
 # This is the default evaluation mode (per Anthropic harness design findings:
 # "moved the evaluator to a single pass at the end of the run").
 # The evaluator grades the entire diff from start-of-run to HEAD.
 
-if [ "$EVAL_END_OF_RUN" = "true" ] && [ "$MODE" = "build" ] && [ -z "$ONCE_FLAG" ] && [ -z "$WORKER_ID" ]; then
+if [ "$RUN_FAILED" = false ] && [ "$EVAL_END_OF_RUN" = "true" ] && [ "$MODE" = "build" ] && [ -z "$ONCE_FLAG" ] && [ -z "$WORKER_ID" ]; then
   FINAL_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "none")
   if [ "$COMMITS_AT_START_HASH" != "$FINAL_COMMIT" ] && [ "$FINAL_COMMIT" != "none" ]; then
     echo ""
@@ -1230,53 +1152,26 @@ if [ "$EVAL_END_OF_RUN" = "true" ] && [ "$MODE" = "build" ] && [ -z "$ONCE_FLAG"
 **Important:** You are reviewing the ENTIRE run's output, not a single task. Grade the overall implementation against the full spec and plan acceptance criteria. Your verdict does NOT trigger a revert — it produces a quality report for the human to review before merging.
 "
 
-    rm -f "$EVAL_VERDICT_FILE" "$EVAL_SUMMARY_FILE"
-    ENDRUN_EVAL_LOG="${LOG_DIR}/eval-endofrun-$(date +%Y%m%d-%H%M%S).log"
-    ENDRUN_EVAL_TIMEOUT="${RALPH_EVAL_TIMEOUT:-600}"  # 10 min for end-of-run (more to review)
-
-    ENDRUN_TIMEOUT_CMD=""
-    if command -v timeout >/dev/null 2>&1; then
-      ENDRUN_TIMEOUT_CMD="timeout $ENDRUN_EVAL_TIMEOUT"
-    elif command -v gtimeout >/dev/null 2>&1; then
-      ENDRUN_TIMEOUT_CMD="gtimeout $ENDRUN_EVAL_TIMEOUT"
-    fi
-
-    set +e
-    if [ -n "$ENDRUN_TIMEOUT_CMD" ]; then
-      echo "$ENDRUN_EVAL_PROMPT" | $ENDRUN_TIMEOUT_CMD claude -p --dangerously-skip-permissions --verbose --model sonnet --output-format stream-json 2>/dev/null \
-        | "$STREAM_PROCESSOR" --trace-file "$TRACE_FILE" > "$ENDRUN_EVAL_LOG"
-    else
-      echo "$ENDRUN_EVAL_PROMPT" | claude -p --dangerously-skip-permissions --verbose --model sonnet --output-format stream-json 2>/dev/null \
-        | "$STREAM_PROCESSOR" --trace-file "$TRACE_FILE" > "$ENDRUN_EVAL_LOG"
-    fi
-    ENDRUN_EVAL_STATUS=$?
-    set -e
     ENDRUN_EVAL_COMMIT="$FINAL_COMMIT"
+    evaluate_candidate "$ENDRUN_EVAL_PROMPT" "$COMMITS_AT_START_HASH" "$FINAL_COMMIT" \
+      "$EVAL_VERDICT_FILE" "$EVAL_SUMMARY_FILE" "${LOG_DIR}/eval-endofrun.log" "${RALPH_EVAL_TIMEOUT:-600}" || true
+    ENDRUN_VERDICT="$EVALUATION_VERDICT"
+    echo "End-of-run evaluation: ${ENDRUN_VERDICT}"
+    echo "Full report: ${EVAL_SUMMARY_FILE}"
+    trace_event "endrun_eval" "verdict=${ENDRUN_VERDICT}" "commit=${ENDRUN_EVAL_COMMIT}"
+    if [ "$ENDRUN_VERDICT" = ERROR ]; then RUN_FAILED=true; fi
 
-    if [ "$ENDRUN_EVAL_STATUS" -eq 0 ] && [ -f "$EVAL_VERDICT_FILE" ]; then
-      ENDRUN_VERDICT=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); v=d.get('verdict'); a=d.get('average'); print(v if v in ('ACCEPT', 'REVISE') and type(a) in (int, float) and 1 <= a <= 10 else 'UNKNOWN')" "$EVAL_VERDICT_FILE" 2>/dev/null || echo "UNKNOWN")
-      ENDRUN_AVG=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['average'])" "$EVAL_VERDICT_FILE" 2>/dev/null || echo "?")
-      if [ "$ENDRUN_VERDICT" = "UNKNOWN" ] || [ "$ENDRUN_AVG" = "?" ]; then
-        echo "WARNING: Eval verdict file exists but could not be parsed — check ${EVAL_VERDICT_FILE}" >&2
-        ENDRUN_VERDICT="UNKNOWN"
-      fi
-      echo "End-of-run evaluation: ${ENDRUN_VERDICT} (avg score: ${ENDRUN_AVG})"
-      echo "Full report: ${EVAL_SUMMARY_FILE}"
-      trace_event "endrun_eval" "verdict=${ENDRUN_VERDICT}" "avg_score=${ENDRUN_AVG}"
-
-      if [ "$ENDRUN_VERDICT" = "REVISE" ]; then
-        ralph_notify "eval_warning" "End-of-run evaluator says REVISE (avg: ${ENDRUN_AVG}). Review before merging."
-      fi
-    else
-      echo "End-of-run evaluation failed or did not produce a verdict."
-      ENDRUN_VERDICT="UNKNOWN"
-      trace_event "endrun_eval" "verdict=error" "reason=no_verdict_file"
-    fi
   else
     echo "(No new commits in this run — skipping end-of-run evaluation)"
   fi
 fi
 
+if [ "$ENDRUN_VERDICT" = NOT_RUN ]; then
+  python3 "${_WORKFLOW_ROOT}/scripts/evaluate.py" --revision "$VERIFIED_COMMIT" \
+    --verdict "$EVAL_VERDICT_FILE" --summary "$EVAL_SUMMARY_FILE" --skip "End-of-run evaluation was not requested or no completed candidate is available." >/dev/null
+  trace_event "endrun_eval" "verdict=NOT_RUN" "commit=${VERIFIED_COMMIT}"
+fi
+if [ "$FINAL_VERIFICATION_PASSED" != true ]; then RUN_FAILED=true; fi
 
 # ── Preserve, merge, then clean up (single-track mode) ─────────────────
 if [ "$USING_WORKTREE" = true ]; then
@@ -1295,7 +1190,7 @@ if [ "$USING_WORKTREE" = true ]; then
   release_worktree "$REPO_ROOT" "$WORKTREE_PATH"
 
   MERGE_ALLOWED="$FINAL_VERIFICATION_PASSED"
-  if [ "$(git rev-parse HEAD)" != "$VERIFIED_COMMIT" ] ||
+  if [ "$RUN_FAILED" = true ] || [ "$(candidate_state "$PROJECT_DIR")" != "$VERIFIED_STATE" ] ||
     [ -n "$(git status --porcelain --untracked-files=all)" ]; then
     echo "Merge blocked: worktree changed after verification or has uncommitted work."
     MERGE_ALLOWED=false
@@ -1311,17 +1206,30 @@ if [ "$USING_WORKTREE" = true ]; then
   BRANCH_COMMITS=$(git rev-list --count "${TARGET_BRANCH}..HEAD")
   SHOULD_CLEANUP=false
   if [ "$BRANCH_COMMITS" -eq 0 ]; then
-    SHOULD_CLEANUP=true
+    [ "$RUN_FAILED" != false ] || SHOULD_CLEANUP=true
   elif [ "$MERGE_ALLOWED" = true ] && [ -t 0 ] && [ -z "${RALPH_NO_MERGE_PROMPT:-}" ]; then
+    TARGET_COMMIT=$(git -C "$MAIN_PROJECT_DIR" rev-parse "$TARGET_BRANCH")
     read -p "Merge '${WORKTREE_BRANCH}' into ${TARGET_BRANCH} now? [y/N] " -n 1 -r REPLY
     echo ""
     if [[ "$REPLY" =~ ^[Yy]$ ]]; then
-      cd "$MAIN_PROJECT_DIR"
-      if [ "$(git symbolic-ref --short HEAD)" = "$TARGET_BRANCH" ] &&
-        [ -z "$(git status --porcelain --untracked-files=all)" ] && git merge "$WORKTREE_BRANCH"; then
+      # Confirmation can take time. Recheck the candidate and target, then merge
+      # the immutable verified SHA rather than resolving a moving branch name.
+      if [ "$(candidate_state "$PROJECT_DIR")" != "$VERIFIED_STATE" ] ||
+        [ "$(git symbolic-ref --short HEAD)" != "$WORKTREE_BRANCH" ] ||
+        [ -n "$(git status --porcelain --untracked-files=all)" ]; then
+        echo "Merge blocked: worktree changed while awaiting confirmation."
+        RUN_FAILED=true
+      elif cd "$MAIN_PROJECT_DIR" &&
+        [ "$(git symbolic-ref --short HEAD)" = "$TARGET_BRANCH" ] &&
+        [ "$(git rev-parse HEAD)" = "$TARGET_COMMIT" ] &&
+        [ -z "$(git status --porcelain --untracked-files=all)" ] &&
+        git merge --ff-only "$VERIFIED_COMMIT" &&
+        [ "$(git rev-parse HEAD)" = "$VERIFIED_COMMIT" ] &&
+        [ -z "$(git status --porcelain --untracked-files=all)" ]; then
         SHOULD_CLEANUP=true
       else
         echo "Merge failed or target checkout changed; worktree preserved."
+        RUN_FAILED=true
       fi
     fi
   fi
@@ -1345,8 +1253,12 @@ fi
 # ── Write worker completion marker ─────────────────────────────────────
 
 if [ -n "$WORKER_ID" ]; then
+  WORKER_STATUS="done"
+  [ "$RUN_FAILED" = false ] || WORKER_STATUS=error
   MARKER_FILE="${PROJECT_DIR}/.claude/ralph-worker-done-${WORKER_ID}"
-  echo "{\"worker\": \"${WORKER_ID}\", \"status\": \"done\", \"iterations\": ${ITERATION}, \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+  echo "{\"worker\": \"${WORKER_ID}\", \"status\": \"${WORKER_STATUS}\", \"iterations\": ${ITERATION}, \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
     > "$MARKER_FILE"
   echo "Worker completion marker written: ${MARKER_FILE}"
 fi
+
+if [ "$RUN_FAILED" = true ]; then exit 1; fi

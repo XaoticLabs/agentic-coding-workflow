@@ -6,6 +6,7 @@
 # Hook protocol: exit 0 = allow, exit 2 + stderr = block with message to Claude
 
 set -euo pipefail
+trap 'echo "BLOCKED: ship-gate failed while validating the tool call. Resolve the hook error before retrying." >&2; exit 2' ERR
 
 # Read hook input from stdin
 INPUT=$(cat)
@@ -82,11 +83,17 @@ if [ -f "$PROJECT_DIR/mix.exs" ]; then
   # Get changed Elixir files on this branch vs base
   BASE=$(git -C "$PROJECT_DIR" merge-base HEAD main 2>/dev/null || git -C "$PROJECT_DIR" merge-base HEAD master 2>/dev/null || echo "")
   if [ -n "$BASE" ]; then
-    ELIXIR_FILES=$(git -C "$PROJECT_DIR" diff --name-only "$BASE"..HEAD -- '*.ex' '*.exs' 2>/dev/null | while read -r f; do [ -f "$PROJECT_DIR/$f" ] && echo "$f"; done)
-    if [ -n "$ELIXIR_FILES" ]; then
-      CREDO_OUTPUT=$(cd "$PROJECT_DIR" && mix credo --strict $ELIXIR_FILES 2>&1)
-      CREDO_EXIT=$?
-      if [ $CREDO_EXIT -ne 0 ]; then
+    FILE_LIST=$(mktemp)
+    trap 'rm -f "$FILE_LIST"' EXIT
+    git -C "$PROJECT_DIR" diff --name-only -z "$BASE"..HEAD -- '*.ex' '*.exs' > "$FILE_LIST"
+    ELIXIR_FILES=()
+    while IFS= read -r -d '' file; do
+      [ ! -f "$PROJECT_DIR/$file" ] || ELIXIR_FILES+=("$file")
+    done < "$FILE_LIST"
+    if [ "${#ELIXIR_FILES[@]}" -gt 0 ]; then
+      if CREDO_OUTPUT=$(cd "$PROJECT_DIR" && mix credo --strict "${ELIXIR_FILES[@]}" 2>&1); then
+        :
+      else
         cat >&2 <<EOF
 BLOCKED: Credo found issues in changed files. Fix these before creating the PR.
 

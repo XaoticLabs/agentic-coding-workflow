@@ -193,8 +193,8 @@ Report:
 Ralph loop launched!
 
 Tab/Session: ralph-<slug>
-Worktree:    .claude/worktrees/ralph-<slug>
-Branch:      <slug>
+Worktree:    .claude/worktrees/<slug>-<run-id> (see launch output)
+Branch:      ralph-<slug>/<run-id>
 Switch:      Ctrl-B n/p (if tab) or tmux attach -t ralph-<slug> (if session)
 Status:      /agentic-coding-workflow:ralph <slug> --status
 Stop:        /agentic-coding-workflow:ralph <slug> --stop

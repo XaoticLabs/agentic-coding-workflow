@@ -13,7 +13,6 @@ source "${SCRIPT_DIR}/lib/common.sh"
 
 input=$(read_hook_input)
 echo "$input" | jq -e 'type == "object"' >/dev/null 2>&1 || exit 0
-check_stop_hook_active "$input" && exit 0
 cd_project
 STATE_SCRIPT="${SCRIPT_DIR}/verification-state.py"
 
@@ -27,12 +26,27 @@ else
 fi
 
 session_id=$(echo "$input" | jq -r '.session_id // "unknown"')
+verification_blocked() {
+  jq -n --arg message "$1" '{continue: false, stopReason: $message, systemMessage: $message}'
+}
 if ! before_state=$(python3 "$STATE_SCRIPT" snapshot); then
   python3 "$STATE_SCRIPT" record '{}' '{}' unavailable "$session_id" || true
+  verification_blocked "Verification is unavailable. Completion is blocked until source state can be read."
   exit 0
 fi
-# A timeout or crash must not leave an earlier success looking current.
-python3 "$STATE_SCRIPT" record "$before_state" '{}' running "$session_id" || true
+# Retry correction turns, with a session-local bound. Reuse success only for
+# exactly the same revision and working inputs, including ignored guidance.
+active=$(echo "$input" | jq -r '.stop_hook_active // false')
+if ! attempt=$(python3 "$STATE_SCRIPT" attempt "$before_state" "$session_id" "$active"); then
+  verification_blocked "Verification state could not be recorded. Completion is blocked."
+  exit 0
+fi
+case "$(echo "$attempt" | jq -r '.action')" in
+  passed) exit 0 ;;
+  blocked)
+    verification_blocked "Verification remains blocked after three attempts. Report the failing checks and request human intervention; completion has not been verified."
+    exit 0 ;;
+esac
 
 # NUL-delimited paths and arrays preserve whitespace and shell metacharacters.
 # Whole-project selection catches committed changes and config-only changes.
@@ -95,6 +109,7 @@ esac
 
 if ! after_state=$(python3 "$STATE_SCRIPT" snapshot); then
   python3 "$STATE_SCRIPT" record "$before_state" '{}' unavailable "$session_id" || true
+  verification_blocked "Verification state became unavailable. Completion has not been verified."
   exit 0
 fi
 status=passed
@@ -118,7 +133,7 @@ fi
 
 if [ "$has_infra_warnings" = true ]; then
   message="Tests could not run fully (${infra_warnings%%, }). Verification is incomplete; re-run when infrastructure is available."
-  jq -n --arg message "$message" '{systemMessage: $message}'
+  jq -n --arg message "$message" '{decision: "block", reason: $message, systemMessage: $message}'
   exit 0
 fi
 

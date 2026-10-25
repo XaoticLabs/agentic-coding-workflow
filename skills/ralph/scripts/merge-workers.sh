@@ -195,7 +195,7 @@ print(template.replace('{{CONTEXT}}', context))
   # Post-merge test gate (skip in lenient mode)
   if [ "$STRICTNESS" != "lenient" ]; then
     TEST_LOG="/tmp/merge-test-${BRANCH//\//-}.log"
-    if ! run_test_gate "$PROJECT_DIR" "$TEST_LOG"; then
+    if ! run_test_gate "$PROJECT_DIR" "$TEST_LOG" >&2; then
       FAIL_TAIL=$(tail -5 "$TEST_LOG" 2>/dev/null | tr '\n' ' ' || echo "unknown failure")
       echo "${BRANCH}: POST-MERGE TESTS FAILED — ${FAIL_TAIL}" >&2
 

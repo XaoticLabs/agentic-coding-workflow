@@ -67,7 +67,7 @@ The plugin's core workflow is: `/agentic-coding-workflow:prime` → `/agentic-co
 ## Testing & Validation
 
 - Use `skills/skill-forge/scripts/validate-skill.py` to validate skill structure
-- Hook scripts should fail gracefully (exit 0 on errors) to avoid blocking all operations
+- Optional audit and notification hooks fail open. Policy gates intentionally block unmet or unverifiable requirements; test failure and timeout behavior as well as successful checks.
 - **Plugin cache vs working directory**: Edits to plugin files in the working directory don't take effect until the plugin cache is updated. The cache lives at `~/.claude/plugins/cache/`. To test changes immediately, copy modified files to the cache location
 
 ## Learning & Output Styles

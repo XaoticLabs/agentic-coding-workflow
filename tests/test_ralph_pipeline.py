@@ -4,6 +4,8 @@ import csv
 import json
 import os
 import pty
+import selectors
+import time
 import shutil
 import subprocess
 from pathlib import Path
@@ -12,6 +14,43 @@ import pytest
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 LOOP = Path("skills/ralph/scripts/loop.sh")
+EVALUATION = {
+    "verdict": "ACCEPT",
+    "scores": {
+        name: 4
+        for name in (
+            "spec_fidelity",
+            "correctness",
+            "integration_quality",
+            "code_quality",
+            "test_coverage",
+            "compression",
+        )
+    },
+    "average": 4,
+    "criteria_results": [
+        {
+            "criterion": "Fixture requirement",
+            "result": "PASS",
+            "notes": "Verified fixture evidence",
+        }
+    ],
+    "issues": [],
+    "summary": "Full run report",
+    "revise_guidance": "",
+}
+
+
+def single_worktree(project: Path) -> Path:
+    evaluated = project / ".claude/evaluated-path"
+    if evaluated.exists():
+        return Path(evaluated.read_text().strip())
+    return next((project / ".claude/worktrees").glob("status-test-*"))
+
+
+def single_branch(project: Path) -> str:
+    run = next((project / ".claude/ralph/status-test/runs").iterdir())
+    return f"ralph-status-test/{run.name}"
 
 
 def write_executable(path: Path, contents: str) -> None:
@@ -40,6 +79,9 @@ def plugin(tmp_path: Path) -> Path:
         Path("skills/ralph/references/PROMPT_evaluate.md"),
         Path("scripts/lib/parallel-primitives.sh"),
         Path("scripts/lib/worktree-safety.sh"),
+        Path("scripts/lib/claude-runner.sh"),
+        Path("scripts/evaluate.py"),
+        Path("hooks/verification-state.py"),
         Path("scripts/project-commands.py"),
         Path("scripts/task-plan.py"),
         Path("scripts/stitch-traces.sh"),
@@ -61,6 +103,7 @@ def plugin(tmp_path: Path) -> Path:
         '  git commit --quiet -m "Implement task"\n'
         "fi\n"
         'printf "Claude output\\n"\n'
+        'printf "Claude diagnostic\\n" >&2\n'
         'if [ "$TEST_HANG" = true ]; then sleep 30; fi\n'
         'exit "$TEST_CLAUDE_EXIT"\n',
     )
@@ -155,12 +198,14 @@ def test_claude_status_reaches_recorded_outcomes(
 ) -> None:
     result = run_loop(project, time_budget=time_budget, claude_exit=claude_exit)
 
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == (0 if claude_exit == 0 else 1), result.stderr
     outcome = "success" if claude_exit == 0 else f"error (code {claude_exit})"
-    assert_outcome(project, outcome, "NO_COMMIT")
+    assert_outcome(
+        project, outcome, "NO_COMMIT" if claude_exit == 0 else "ERROR_PIPELINE"
+    )
     assert "Stream processor exited" not in result.stderr
     if claude_exit != 0:
-        assert "exited with error (code 7)" in result.stdout
+        assert "error (code 7)" in result.stderr
         assert "completed successfully" not in result.stdout
 
 
@@ -170,23 +215,102 @@ def test_timeout_reaches_recorded_outcomes(project: Path) -> None:
 
     result = run_loop(project, time_budget="1", hang=True)
 
-    assert result.returncode == 0, result.stderr
-    assert "timed out after 1s" in result.stdout
+    assert result.returncode == 1, result.stderr
+    assert "timeout" in result.stderr
     assert "completed successfully" not in result.stdout
     assert "Stream processor exited" not in result.stderr
     assert_outcome(project, "timeout", "TIMEOUT")
 
 
 @pytest.mark.parametrize("claude_exit", [0, 7])
-def test_processor_failure_warns_without_replacing_claude_status(
+def test_processor_failure_is_not_success_and_retains_all_statuses(
     project: Path, claude_exit: int
 ) -> None:
     result = run_loop(project, claude_exit=claude_exit, processor_exit=9)
+    assert result.returncode == 1, result.stderr
+    outcome = (
+        "processor error (code 9)"
+        if claude_exit == 0
+        else f"error (code {claude_exit})"
+    )
+    assert_outcome(project, outcome, "ERROR_PIPELINE")
+    run = next((project / ".claude/ralph/status-test/runs").iterdir())
+    status = json.loads(next(run.glob("iter-*.status.json")).read_text())
+    assert status == {
+        "prompt_exit": 0,
+        "claude_exit": claude_exit,
+        "processor_exit": 9,
+        "outcome": outcome,
+    }
+    assert (
+        next(run.glob("iter-*.claude-stderr.log")).read_text() == "Claude diagnostic\n"
+    )
 
+
+@pytest.mark.parametrize("failure", ["claude", "processor", "timeout"])
+def test_failed_pipeline_preserves_commits_without_accepting_them(
+    project: Path, failure: str
+) -> None:
+    original = git(project, "rev-parse", "HEAD")
+    result = run_loop(
+        project,
+        commit=True,
+        claude_exit=7 if failure == "claude" else 0,
+        processor_exit=9 if failure == "processor" else 0,
+        time_budget="1" if failure == "timeout" else "0",
+        hang=failure == "timeout",
+    )
+    assert result.returncode == 1
+    assert git(project, "rev-parse", "HEAD") != original
+    assert (project / "changed.txt").exists()
+    marker = json.loads((project / ".claude/ralph-worker-done-test-worker").read_text())
+    assert marker["status"] == "error"
+    trace = next((project / ".claude/ralph/status-test/runs").glob("*/trace.jsonl"))
+    events = [json.loads(line) for line in trace.read_text().splitlines()]
+    assert not any(event.get("outcome") == "KEEP" for event in events)
+
+
+def test_prompt_producer_failure_is_recorded(project: Path) -> None:
+    write_executable(project.parent / "bin/claude", "cat >/dev/null\n")
+    log = project / ".claude/producer.log"
+    library = project.parent / "plugin with spaces/scripts/lib/claude-runner.sh"
+    processor = (
+        project.parent / "plugin with spaces/skills/ralph/scripts/stream-processor.py"
+    )
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            """set -euo pipefail
+source "$1"
+printf() { echo "producer failed" >&2; return 13; }
+if run_claude_pipeline prompt "$2" "$3" 0 "$4" -p; then exit 99; fi
+""",
+            "test",
+            str(library),
+            str(log),
+            str(log.with_suffix(".jsonl")),
+            str(processor),
+        ],
+        cwd=project,
+        text=True,
+        capture_output=True,
+        env={
+            **os.environ,
+            "PATH": f"{project.parent / 'bin'}{os.pathsep}{os.environ['PATH']}",
+            "TEST_PROCESSOR_EXIT": "0",
+        },
+        timeout=10,
+    )
     assert result.returncode == 0, result.stderr
-    assert "Stream processor exited with code 9" in result.stderr
-    outcome = "success" if claude_exit == 0 else f"error (code {claude_exit})"
-    assert_outcome(project, outcome, "NO_COMMIT")
+    status = json.loads(Path(str(log) + ".status.json").read_text())
+    assert status == {
+        "prompt_exit": 13,
+        "claude_exit": 0,
+        "processor_exit": 0,
+        "outcome": "prompt error (code 13)",
+    }
+    assert "producer failed" in Path(str(log) + ".prompt-stderr.log").read_text()
 
 
 def test_verification_gate_keeps_pipefail_enabled(project: Path) -> None:
@@ -249,26 +373,37 @@ def run_single_track(
     after_eval: str = "",
     commit: bool = True,
     final_verification_failure: bool = False,
+    during_confirmation: str = "",
+    per_iteration: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     """Supply a real TTY so an unsafe merge prompt would actually merge."""
     write_executable(
         project.parent / "bin/claude",
         r"""
 prompt=$(cat)
-if [[ "$prompt" == *'**Evaluation mode:** END-OF-RUN'* ]]; then
+if [[ " $* " == *' --json-schema '* ]]; then
   echo evaluate >> "$TEST_ROOT_PROJECT/.claude/order"
   pwd > "$TEST_ROOT_PROJECT/.claude/evaluated-path"
-  verdict_file=$(printf '%s\n' "$prompt" | sed -n 's/^\*\*Verdict output:\*\* //p')
-  summary_file=$(printf '%s\n' "$prompt" | sed -n 's/^\*\*Summary output:\*\* //p')
   case "$TEST_EVAL_VERDICT" in
     missing) ;;
-    malformed) echo '{invalid' > "$verdict_file" ;;
-    incomplete) echo '{"verdict":"ACCEPT"}' > "$verdict_file" ;;
+    malformed) echo '{invalid' ;;
+    incomplete) echo '{"subtype":"success","is_error":false,"structured_output":{"verdict":"ACCEPT"}}' ;;
     timeout) sleep 30 ;;
-    *) printf '{"verdict":"%s","average":8}\n' "$TEST_EVAL_VERDICT" > "$verdict_file" ;;
+    *) python3 - <<'PYRESULT'
+import json, os
+payload = json.loads(os.environ["TEST_VALID_EVALUATION"])
+payload["verdict"] = os.environ["TEST_EVAL_VERDICT"]
+if payload["verdict"] == "REVISE":
+    payload["scores"] = {key: 2 for key in payload["scores"]}
+    payload["average"] = 2
+    payload["revise_guidance"] = "Correct the fixture behavior"
+print(json.dumps({"subtype": "success", "is_error": False, "structured_output": payload}))
+PYRESULT
+    ;;
   esac
-  echo 'Full run report' > "$summary_file"
-  if [ -n "$TEST_AFTER_EVAL" ]; then
+  if [ "$TEST_AFTER_EVAL" = target ]; then
+    git -C "$TEST_ROOT_PROJECT" commit --quiet --allow-empty -m 'Target diverged during evaluation'
+  elif [ -n "$TEST_AFTER_EVAL" ]; then
     echo changed > after-eval.txt
     if [ "$TEST_AFTER_EVAL" = commit ]; then
       git add after-eval.txt
@@ -321,9 +456,12 @@ fi
                 "RALPH_NO_MERGE_PROMPT": "",
                 "RALPH_NOTIFY": "false",
                 "RALPH_EVAL_END_OF_RUN": str(evaluate).lower(),
+                "RALPH_EVAL_PER_ITER": str(per_iteration).lower(),
+                "RALPH_EVAL_DIFF_THRESHOLD": "1",
                 "RALPH_EVAL_TIMEOUT": "1" if verdict == "timeout" else "10",
                 "AUTO_HARVEST": "false",
                 "TEST_PROCESSOR_EXIT": "0",
+                "TEST_VALID_EVALUATION": json.dumps(EVALUATION),
                 "TEST_EVAL_VERDICT": verdict,
                 "TEST_EVAL_EXIT": str(evaluator_exit),
                 "TEST_AFTER_EVAL": after_eval,
@@ -335,8 +473,49 @@ fi
             stderr=subprocess.PIPE,
             text=True,
         )
+        prefix_out, prefix_err = "", ""
+        if during_confirmation:
+            selector = selectors.DefaultSelector()
+            selector.register(process.stdout, selectors.EVENT_READ, "stdout")
+            selector.register(process.stderr, selectors.EVENT_READ, "stderr")
+            captured = {"stdout": b"", "stderr": b""}
+            deadline = time.monotonic() + 10
+            try:
+                while b"now? [y/N]" not in captured["stdout"] + captured["stderr"]:
+                    assert time.monotonic() < deadline, captured
+                    for key, _ in selector.select(timeout=0.2):
+                        chunk = os.read(key.fileobj.fileno(), 65536)
+                        if not chunk:
+                            selector.unregister(key.fileobj)
+                        captured[key.data] += chunk
+                worktree = single_worktree(project)
+                if during_confirmation == "target":
+                    git(
+                        project,
+                        "commit",
+                        "--quiet",
+                        "--allow-empty",
+                        "-m",
+                        "Target changed",
+                    )
+                elif during_confirmation == "guidance":
+                    (worktree / ".claude/project-commands.json").write_text(
+                        '{"test":"false"}'
+                    )
+                else:
+                    (worktree / "unverified.txt").write_text("not evaluated")
+                    if during_confirmation == "commit":
+                        git(worktree, "add", "unverified.txt")
+                        git(worktree, "commit", "--quiet", "-m", "Unverified change")
+                prefix_out, prefix_err = (
+                    captured["stdout"].decode(),
+                    captured["stderr"].decode(),
+                )
+            finally:
+                selector.close()
         os.write(master, b"y\n")
         stdout, stderr = process.communicate(timeout=15)
+        stdout, stderr = prefix_out + stdout, prefix_err + stderr
     finally:
         os.close(master)
         os.close(slave)
@@ -350,14 +529,17 @@ def test_end_of_run_evaluation_precedes_merge_and_artifact_cleanup(
 
     assert result.returncode == 0, result.stderr
     assert (project / "changed.txt").read_text() == "implementation\n"
-    assert not (project / ".claude/worktrees/status-test").exists()
+    assert not single_worktree(project).exists()
     order = (project / ".claude/order").read_text().splitlines()
     assert order == ["verify", "verify", "evaluate"]
     evaluated_path = (project / ".claude/evaluated-path").read_text().strip()
-    assert evaluated_path == str(project / ".claude/worktrees/status-test")
+    assert evaluated_path == str(single_worktree(project))
     run = next((project / ".claude/ralph/status-test/runs").iterdir())
     assert json.loads((run / "eval-verdict.json").read_text())["verdict"] == "ACCEPT"
-    assert (run / "eval-summary.md").read_text() == "Full run report\n"
+    assert json.loads((run / "eval-verdict.json").read_text())["revision"] == git(
+        project, "rev-parse", "HEAD"
+    )
+    assert "Full run report" in (run / "eval-summary.md").read_text()
     assert (
         run / "worktree-artifacts/.claude/specs/status-test/IMPLEMENTATION_PLAN.md"
     ).exists()
@@ -381,12 +563,12 @@ def test_eval_gate_preserves_work_without_fresh_accept(
 
     result = run_single_track(project, verdict=verdict, evaluator_exit=evaluator_exit)
 
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == (0 if verdict == "REVISE" else 1), result.stderr
     assert "EVAL GATE: Merge blocked" in result.stdout
     assert git(project, "rev-parse", "HEAD") == initial_commit
-    worktree = project / ".claude/worktrees/status-test"
+    worktree = single_worktree(project)
     assert (worktree / "changed.txt").exists()
-    assert git(project, "rev-parse", "status-test") != initial_commit
+    assert git(project, "rev-parse", single_branch(project)) != initial_commit
 
 
 @pytest.mark.parametrize(("evaluate", "once"), [(False, False), (True, True)])
@@ -398,7 +580,7 @@ def test_skipped_end_of_run_evaluation_cannot_satisfy_gate(
     assert result.returncode == 0, result.stderr
     assert "EVAL GATE: Merge blocked" in result.stdout
     assert not (project / "changed.txt").exists()
-    assert (project / ".claude/worktrees/status-test/changed.txt").exists()
+    assert (single_worktree(project) / "changed.txt").exists()
 
 
 @pytest.mark.parametrize("after_eval", ["dirty", "commit"])
@@ -407,35 +589,94 @@ def test_accept_cannot_merge_work_changed_after_verification(
 ) -> None:
     result = run_single_track(project, after_eval=after_eval)
 
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == 1, result.stderr
     assert "Merge blocked: worktree changed" in result.stdout
     assert not (project / "changed.txt").exists()
-    assert (project / ".claude/worktrees/status-test/after-eval.txt").exists()
+    assert (single_worktree(project) / "after-eval.txt").exists()
+
+
+@pytest.mark.parametrize("change", ["commit", "dirty", "target", "guidance"])
+def test_merge_confirmation_cannot_accept_changed_candidate_or_target(
+    project: Path, change: str
+) -> None:
+    original = git(project, "rev-parse", "HEAD")
+    result = run_single_track(project, during_confirmation=change)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert not (project / "changed.txt").exists()
+    assert not (project / "unverified.txt").exists()
+    assert single_worktree(project).exists()
+    if change != "target":
+        assert git(project, "rev-parse", "HEAD") == original
+
+
+def test_diverged_target_cannot_create_an_unverified_merge_commit(
+    project: Path,
+) -> None:
+    result = run_single_track(project, after_eval="target")
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert not (project / "changed.txt").exists()
+    assert (single_worktree(project) / "changed.txt").exists()
+    assert "Merge failed or target checkout changed" in result.stdout
+
+
+def test_repeated_runs_preserve_old_work_and_create_unique_worktrees(
+    project: Path,
+) -> None:
+    first = run_single_track(project, verdict="REVISE")
+    assert first.returncode == 0
+    old = single_worktree(project)
+    old_head = git(old, "rev-parse", "HEAD")
+    second = run_single_track(project, verdict="REVISE")
+    assert second.returncode == 0, second.stderr
+    assert single_worktree(project) != old
+    assert git(old, "rev-parse", "HEAD") == old_head
+    assert len(list((project / ".claude/worktrees").iterdir())) == 2
+
+
+def test_iteration_evaluation_error_is_not_accepted_or_overwritten(
+    project: Path,
+) -> None:
+    result = run_single_track(project, per_iteration=True, verdict="missing")
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert (single_worktree(project) / "changed.txt").exists()
+    run = next((project / ".claude/ralph/status-test/runs").iterdir())
+    assert json.loads((run / "eval-1-verdict.json").read_text())["verdict"] == "ERROR"
+    assert json.loads((run / "eval-verdict.json").read_text())["verdict"] == "NOT_RUN"
+    events = [
+        json.loads(line) for line in (run / "trace.jsonl").read_text().splitlines()
+    ]
+    assert not any(event.get("outcome") == "KEEP" for event in events)
 
 
 def test_zero_commit_cleanup_preserves_dirty_work(project: Path) -> None:
     result = run_single_track(project, commit=False)
 
     assert result.returncode == 0, result.stderr
-    assert (
-        project / ".claude/worktrees/status-test/unfinished.txt"
-    ).read_text() == "unfinished\n"
+    assert (single_worktree(project) / "unfinished.txt").read_text() == "unfinished\n"
 
 
 def test_accept_cannot_bypass_failed_final_verification(project: Path) -> None:
     result = run_single_track(project, final_verification_failure=True)
 
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == 1, result.stderr
     assert "Merge blocked: final verification failed" in result.stdout
     assert not (project / "changed.txt").exists()
-    assert (project / ".claude/worktrees/status-test/changed.txt").exists()
+    assert (single_worktree(project) / "changed.txt").exists()
 
 
-@pytest.mark.parametrize("merge_succeeds", [True, False])
-@pytest.mark.parametrize("start_on_target", [True, False])
-def test_parallel_cleanup_preserves_failed_merges_and_archives_successes(
-    plugin: Path, project: Path, merge_succeeds: bool, start_on_target: bool
-) -> None:
+def run_parallel(
+    plugin: Path,
+    project: Path,
+    *,
+    merge_succeeds=True,
+    start_on_target=True,
+    eval_case="ACCEPT",
+    eval_mode="end",
+    after_eval="",
+    flags=(),
+    merge_output=None,
+    merge_exit=0,
+) -> subprocess.CompletedProcess[str]:
     if start_on_target:
         git(project, "checkout", "--quiet", "-b", "status-test")
     write_executable(
@@ -459,12 +700,33 @@ fi
         project.parent / "bin/claude",
         r"""
 prompt=$(cat)
-if [[ "$prompt" == *'**Evaluation mode:** END-OF-RUN'* ]]; then
+if [[ " $* " == *' --json-schema '* ]]; then
   echo evaluate >> "$TEST_ROOT_PROJECT/.claude/order"
-  verdict_file=$(printf '%s\n' "$prompt" | sed -n 's/^\*\*Verdict output:\*\* //p')
-  summary_file=$(printf '%s\n' "$prompt" | sed -n 's/^\*\*Summary output:\*\* //p')
-  echo '{"verdict":"ACCEPT","average":8}' > "$verdict_file"
-  echo report > "$summary_file"
+  python3 - <<'PYRESULT'
+import json, os
+mode = os.environ["TEST_EVAL_CASE"]
+payload = json.loads(os.environ["TEST_VALID_EVALUATION"])
+if mode == "timeout":
+    import time
+    time.sleep(30)
+if mode == "malformed":
+    print("{invalid")
+elif mode == "incomplete":
+    print(json.dumps({"subtype": "success", "is_error": False, "structured_output": {"verdict": "ACCEPT"}}))
+elif mode != "missing":
+    if mode == "REVISE":
+        payload["verdict"] = "REVISE"
+        payload["revise_guidance"] = "Correct fixture integration"
+    print(json.dumps({"subtype": "success", "is_error": False, "structured_output": payload}))
+PYRESULT
+  if [ -n "$TEST_AFTER_EVAL" ]; then
+    echo unverified > after-eval.txt
+    if [ "$TEST_AFTER_EVAL" = commit ]; then
+      git add after-eval.txt
+      git commit --quiet -m 'Changed after verification'
+    fi
+  fi
+  if [ "$TEST_EVAL_CASE" = nonzero ]; then exit 7; fi
 else
   echo implementation > changed.txt
   git add changed.txt
@@ -472,7 +734,12 @@ else
 fi
 """,
     )
-    if not merge_succeeds:
+    if merge_output is not None:
+        write_executable(
+            plugin / "skills/ralph/scripts/merge-workers.sh",
+            'printf "%s\\n" "$TEST_MERGE_OUTPUT"\nexit "$TEST_MERGE_EXIT"\n',
+        )
+    elif not merge_succeeds:
         write_executable(
             plugin / "skills/ralph/scripts/merge-workers.sh",
             'echo \'{"status":"partial","merged":0,"failed":1}\'\n',
@@ -491,6 +758,7 @@ fi
             "status-test",
             "1",
             "1",
+            *flags,
         ],
         cwd=project,
         env={
@@ -499,6 +767,13 @@ fi
             "CLAUDE_PLUGIN_ROOT": str(plugin),
             "CLAUDE_PROJECT_DIR": str(project),
             "TEST_ROOT_PROJECT": str(project),
+            "TEST_VALID_EVALUATION": json.dumps(EVALUATION),
+            "TEST_MERGE_OUTPUT": merge_output or "",
+            "TEST_MERGE_EXIT": str(merge_exit),
+            "TEST_EVAL_CASE": eval_case,
+            "TEST_AFTER_EVAL": after_eval,
+            "RALPH_PARALLEL_EVAL": eval_mode,
+            "RALPH_EVAL_TIMEOUT": "0.2" if eval_case == "timeout" else "5",
             "TEST_PROCESSOR_EXIT": "0",
             "RALPH_WORKER_ID": "",
             "RALPH_NOTIFY": "false",
@@ -511,13 +786,31 @@ fi
         timeout=15,
     )
 
-    assert result.returncode == 0, result.stdout + result.stderr
-    worktree = project / ".claude/worktrees/status-test-wave0-worker-0"
-    branch = "ralph-status-test/wave-0/worker-0"
+    return result
+
+
+@pytest.mark.parametrize("merge_succeeds", [True, False])
+@pytest.mark.parametrize("start_on_target", [True, False])
+def test_parallel_cleanup_preserves_failed_merges_and_archives_successes(
+    plugin: Path, project: Path, merge_succeeds: bool, start_on_target: bool
+) -> None:
+    result = run_parallel(
+        plugin, project, merge_succeeds=merge_succeeds, start_on_target=start_on_target
+    )
+    assert result.returncode == (0 if merge_succeeds else 1), (
+        result.stdout + result.stderr
+    )
+    run = next((project / ".claude/ralph/status-test/runs").iterdir())
+    worktree = project / f".claude/worktrees/status-test-{run.name}-wave0-worker-0"
+    branch = f"ralph-status-test/{run.name}/wave-0/worker-0"
     assert worktree.exists() is not merge_succeeds
     assert not (project / ".claude/ralph/status-test/orchestrator.pid").exists()
     if merge_succeeds:
         assert (project / "changed.txt").exists()
+        assert (
+            json.loads((run / "merge-results.json").read_text())[0]["status"]
+            == "success"
+        )
         assert git(project, "branch", "--list", branch) == ""
         run = next((project / ".claude/ralph/status-test/runs").iterdir())
         unified = [
@@ -532,8 +825,7 @@ fi
         assert list((run / "worker-traces/wave0-worker-0").glob("*/trace.jsonl"))
         assert (run / "eval-verdict.json").exists()
         assert (
-            run
-            / "worktree-artifacts/status-test-wave0-worker-0/.claude/tmux-output.log"
+            run / f"worktree-artifacts/{worktree.name}/.claude/tmux-output.log"
         ).exists()
         assert (project / ".claude/order").read_text().splitlines()[-2:] == [
             "verify",
@@ -542,4 +834,55 @@ fi
     else:
         assert (worktree / "changed.txt").exists()
         assert git(project, "branch", "--list", branch)
-        assert "preserved 1" in result.stdout
+        assert "work preserved and dependent waves blocked" in result.stdout
+
+
+@pytest.mark.parametrize("eval_mode", ["end", "wave"])
+@pytest.mark.parametrize(
+    "eval_case", ["missing", "malformed", "incomplete", "nonzero", "timeout"]
+)
+def test_parallel_evaluation_errors_preserve_work_and_block_completion(
+    plugin: Path, project: Path, eval_mode: str, eval_case: str
+) -> None:
+    result = run_parallel(plugin, project, eval_mode=eval_mode, eval_case=eval_case)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert list((project / ".claude/worktrees").iterdir())
+    run = next((project / ".claude/ralph/status-test/runs").iterdir())
+    path = run / ("eval-verdict.json" if eval_mode == "end" else "wave0-eval-0.json")
+    assert json.loads(path.read_text())["verdict"] == "ERROR"
+    assert "Complete!" not in result.stdout
+
+
+@pytest.mark.parametrize("after_eval", ["dirty", "commit"])
+def test_parallel_final_candidate_changes_cannot_finish_successfully(
+    plugin: Path, project: Path, after_eval: str
+) -> None:
+    result = run_parallel(plugin, project, after_eval=after_eval)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert (project / "after-eval.txt").exists()
+    assert list((project / ".claude/worktrees").iterdir())
+    run = next((project / ".claude/ralph/status-test/runs").iterdir())
+    assert json.loads((run / "eval-verdict.json").read_text())["verdict"] == "ERROR"
+
+
+def test_parallel_required_accept_gate_rejects_revise(
+    plugin: Path, project: Path
+) -> None:
+    result = run_parallel(
+        plugin, project, eval_case="REVISE", flags=("--eval-gates-merge",)
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert list((project / ".claude/worktrees").iterdir())
+
+
+@pytest.mark.parametrize(
+    ("output", "exit_code"),
+    [("invalid JSON", 0), ('{"status":"success","merged":1,"failed":0}', 7)],
+)
+def test_parallel_merge_protocol_errors_preserve_work(
+    plugin: Path, project: Path, output: str, exit_code: int
+) -> None:
+    result = run_parallel(plugin, project, merge_output=output, merge_exit=exit_code)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert list((project / ".claude/worktrees").iterdir())
+    assert "End-of-run evaluation:" not in result.stdout
