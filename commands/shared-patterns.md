@@ -46,16 +46,23 @@ git push -u origin "${BRANCH}"
 
 ## Project Context: Test and Lint Command Detection
 
-Check for custom commands in `.claude/AGENTS.md` first, then fall back to framework auto-detection:
+Read overrides from `.claude/project-commands.json` before framework auto-detection:
 
 ```bash
-if [ -f "${REPO_ROOT}/.claude/AGENTS.md" ]; then
-  grep -A2 -i "test command" "${REPO_ROOT}/.claude/AGENTS.md"
-  grep -A2 -i "lint command" "${REPO_ROOT}/.claude/AGENTS.md"
+TEST_CONFIG_STATUS=0
+TEST_CMD=$(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/project-commands.py" get "$REPO_ROOT" test) || TEST_CONFIG_STATUS=$?
+LINT_CONFIG_STATUS=0
+LINT_CMD=$(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/project-commands.py" get "$REPO_ROOT" lint) || LINT_CONFIG_STATUS=$?
+if [ "$TEST_CONFIG_STATUS" -gt 1 ] || [ "$LINT_CONFIG_STATUS" -gt 1 ]; then
+  exit 1
 fi
 ```
 
-**Auto-detection order:**
+The JSON object accepts `build`, `test`, `lint`, `format`, and `run` keys with shell command strings. A status of `0` means the action is configured: use its value, including `null` or an empty string to disable it. A status of `1` means the file or key is missing: use the table below for that action. Other statuses indicate errors: stop and report the configuration path rather than skipping verification. Preserve command quoting, pipes, and operators when executing the resolved strings.
+
+Generate initial configuration with `skills/ralph/scripts/generate-agents-md.sh`. Existing values are preserved on refresh. Move any custom commands from `.claude/AGENTS.md` into the JSON file; Markdown is no longer parsed for commands.
+
+**Auto-detection order (only for missing keys):**
 
 | Indicator | Runner | Test Command | Lint Command |
 |-----------|--------|-------------|--------------|

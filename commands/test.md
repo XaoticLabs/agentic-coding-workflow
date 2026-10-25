@@ -25,39 +25,15 @@ $ARGUMENTS - Either:
 
 ### Phase 1: Detect Test Runner
 
-Check for project indicators in order of specificity:
+Resolve commands using the shared pattern in `commands/shared-patterns.md` → **Project Context: Test and Lint Command Detection**:
 
 ```bash
-# Check what exists at the repo root
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-ls "$REPO_ROOT"
 ```
 
-**Detection order:**
+Read configured test/lint commands with `scripts/project-commands.py` as shown in the shared pattern. Commands in `.claude/project-commands.json` take precedence over auto-detection. For each missing key, use the shared pattern's detection table; `null` or an empty string explicitly disables that action. Do not parse commands from `.claude/AGENTS.md`.
 
-| Indicator | Runner | Test Command | Lint Command |
-|-----------|--------|-------------|--------------|
-| `mix.exs` | Mix (Elixir) | `mix test` | `mix format --check-formatted && mix credo` |
-| `pyproject.toml` with `[tool.pytest]` | pytest | `pytest -v` | `ruff check .` |
-| `pyproject.toml` with uv | pytest via uv | `uv run pytest -v` | `uv run ruff check .` |
-| `setup.py` or `setup.cfg` | pytest | `python -m pytest -v` | `ruff check .` |
-| `package.json` with `"test"` script | npm | `npm test` | `npm run lint` (if exists) |
-| `Cargo.toml` | cargo | `cargo test` | `cargo clippy` |
-| `go.mod` | go test | `go test ./...` | `go vet ./...` |
-| `Makefile` with `test` target | make | `make test` | `make lint` (if exists) |
-| `Gemfile` with `rspec` | rspec | `bundle exec rspec` | `bundle exec rubocop` |
-
-If no test runner detected, report: "No test framework detected. Add a test command to your project or run tests manually."
-
-Also check for `.claude/AGENTS.md` which may specify custom test/lint commands:
-```bash
-if [ -f "${REPO_ROOT}/.claude/AGENTS.md" ]; then
-  grep -A2 -i "test command" "${REPO_ROOT}/.claude/AGENTS.md"
-  grep -A2 -i "lint command" "${REPO_ROOT}/.claude/AGENTS.md"
-fi
-```
-
-Custom commands from `AGENTS.md` take precedence over auto-detection.
+Infer the runner from the resolved test command for scope selection and reporting. If no test command is available, report that tests are disabled or no framework was detected, as applicable. Invalid configuration stops the command with an actionable error.
 
 ### Phase 2: Determine Scope
 

@@ -19,8 +19,12 @@ Your prompt may include an **"## Evaluator Findings"** section at the end. If pr
 Run the project's test suite. This is the primary gate.
 
 ```bash
-# Detect and run the appropriate test command
+source "${CLAUDE_PLUGIN_ROOT}/scripts/lib/parallel-primitives.sh"
+TEST_CMD=$(detect_test_command "${CLAUDE_PROJECT_DIR:-.}") || exit 1
+LINT_CMD=$(detect_lint_command "${CLAUDE_PROJECT_DIR:-.}") || exit 1
 ```
+
+These read `.claude/project-commands.json`, with framework fallbacks for missing keys. Run each nonempty command; `null` or empty values explicitly disable that action. Stop on invalid configuration.
 
 If tests pass and lint passes AND there are no evaluator findings, skip to Step 5 (consolidate plan). The merge is clean.
 

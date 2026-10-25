@@ -157,6 +157,17 @@ The `/agentic-coding-workflow:update-rules` command helps you build these up ove
 
 ## Typical Workflow
 
+Project commands are configured in `.claude/project-commands.json`:
+
+```json
+{
+  "test": "uv run pytest",
+  "lint": "uv run ruff check . && uv run basedpyright"
+}
+```
+
+Supported keys are `build`, `test`, `lint`, `format`, and `run`. Missing test/lint keys use framework auto-detection; `null` or `""` explicitly disables an action. Invalid configuration stops verification. Ralph's `generate-agents-md.sh` initializes detected defaults, preserves existing overrides, and renders `.claude/AGENTS.md` from the same values. Move custom commands previously kept in the Markdown guide into this JSON file. Both files are copied into worker worktrees.
+
 ### Interactive (human-in-the-loop)
 
 1. `/agentic-coding-workflow:prime` — Load up context for a ticket

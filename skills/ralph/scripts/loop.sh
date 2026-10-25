@@ -313,7 +313,11 @@ if [ -z "${RALPH_WORKER_ID:-}" ] && [[ "$MODE" == "build" || "$MODE" == "reconci
     exit 1
   fi
   mkdir -p "${WORKTREE_PATH}/.claude/ralph/${SLUG}/runs/${RUN_TIMESTAMP}"
-  [ -f "${PROJECT_DIR}/.claude/AGENTS.md" ] && cp "${PROJECT_DIR}/.claude/AGENTS.md" "${WORKTREE_PATH}/.claude/"
+  for context_file in AGENTS.md project-commands.json; do
+    if [ -f "${PROJECT_DIR}/.claude/${context_file}" ]; then
+      cp "${PROJECT_DIR}/.claude/${context_file}" "${WORKTREE_PATH}/.claude/"
+    fi
+  done
 
   # Switch into worktree and re-point all path variables
   if [ ! -d "$WORKTREE_PATH" ]; then
@@ -888,19 +892,14 @@ ${BRIEFING}
     if [ "$GATE_PASSED" = true ]; then
       echo "Running external verification gate..."
 
-      # Detect test/lint commands from AGENTS.md
-      AGENTS_FILE="${PROJECT_DIR}/.claude/AGENTS.md"
-      TEST_CMD=""
-      LINT_CMD=""
-      if [ -f "$AGENTS_FILE" ]; then
-        TEST_CMD=$(grep -A1 '| Test' "$AGENTS_FILE" 2>/dev/null | tail -1 | sed 's/.*| `\(.*\)`.*/\1/' | sed 's/|//g' | xargs || true)
-        LINT_CMD=$(grep -A1 '| Lint' "$AGENTS_FILE" 2>/dev/null | tail -1 | sed 's/.*| `\(.*\)`.*/\1/' | sed 's/|//g' | xargs || true)
-      fi
+      # Use structured project commands, with shared framework fallbacks.
+      TEST_CMD=$(detect_test_command "$PROJECT_DIR")
+      LINT_CMD=$(detect_lint_command "$PROJECT_DIR")
       if [ -z "$TEST_CMD" ]; then
-        echo "WARNING: No test command found in AGENTS.md — external test gate will be skipped." >&2
+        echo "WARNING: No test command configured or detected — external test gate will be skipped." >&2
       fi
       if [ -z "$LINT_CMD" ]; then
-        echo "WARNING: No lint command found in AGENTS.md — external lint gate will be skipped." >&2
+        echo "WARNING: No lint command configured or detected — external lint gate will be skipped." >&2
       fi
 
       # Load gate ignore patterns from RALPH_OVERRIDES.md

@@ -1,0 +1,247 @@
+"""Behavioral checks for structured command detection and verification gates."""
+
+import json
+import os
+import subprocess
+from pathlib import Path
+
+import pytest
+
+PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+PRIMITIVES = PLUGIN_ROOT / "scripts/lib/parallel-primitives.sh"
+GENERATOR = PLUGIN_ROOT / "skills/ralph/scripts/generate-agents-md.sh"
+
+
+@pytest.fixture
+def project(tmp_path: Path) -> Path:
+    project_dir = tmp_path / "project with spaces"
+    (project_dir / ".claude").mkdir(parents=True)
+    return project_dir
+
+
+def configure(project: Path, commands: object) -> None:
+    (project / ".claude/project-commands.json").write_text(json.dumps(commands))
+
+
+def shell(
+    project: Path, script: str, *arguments: str
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            "bash",
+            "-c",
+            'set -euo pipefail\nsource "$1"\n' + script,
+            "test",
+            str(PRIMITIVES),
+            str(project),
+            *arguments,
+        ],
+        cwd=project,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def generate(project: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["bash", str(GENERATOR)],
+        cwd=project,
+        env={**os.environ, "CLAUDE_PROJECT_DIR": str(project)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_test_gate_runs_test_instead_of_next_markdown_row(project: Path) -> None:
+    (project / ".claude/AGENTS.md").write_text(
+        "| Test | `false` |\n| Lint | `false` |\n| Format | `false` |\n"
+    )
+    configure(
+        project, {"test": "printf '%s' 'tests ran' > 'test result'", "lint": "false"}
+    )
+
+    result = shell(project, 'run_test_gate "$2" "$2/gate.log"')
+
+    assert result.returncode == 0, result.stderr
+    assert (project / "test result").read_text() == "tests ran"
+    lint = shell(project, 'detect_lint_command "$2"')
+    assert lint.returncode == 0, lint.stderr
+    assert lint.stdout == "false\n"
+
+
+def test_commands_preserve_quotes_pipes_backslashes_and_multiline_shell(
+    project: Path,
+) -> None:
+    command = (
+        "printf '%s\\n' 'two  spaces' 'a|b' \"quoted\" | cat\nprintf '%s' '`literal`'"
+    )
+    configure(project, {"test": command, "lint": command})
+    for action in ("test", "lint"):
+        result = shell(project, f'detect_{action}_command "$2"')
+        assert result.returncode == 0, result.stderr
+        assert result.stdout == command + "\n"
+
+    gate = shell(project, 'run_test_gate "$2" "$2/gate.log"')
+    assert gate.returncode == 0, gate.stderr
+    assert (project / "gate.log").read_text() == "two  spaces\na|b\nquoted\n`literal`"
+
+
+@pytest.mark.parametrize("commands", [None, {}, {"build": "custom build"}])
+def test_missing_config_or_keys_fall_back_without_parsing_markdown(
+    project: Path, commands: object
+) -> None:
+    (project / "mix.exs").touch()
+    (project / ".claude/AGENTS.md").write_text(
+        "| Test | `false` |\n| Lint | `false` |\n"
+    )
+    if commands is not None:
+        configure(project, commands)
+
+    result = shell(project, 'detect_test_command "$2"\ndetect_lint_command "$2"')
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "mix test\nmix credo\n"
+
+
+@pytest.mark.parametrize("disabled", [None, ""])
+def test_disabled_commands_do_not_fall_back(
+    project: Path, disabled: str | None
+) -> None:
+    (project / "mix.exs").touch()
+    configure(project, {"test": disabled, "lint": disabled})
+
+    result = shell(
+        project,
+        'detect_test_command "$2"\ndetect_lint_command "$2"\nrun_test_gate "$2"',
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.startswith("\n\n")
+    assert "skipping test gate" in result.stdout
+
+
+@pytest.mark.parametrize(
+    "contents",
+    ["{", "[]", '{"test": false}', '{"lint": ["ruff"]}', '{"tset": "false"}'],
+)
+def test_invalid_config_fails_verification_even_in_a_conditional(
+    project: Path, contents: str
+) -> None:
+    (project / "mix.exs").touch()
+    (project / ".claude/project-commands.json").write_text(contents)
+
+    result = shell(
+        project, 'if run_test_gate "$2" "$2/gate.log"; then exit 0; else exit 7; fi'
+    )
+
+    assert result.returncode == 7
+    assert "project-commands.json" in result.stderr
+    assert "skipping" not in result.stdout
+
+
+def test_failing_test_command_fails_gate(project: Path) -> None:
+    configure(project, {"test": "printf '%s' 'test failure'; exit 3", "lint": "true"})
+
+    result = shell(
+        project, 'if run_test_gate "$2" "$2/gate.log"; then exit 0; else exit 7; fi'
+    )
+
+    assert result.returncode == 7
+    assert (project / "gate.log").read_text() == "test failure"
+
+
+def test_generator_creates_config_and_guide_with_matching_commands(
+    project: Path,
+) -> None:
+    (project / "mix.exs").touch()
+
+    result = generate(project)
+
+    assert result.returncode == 0, result.stderr
+    commands = json.loads((project / ".claude/project-commands.json").read_text())
+    assert commands == {
+        "build": "mix compile",
+        "test": "mix test",
+        "lint": "mix credo",
+        "format": "mix format",
+        "run": None,
+    }
+    guide = (project / ".claude/AGENTS.md").read_text()
+    assert "| Test    | `mix test` |" in guide
+    assert "| Lint    | `mix credo` |" in guide
+    detected = shell(project, 'detect_test_command "$2"\ndetect_lint_command "$2"')
+    assert detected.stdout == "mix test\nmix credo\n"
+
+
+def test_generator_preserves_overrides_and_disabled_actions_on_refresh(
+    project: Path,
+) -> None:
+    (project / "mix.exs").touch()
+    command = "custom-test --label 'two  spaces' | cat"
+    configure(project, {"test": command, "lint": None})
+
+    for _ in range(2):
+        result = generate(project)
+        assert result.returncode == 0, result.stderr
+
+    commands = json.loads((project / ".claude/project-commands.json").read_text())
+    assert commands["test"] == command
+    assert commands["lint"] is None
+    assert commands["build"] == "mix compile"
+    guide = (project / ".claude/AGENTS.md").read_text()
+    assert f"| Test    | `{command}` |" in guide
+    assert "| Lint    | `N/A` |" in guide
+
+
+def test_generator_leaves_invalid_config_and_existing_guide_intact(
+    project: Path,
+) -> None:
+    (project / ".claude/project-commands.json").write_text("invalid")
+    (project / ".claude/AGENTS.md").write_text("existing guide")
+
+    result = generate(project)
+
+    assert result.returncode != 0
+    assert "project-commands.json" in result.stderr
+    assert (project / ".claude/project-commands.json").read_text() == "invalid"
+    assert (project / ".claude/AGENTS.md").read_text() == "existing guide"
+
+
+def test_worker_worktree_inherits_untracked_command_overrides(
+    project: Path, tmp_path: Path
+) -> None:
+    for arguments in (
+        ["init", "--quiet"],
+        [
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "--quiet",
+            "--allow-empty",
+            "-m",
+            "initial",
+        ],
+    ):
+        subprocess.run(
+            ["git", "-C", str(project), *arguments], check=True, capture_output=True
+        )
+    configure(project, {"test": "printf '%s' 'worker tests'", "lint": None})
+    (project / ".claude/AGENTS.md").write_text("project guidance")
+    worktree = tmp_path / "worker worktree"
+
+    result = shell(
+        project,
+        'create_worker_worktree "$2" "$3" worker\ndetect_test_command "$3"',
+        str(worktree),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.endswith("printf '%s' 'worker tests'\n")
+    assert (worktree / ".claude/project-commands.json").read_bytes() == (
+        project / ".claude/project-commands.json"
+    ).read_bytes()
+    assert (worktree / ".claude/AGENTS.md").read_text() == "project guidance"

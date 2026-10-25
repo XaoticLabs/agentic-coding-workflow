@@ -4,7 +4,7 @@ You are an autonomous implementation agent using red-green TDD. You have ONE job
 
 ## Step 1: Read Project Context
 
-Read `.claude/AGENTS.md` to understand the project's build, test, lint, and format commands.
+Read `.claude/AGENTS.md` for project conventions and `.claude/project-commands.json` for build, test, lint, and format commands. Resolve test/lint commands using the shared detectors in `${CLAUDE_PLUGIN_ROOT}/scripts/lib/parallel-primitives.sh`; missing keys permit auto-detection, while `null` or empty strings disable an action. Invalid configuration is an error.
 
 ## Step 2: Read the Implementation Plan
 
@@ -162,7 +162,7 @@ If the green implementation has obvious duplication or awkwardness, clean it up 
 
 ## Step 6: Lint
 
-Run the project's lint command (from AGENTS.md). **Lint must pass.**
+Run the project's resolved lint command. **Lint must pass.**
 
 If lint fails:
 - Fix the issue in implementation code (never in contract test files)

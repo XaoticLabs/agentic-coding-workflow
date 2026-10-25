@@ -83,7 +83,7 @@ If the prompt metadata indicates `UI evaluation: true`:
 
 ### 6a: Start the Dev Server
 
-Read AGENTS.md for the dev server command (e.g., `npm run dev`, `mix phx.server`). Start it in the background:
+Read the `run` command from `.claude/project-commands.json` (e.g., `npm run dev`, `mix phx.server`). Start it in the background:
 
 ```bash
 # Start server, wait for it to be ready

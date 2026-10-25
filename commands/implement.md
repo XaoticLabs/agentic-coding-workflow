@@ -41,8 +41,8 @@ Switch to autonomous mode — skip all interactive prompts and implement exactly
 4. **Search codebase first:** Before implementing, search for existing code matching the task's spec. If already done, mark complete and exit.
 5. **Read the task's spec file** (referenced in the plan's `Spec:` field)
 6. **Implement** following the spec — use existing patterns, don't add extras
-7. **Run tests** (detect command from `.claude/AGENTS.md` or fallback to common commands). Tests must pass.
-8. **Run lint** (detect command from `.claude/AGENTS.md`). Lint must pass.
+7. **Run tests** (resolve commands using `commands/shared-patterns.md`, which reads `.claude/project-commands.json` before auto-detection). Tests must pass.
+8. **Run lint** (use the same structured command configuration). Lint must pass.
 9. **Commit** with a descriptive message:
    ```
    feat: <what this task accomplishes>

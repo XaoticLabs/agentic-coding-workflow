@@ -103,13 +103,13 @@ Verify the spec directory exists. If not:
 
 ### Phase 4: Generate Project Guide
 
-Run the agents generator to ensure `.claude/AGENTS.md` is current:
+Run the agents generator to initialize `.claude/project-commands.json` and refresh `.claude/AGENTS.md`. Existing configured commands are preserved:
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/generate-agents-md.sh"
 ```
 
-If it detects "Unknown" project type, warn the user and suggest manually editing `.claude/AGENTS.md`.
+If it detects "Unknown" project type, warn the user and suggest configuring commands in `.claude/project-commands.json`.
 
 ### Phase 5: Planning Mode
 

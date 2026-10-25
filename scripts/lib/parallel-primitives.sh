@@ -11,6 +11,7 @@
 # Guard against double-sourcing
 [[ -n "${_PARALLEL_PRIMITIVES_LOADED:-}" ]] && return 0
 _PARALLEL_PRIMITIVES_LOADED=1
+_PROJECT_COMMANDS_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/project-commands.py"
 
 # ── Worktree lifecycle ─────────────────────────────────────────────────
 
@@ -58,9 +59,14 @@ create_worker_worktree() {
     cp -r "$spec_dir" "${worktree_path}/.claude/specs/${slug}/"
   fi
 
-  # Copy AGENTS.md if it exists
-  local agents_file="${repo_root}/.claude/AGENTS.md"
-  [ -f "$agents_file" ] && mkdir -p "${worktree_path}/.claude" && cp "$agents_file" "${worktree_path}/.claude/"
+  # Copy project guidance and command configuration, including untracked overrides.
+  local context_file
+  mkdir -p "${worktree_path}/.claude"
+  for context_file in AGENTS.md project-commands.json; do
+    if [ -f "${repo_root}/.claude/${context_file}" ]; then
+      cp "${repo_root}/.claude/${context_file}" "${worktree_path}/.claude/"
+    fi
+  done
 
   # Ensure .claude dirs exist for markers and logs
   mkdir -p "${worktree_path}/.claude/ralph-logs"
@@ -137,17 +143,20 @@ kill_session_safe() { kill_workspace_safe "$@"; }
 
 # ── Test/lint detection ───────────────────────────────────────────────
 
-# Detect the test command from AGENTS.md or common project files.
+# Detect the test command from project-commands.json or common project files.
 # Args: <project-dir>
 # Outputs: test command string (or empty)
 detect_test_command() {
   local project_dir="$1"
-  local agents_file="${project_dir}/.claude/AGENTS.md"
   local test_cmd=""
+  local config_status
 
-  # Try AGENTS.md first (Ralph convention)
-  if [ -f "$agents_file" ]; then
-    test_cmd=$(grep -A1 '| Test' "$agents_file" 2>/dev/null | tail -1 | sed 's/.*| `\(.*\)`.*/\1/' | sed 's/|//g' | xargs || true)
+  if test_cmd=$(python3 "$_PROJECT_COMMANDS_SCRIPT" get "$project_dir" test); then
+    printf '%s\n' "$test_cmd"
+    return 0
+  else
+    config_status=$?
+    [ "$config_status" -eq 1 ] || return "$config_status"
   fi
 
   # Fall back to file detection
@@ -171,20 +180,23 @@ detect_test_command() {
     fi
   fi
 
-  echo "$test_cmd"
+  printf '%s\n' "$test_cmd"
 }
 
-# Detect the lint command from AGENTS.md or common project files.
+# Detect the lint command from project-commands.json or common project files.
 # Args: <project-dir>
 # Outputs: lint command string (or empty)
 detect_lint_command() {
   local project_dir="$1"
-  local agents_file="${project_dir}/.claude/AGENTS.md"
   local lint_cmd=""
+  local config_status
 
-  # Try AGENTS.md first
-  if [ -f "$agents_file" ]; then
-    lint_cmd=$(grep -A1 '| Lint' "$agents_file" 2>/dev/null | tail -1 | sed 's/.*| `\(.*\)`.*/\1/' | sed 's/|//g' | xargs || true)
+  if lint_cmd=$(python3 "$_PROJECT_COMMANDS_SCRIPT" get "$project_dir" lint); then
+    printf '%s\n' "$lint_cmd"
+    return 0
+  else
+    config_status=$?
+    [ "$config_status" -eq 1 ] || return "$config_status"
   fi
 
   # Fall back to file detection
@@ -200,7 +212,7 @@ detect_lint_command() {
     fi
   fi
 
-  echo "$lint_cmd"
+  printf '%s\n' "$lint_cmd"
 }
 
 # Run test gate: execute test command, return 0 if pass, 1 if fail.
@@ -211,7 +223,10 @@ run_test_gate() {
   local log_file="${2:-/dev/null}"
 
   local test_cmd
-  test_cmd=$(detect_test_command "$project_dir")
+  if ! test_cmd=$(detect_test_command "$project_dir"); then
+    echo "Unable to read project test configuration." | tee "$log_file" >&2
+    return 1
+  fi
 
   if [ -z "$test_cmd" ]; then
     echo "  No test command detected — skipping test gate."

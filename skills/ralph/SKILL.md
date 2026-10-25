@@ -26,7 +26,7 @@ Manages autonomous Claude coding loops. Not user-invocable directly — invoked 
 | `scripts/notify.sh` | Cross-platform desktop notifications for loop events |
 | `scripts/check-overrides-staleness.sh` | Pre-flight check for stale override rules |
 | `scripts/validate-alignment.sh` | Pre-flight check for plan-spec criteria alignment |
-| `scripts/generate-agents-md.sh` | Auto-generates `.claude/AGENTS.md` project guide |
+| `scripts/generate-agents-md.sh` | Initializes `.claude/project-commands.json` (preserving overrides) and generates `.claude/AGENTS.md` |
 | `scripts/generate-briefing.sh` | Per-iteration context briefing with revert details and trends |
 | `scripts/generate-summary.sh` | Completion summary with metrics and PR description |
 | `scripts/generate-metrics.sh` | Trend analysis from journal: failure rates, hot files, patterns |
