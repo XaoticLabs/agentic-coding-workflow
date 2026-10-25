@@ -54,6 +54,9 @@ logs/
 *.temp
 .cache/
 
+# Native plugin evaluation reports (case definitions remain tracked)
+evals/results/
+
 # Claude runtime artifacts — ignore everything except checked-in rules
 .claude/*
 !.claude/rules/

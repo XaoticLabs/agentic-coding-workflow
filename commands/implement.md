@@ -9,6 +9,7 @@ allowed-tools:
   - AskUserQuestion
   - EnterPlanMode
   - ExitPlanMode
+  - EnterWorktree
 effort: high
 ---
 
@@ -81,9 +82,15 @@ Follow **Proportional Workflow** in `commands/shared-patterns.md`. Read relevant
 
 - **Small, clear change:** Proceed through the applicable implementation and verification phases without a separate plan document or approval round.
 - **Substantial or ambiguous change:** Resolve material uncertainty, maintain a concise conversational plan, then implement. Save a plan or generate a spec only when requested or useful for handoff. Ask questions only when their answers could change implementation, acceptance criteria, or risk.
-- **Unattended execution:** Use Ralph with agreed scope and limits, isolated work, and durable progress. Do not turn an interactive request into an unattended run without authorization.
+- **Ordinary unattended execution:** Follow **Native Goals and Session Continuity** in `commands/shared-patterns.md`. Use native `/goal` for continuation in the current isolated feature session. Run the same implementation and verification phases; do not require Ralph's task plan, generated briefings, commits, or a fresh session per task.
+- **Enforced limits or coordinated recovery:** Select Ralph when required for external iteration/time bounds, dependency waves, rollback, or durable executor records. Honor an explicit Ralph request and its gates. Do not turn an interactive request into unattended execution without authorization.
 
 Reassess after inspection. If a material scope or behavior decision emerges, explain it and resolve that decision before dependent work. Reuse decisions and authorization already supplied.
+
+Continue related tasks in this session and reuse relevant code context and user
+decisions. Use native compaction as needed; preserve the task's constraints and
+verification approach. After resume, inspect current state before retrying an
+interrupted operation. Keep required independent review in a separate context.
 
 **If `--plan` is selected:** Call `EnterPlanMode` before research. Present the concrete plan and use `ExitPlanMode` for approval when ready; do not add a second approval prompt with `AskUserQuestion`. Once approved, continue with Phase 2. For spec inputs, load Phase 1 during research first. Skip a new approval round if the same plan is already approved and the scope has not changed.
 
@@ -280,6 +287,7 @@ Report what changed, what was verified with actual outcomes, and any unresolved 
 - **Verify behavior** - Run checks appropriate to the change and all project-required gates
 - **Keep it atomic** - This should be a single, mergeable PR
 - **Commit when requested** - Interactive testing or acceptance-test approval does not require separate commits; Ralph commits completed work
+- **Continue related work** - Native goals and compaction do not impose a fresh session, spec, or commit after each task
 
 ## Example Usage
 

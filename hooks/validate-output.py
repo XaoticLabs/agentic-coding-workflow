@@ -45,6 +45,8 @@ import sys
 import importlib.util
 from pathlib import Path
 
+from project_directory import project_directory
+
 
 def validate_file_exists(rule: dict, project_dir: str) -> tuple[bool, str]:
     """Check that a file exists."""
@@ -194,7 +196,14 @@ def main():
     if input_data.get("stop_hook_active", False):
         sys.exit(0)
 
-    project_dir = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
+    try:
+        project_dir = project_directory(input_data)
+    except (OSError, ValueError, TypeError):
+        print(json.dumps({
+            "decision": "block",
+            "reason": "The active checkout is unavailable; output has not been verified.",
+        }))
+        return
     expectations_file = os.path.join(project_dir, ".claude", "expected-output.json")
 
     # No expectations set — nothing to validate

@@ -215,63 +215,25 @@ echo "All dependencies satisfied"
 
 ```python
 #!/usr/bin/env python3
-"""validate-thing.py — Validate [thing] against quality rules.
+"""validate-thing.py — Check an explicit structural contract.
 
-Usage: python validate-thing.py <path> [--json] [--verbose]
-Exit:  0 = score >= 70, 1 = score < 70, 2 = bad args
+Usage: python validate-thing.py <path> [--json]
+Exit:  0 = no errors, 1 = contract errors, 2 = unreadable input
 """
 
 import argparse
 import json
 import sys
-from dataclasses import dataclass, field
 from pathlib import Path
 
 
-@dataclass
-class Finding:
-    severity: str  # "error", "warning", "info"
-    message: str
-    suggestion: str = ""
-
-
-@dataclass
-class Category:
-    name: str
-    score: float
-    weight: float
-    findings: list = field(default_factory=list)
-
-
-def check_something(path: Path) -> Category:
-    """One check category — returns score and findings."""
-    cat = Category(name="something", score=100, weight=0.25)
-
-    if not (path / "important.txt").exists():
-        cat.score -= 30
-        cat.findings.append(Finding(
-            "error",
-            "Missing important.txt",
-            "Create important.txt with the required configuration"
-        ))
-
-    return cat
-
-
 def validate(path: Path) -> dict:
-    categories = [check_something(path)]
-    total_weight = sum(c.weight for c in categories)
-    score = sum(c.score * c.weight for c in categories) / total_weight
-
+    findings = []
+    if not (path / "important.txt").exists():
+        findings.append({"severity": "error", "message": "Missing important.txt"})
     return {
-        "score": round(score, 1),
-        "categories": [
-            {"name": c.name, "score": c.score, "findings": [
-                {"severity": f.severity, "message": f.message, "suggestion": f.suggestion}
-                for f in c.findings
-            ]}
-            for c in categories
-        ]
+        "valid": not any(item["severity"] == "error" for item in findings),
+        "findings": findings,
     }
 
 
@@ -281,21 +243,20 @@ if __name__ == "__main__":
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
+    if not args.path.is_dir():
+        parser.exit(2, "Input must be an existing directory.\n")
     results = validate(args.path)
     if args.json:
         print(json.dumps(results, indent=2))
     else:
-        print(f"Score: {results['score']}/100")
-        for cat in results["categories"]:
-            for f in cat["findings"]:
-                print(f"  [{f['severity']}] {f['message']}")
+        for finding in results["findings"]:
+            print(f"[{finding['severity']}] {finding['message']}")
 
-    sys.exit(0 if results["score"] >= 70 else 1)
+    sys.exit(0 if results["valid"] else 1)
 ```
 
 **Key patterns:**
-- Dataclasses for structured findings (no external dependencies)
-- Category-based scoring with weights
+- Report explicit contract failures without inventing quality weights
 - Both JSON and human-readable output modes
 - Exit code reflects pass/fail
 
@@ -453,10 +414,10 @@ Claude executes scripts via its Bash tool, which has specific characteristics:
 
 ```bash
 # Good — Claude can parse this
-echo '{"status": "pass", "score": 85, "issues": 2}'
+echo '{"status": "failed", "errors": ["Missing required configuration"]}'
 
 # OK — Claude can understand this
-echo "Score: 85/100 (2 issues found)"
+echo "ERROR: Missing required configuration"
 
 # Poor — Claude has to parse unstructured text
 echo "Well, I checked the thing and it was mostly OK..."
@@ -490,7 +451,7 @@ Create the project structure:
 bash ${CLAUDE_SKILL_DIR}/scripts/scaffold.sh <name> <target-dir>
 
 ### Validation
-Check skill quality (returns JSON with --json flag):
+Check structural contracts (returns JSON with --json flag):
 python3 ${CLAUDE_SKILL_DIR}/scripts/validate.py <skill-dir> --json
 
 ### Detection

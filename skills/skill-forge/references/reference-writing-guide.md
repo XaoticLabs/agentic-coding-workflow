@@ -76,35 +76,27 @@ For references with many rules or patterns, end with a condensed summary table o
 
 ---
 
-## Optimal Length
+## Scope and Context Cost
 
-### The Sweet Spot: 2,000-5,000 Words
-
-This range provides enough depth to be genuinely useful while keeping context cost manageable (~2,700-6,700 tokens).
-
-| Length | Tokens | Good For |
-|--------|--------|----------|
-| < 500 words | < 700 | Too thin — probably should be in SKILL.md |
-| 500-2,000 | 700-2,700 | Quick references, checklists, lookup tables |
-| 2,000-5,000 | 2,700-6,700 | Ideal for most domain knowledge |
-| 5,000-8,000 | 6,700-10,800 | Comprehensive guides — use sparingly |
-| > 8,000 | > 10,800 | Too large — split into sub-documents |
+Use the detail the task needs. Length is a cost to inspect, not a quality score
+or a target. A short schema, checklist, or API contract can justify its own
+reference when it is needed only for a particular mode. Evaluate whether the
+content changes decisions and improves representative outcomes.
 
 ### Signs a Reference is Too Short
 
 - It repeats what SKILL.md already says
-- It only has one section with a few bullet points
 - The AI could have generated this content from general knowledge
 - Loading it doesn't change the AI's behavior
 
-**Fix:** Either expand with genuinely useful domain knowledge, or fold the content into SKILL.md.
+**Fix:** Remove redundant content or fold shared essentials into SKILL.md. Add
+detail only when an actual task requires it; do not pad a reference to a quota.
 
 ### Signs a Reference is Too Long
 
 - It covers multiple distinct topics that are used independently
 - Sections are largely independent of each other
 - The AI only needs 20% of it for any given invocation
-- It exceeds 8,000 words
 
 **Fix:** Split into focused sub-documents by topic.
 
@@ -233,23 +225,21 @@ Too vague — the AI doesn't know when to look or what to look for. Be specific 
 
 - **Topics are used independently** — If you review security without needing style patterns, they should be separate files.
 - **Users have different needs** — If AWS users never need GCP content, split by provider.
-- **A section exceeds 3,000 words** — It's probably a topic worth its own file.
 - **Loading frequency differs** — If section A is needed 80% of the time and section B only 10%, keeping them together wastes context 90% of the time for B's content.
 
 ### Combine When
 
 - **Topics are always used together** — If you never check authentication without also checking authorization, they can share a file.
-- **Individual pieces are too small** — Three 400-word sections are better as one 1,200-word reference than three separate files.
+- **The same task needs every piece** — Combine closely related material when separate reads add overhead without avoiding irrelevant context.
 - **There's a natural narrative** — Sometimes a topic flows from setup → configuration → troubleshooting, and splitting it would lose coherence.
 - **Cross-references would be constant** — If splitting would require every section to say "see the other file for X", they belong together.
 
 ### The Decision Rule
 
-Ask: "When the AI loads this file, what percentage of it will typically be relevant?"
-
-- **> 70% relevant** → Keep combined
-- **30-70% relevant** → Consider splitting, but weigh the overhead of more files
-- **< 30% relevant** → Definitely split
+Use representative requests to determine what is usually read together.
+Keep jointly needed material combined; split independently used detail when
+that avoids irrelevant context. Compare outcomes and reading cost when the
+choice is uncertain.
 
 ---
 

@@ -239,6 +239,91 @@ def setup_source(project: Path, language: str) -> Path:
     return source
 
 
+@pytest.fixture
+def native_worktree(project: Path) -> Path:
+    setup_source(project, "python")
+    worktree = project / ".claude/worktrees/native worktree's files"
+    worktree.parent.mkdir(parents=True)
+    git(project, "worktree", "add", "--quiet", "-b", "native", str(worktree))
+    (worktree / "nested").mkdir()
+    return worktree
+
+
+def test_stop_verifies_the_native_worktree_instead_of_the_launch_checkout(
+    project: Path, native_worktree: Path
+) -> None:
+    (project / ".claude/project-commands.json").write_text(
+        json.dumps({"lint": None, "test": "python3 -c 'raise SystemExit(0)'"})
+    )
+    (native_worktree / ".claude/project-commands.json").write_text(
+        json.dumps({
+            "lint": None,
+            "test": "python3 -c 'import sys; print(\"native checkout failed\"); sys.exit(1)'",
+        })
+    )
+    result = invoke(
+        project,
+        "lint-on-stop.sh",
+        {"cwd": str(native_worktree / "nested"), "session_id": "native"},
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["decision"] == "block"
+    assert "native checkout failed" in json.loads(result.stdout)["reason"]
+    record = json.loads(next((native_worktree / ".claude/verification").glob("*.json")).read_text())
+    assert record["status"] == "failed"
+    assert not (project / ".claude/verification").exists()
+
+
+def test_output_and_audit_follow_the_active_native_checkout(
+    project: Path, native_worktree: Path
+) -> None:
+    (native_worktree / ".claude/expected-output.json").write_text(json.dumps({
+        "source": "native test", "rules": [{"type": "file_exists", "path": "report.txt"}],
+    }))
+    (project / "report.txt").write_text("The old checkout's report is not evidence.")
+    payload = {"cwd": str(native_worktree / "nested"), "session_id": "native"}
+    result = invoke(project, "validate-output.py", payload)
+    assert json.loads(result.stdout)["decision"] == "block"
+    (native_worktree / "report.txt").write_text("Actual report")
+    result = invoke(project, "validate-output.py", payload)
+    assert result.returncode == 0 and result.stdout == "", result.stderr
+    result = invoke(project, "audit-logger.py", {**payload, "tool_name": "Read"})
+    assert result.returncode == 0 and result.stdout == "", result.stderr
+    assert (native_worktree / ".claude/logs/tool-calls.jsonl").is_file()
+    assert not (project / ".claude/logs/tool-calls.jsonl").exists()
+
+
+@pytest.mark.parametrize("hook", ["lint-on-stop.sh", "validate-output.py"])
+def test_missing_active_checkout_cannot_fall_back_to_success(
+    project: Path, hook: str
+) -> None:
+    result = invoke(project, hook, {"cwd": str(project / "missing-worktree")})
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["decision"] == "block"
+
+
+def test_native_cwd_handling_preserves_a_project_inside_a_monorepo(
+    project: Path,
+) -> None:
+    component = project / "backend"
+    (component / ".claude").mkdir(parents=True)
+    (component / "src").mkdir()
+    (component / ".claude/expected-output.json").write_text(json.dumps({
+        "source": "backend", "rules": [{"type": "file_exists", "path": "report.txt"}],
+    }))
+    result = invoke(
+        project, "validate-output.py", {"cwd": str(component / "src")},
+        CLAUDE_PROJECT_DIR=str(component),
+    )
+    assert json.loads(result.stdout)["decision"] == "block"
+    (component / "report.txt").write_text("Backend report")
+    result = invoke(
+        project, "validate-output.py", {"cwd": str(component / "src")},
+        CLAUDE_PROJECT_DIR=str(component),
+    )
+    assert result.returncode == 0 and result.stdout == "", result.stderr
+
+
 @pytest.mark.parametrize("language", ["python", "elixir"])
 def test_stop_checks_committed_files_on_main_without_rewriting(
     project: Path, language: str

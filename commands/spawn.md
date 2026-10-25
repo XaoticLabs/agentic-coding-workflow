@@ -3,166 +3,102 @@ allowed-tools:
   - Read
   - Glob
   - Bash
-  - AskUserQuestion
 effort: low
 ---
 
-# Spawn Primary Claude Instance
+# Spawn a Claude Session
 
-Launches a new full Claude Code session in a tmux pane with an agent role preloaded as context. Use when work needs an independently visible, steerable session or a separate session lifecycle. Choose placement by required capabilities and oversight; implementation can also run in the current session or a suitably configured subagent.
+Launch a visible, steerable session with a plugin agent role. Use the current
+feature session for related tasks. Native compaction and resume manage its
+context; spawning a new session is an explicit lifecycle choice.
 
-## Input
+## Phase 1: Parse the request
 
-$ARGUMENTS - One of:
-- An agent role name: `researcher`, `test-writer`, `explorer`
-- An agent role + context: `evaluator --context pr-diff.patch`
-- An agent role + task prompt: `test-writer "Write tests for the auth module"`
-- An agent role + worktree: `test-writer --worktree feature-branch`
+Parse `$ARGUMENTS` as either:
 
-## Instructions
+- `<role> [--name <name>] [--worktree <name>] [--context <file>] [--goal <condition> | prompt]`
+- `--resume <session-name-or-id> [--context <file>] [--goal <condition> | prompt]`
 
-### Phase 1: Parse Arguments
+Roles correspond to `agents/<role>.md` in this plugin. `--context` is a helper
+option; the context file is read through the initial prompt, not a CLI flag.
 
-Extract from the input:
-- **Role name** (required) — matches a file in `agents/` directory
-- **`--context <file>`** (optional) — additional context file to load
-- **`--worktree <branch>`** (optional) — create/use a git worktree for isolation
-- **Task prompt** (optional) — quoted string describing what the instance should do
+Honor requests to prepare or explain a launch without executing it. Keep prompt
+and path values as data when constructing shell arguments.
 
-`--context` is an option of this slash command only. Load the file explicitly in the initial prompt; the Claude CLI uses documented `--agent` selection, not a `--context` flag. See the [CLI reference](https://code.claude.com/docs/en/cli-reference).
-
-**Validate the role:**
-```bash
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT}"
-ROLE_FILE="${PLUGIN_ROOT}/agents/${ROLE_NAME}.md"
-ls "$ROLE_FILE" 2>/dev/null || echo "ROLE_NOT_FOUND"
-```
-
-If role not found, list available roles:
-```bash
-ls "${PLUGIN_ROOT}/agents/"*.md 2>/dev/null | xargs -I{} basename {} .md
-```
-
-### Phase 2: Pre-flight Checks
+## Phase 2: Launch
 
 ```bash
-# Verify tmux
-command -v tmux >/dev/null 2>&1 || echo "TMUX_NOT_FOUND"
-
-# Verify claude CLI
-command -v claude >/dev/null 2>&1 || echo "CLAUDE_NOT_FOUND"
-
-# Check if in tmux session
-[ -n "$TMUX" ] || echo "NOT_IN_TMUX"
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-session.sh" researcher --worktree review-auth "Review authentication"
 ```
 
-If not in tmux, tell the user:
-> You need to be in a tmux session. Run: `tmux new-session -s work`
+The helper loads the plugin and selects its namespaced `--agent`. With
+`--worktree <name>`, it delegates creation and tmux setup to native
+`claude --worktree <name> --tmux`. The value is a native worktree name, not a
+promise to check out an existing branch of that name. No existing tmux session
+is required. Native Claude Code owns this worktree's lifecycle and exit prompts.
+See the [CLI reference](https://code.claude.com/docs/en/cli-reference).
 
-### Phase 3: Set Up Working Directory
+These are ordinary sessions, so the helper disables inherited `RALPH_MODE`
+build gates on both creation and resume. Ralph starts its workers through its
+own executor.
 
-**If `--worktree` specified:**
-```bash
-REPO_ROOT=$(git rev-parse --show-toplevel)
-WORKTREE_BASE="${REPO_ROOT}/.claude/worktrees"
-BRANCH_NAME="$WORKTREE_ARG"
-WORKTREE_PATH="${WORKTREE_BASE}/${BRANCH_NAME}"
+Name a new session with `--name`; otherwise an isolated session uses its
+worktree name. Related follow-ups stay there. `--resume <name-or-id>` delegates
+directly to native resume, which restores the saved agent and checkout. It does
+not create another worktree, reset the role, require tmux, or fall back to a
+fresh session when resolution fails. Use native `/resume` inside a running
+session. Avoid two workers writing to the same resumed transcript.
 
-# Ensure .claude/worktrees/ is gitignored
-if ! grep -q '\.claude/worktrees/' "${REPO_ROOT}/.gitignore" 2>/dev/null; then
-  echo -e '\n# Git worktrees\n.claude/worktrees/' >> "${REPO_ROOT}/.gitignore"
-fi
-
-mkdir -p "$WORKTREE_BASE"
-
-if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
-  git worktree add "$WORKTREE_PATH" "$BRANCH_NAME"
-else
-  git worktree add -b "$BRANCH_NAME" "$WORKTREE_PATH"
-fi
-```
-
-**If no worktree:** use the current project directory.
-
-### Phase 4: Launch Claude Instance
-
-Select the plugin agent and build an interactive Claude invocation. Resolve the extra context path before changing to a worktree:
+For an explicitly requested new goal session:
 
 ```bash
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT}"
-ROLE_FILE="${PLUGIN_ROOT}/agents/${ROLE_NAME}.md"
-WORK_DIR="${WORKTREE_PATH:-$(pwd)}"
-
-# Loading the plugin registers its agents and applies their frontmatter settings.
-CLAUDE_ARGS=(claude --plugin-dir "$PLUGIN_ROOT" --agent "agentic-coding-workflow:${ROLE_NAME}")
-INITIAL_PROMPT="${TASK_PROMPT:-}"
-
-# Add extra context if provided
-if [ -n "${CONTEXT_FILE:-}" ]; then
-  [ -r "$CONTEXT_FILE" ] || { echo "Context file not readable: $CONTEXT_FILE" >&2; exit 1; }
-  CONTEXT_FILE=$(realpath "$CONTEXT_FILE")
-  INITIAL_PROMPT="Read the context file at ${CONTEXT_FILE} before starting.
-
-${INITIAL_PROMPT}"
-fi
-
-# A positional initial prompt keeps the instance interactive and steerable.
-[ -z "$INITIAL_PROMPT" ] || CLAUDE_ARGS+=("$INITIAL_PROMPT")
-printf -v CMD '%q ' "${CLAUDE_ARGS[@]}"
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-session.sh" implementer --worktree auth-update --goal "The agreed auth criteria hold, and configured tests and lint pass with final results shown."
 ```
 
-Create a new tmux pane and send the command:
+`--goal` is a helper option, not a Claude CLI flag. The helper passes a positional
+`/goal <condition>` prompt to native Claude Code. Context instructions remain
+inside the goal condition so `/goal` stays at the beginning. It does not add another execution loop,
+generate a task plan, force commits, or change permissions. A plain prompt and
+`--goal` are mutually exclusive. Follow **Native Goals and Session Continuity**
+in `commands/shared-patterns.md`; native completion still needs real checks and
+required independent review.
 
-```bash
-# Run through Bash so the quoted argument array survives tmux's shell boundary.
-tmux split-window -h -c "$WORK_DIR" bash -lc "$CMD"
+An active native goal restores on resume. Pass `--goal` while resuming only
+when the user explicitly wants to replace the condition or start another one.
+Native resume can reject slash-command prompts to a running background session;
+report that result and use its native attach/resume flow instead of retrying
+in a new session. See [session restoration](https://code.claude.com/docs/en/sessions).
 
-# Rebalance panes
-tmux select-layout tiled
-```
+For new sessions without `--worktree`, the helper opens an interactive pane in
+the current checkout and requires an existing tmux session. This retains the explicit shared-checkout
+mode. The helper never uses print mode or manually creates a worktree.
 
-### Phase 5: Report
+For context files, the helper resolves the path before the session changes
+directories. For ignored environment files, use the project's `.worktreeinclude`
+configuration. Do not automatically copy secrets or install dependencies.
 
-```
-Spawned Claude instance!
+## Phase 3: Report
 
-| Setting    | Value                                    |
-|------------|------------------------------------------|
-| Role       | {ROLE_NAME}                              |
-| Context    | agents/{ROLE_NAME}.md                    |
-| Extra      | {CONTEXT_FILE or "none"}                 |
-| Directory  | {WORK_DIR}                               |
-| Worktree   | {WORKTREE_PATH or "none"}                |
-| Task       | {TASK_PROMPT or "interactive"}           |
-
-Switch to pane: Ctrl+B then arrow keys
-```
+Report the role or resumed session, goal/task, context file, session name, and
+whether the session shares the current checkout or uses native worktree isolation.
+For resume, let native restoration determine the checkout. Report launch
+failures as failures; starting a session is not evidence that its task completed. Native worktrees
+are not adopted by the plugin's automatic cleanup scripts.
 
 ## Error Handling
 
-- **Role not found:** List available roles and ask user to pick one
-- **Not in tmux:** Offer to create a session, or suggest running `tmux` first
-- **Claude not installed:** Direct user to install Claude Code
-- **Worktree conflict:** If branch already has a worktree, offer to reuse it
+- Missing role or unknown option: show the helper's usage and available agent files.
+- Missing Claude Code or tmux: report the missing dependency.
+- No tmux session in shared-checkout mode: use an existing session or select a native worktree if isolation suits the request.
+- Native trust, worktree, or launch failure: preserve the error and existing work; do not silently substitute manual creation.
+- Missing target or native resume failure: report the result; do not create a replacement session. Let native session selection resolve ambiguous names.
+- Goal plus task prompt, or resume plus role/name/worktree: reject the conflicting options.
 
 ## Example Usage
 
-```
+```text
 /agentic-coding-workflow:spawn researcher
-```
-Opens a new tmux pane with an interactive Claude session loaded with the researcher role.
-
-```
 /agentic-coding-workflow:spawn evaluator --context pr-diff.patch
+/agentic-coding-workflow:spawn implementer --worktree accounts --goal "The agreed accounts changes are implemented and verified."
+/agentic-coding-workflow:spawn --resume accounts
 ```
-Opens an evaluator instance and explicitly reads the PR diff as context.
-
-```
-/agentic-coding-workflow:spawn test-writer "Write integration tests for the accounts API"
-```
-Launches an interactive test writer with an initial task prompt.
-
-```
-/agentic-coding-workflow:spawn explorer --worktree explore/auth-system
-```
-Creates a worktree on a new branch and launches an explorer instance there.

@@ -11,10 +11,11 @@ Truncates large inputs (file contents, long commands) to keep logs manageable.
 """
 
 import json
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
+
+from project_directory import project_directory
 
 MAX_INPUT_LENGTH = 500  # Truncate tool_input values longer than this
 
@@ -63,7 +64,10 @@ def main():
     tool_input = input_data.get("tool_input", {})
     session_id = input_data.get("session_id", "unknown")
 
-    project_dir = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
+    try:
+        project_dir = project_directory(input_data)
+    except (OSError, ValueError, TypeError):
+        return
     log_dir = Path(project_dir) / ".claude" / "logs"
     log_file = log_dir / "tool-calls.jsonl"
 

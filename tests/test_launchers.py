@@ -251,3 +251,176 @@ if sys.argv[1] == 'split-window':
         "input": context.read_text(),
     }
     assert not (tmp_path / "injected").exists()
+
+
+@pytest.mark.parametrize("isolated", [True, False])
+def test_spawn_delegates_native_isolation_and_preserves_arguments(
+    tmp_path: Path, isolated: bool
+) -> None:
+    record = tmp_path / "invocation.json"
+    executable(
+        tmp_path / "bin/claude",
+        "import json, os, sys\nfrom pathlib import Path\n"
+        "Path(os.environ['TEST_SPAWN']).write_text(json.dumps({'argv': sys.argv[1:], 'cwd': os.getcwd()}))\n",
+    )
+    executable(
+        tmp_path / "bin/tmux",
+        "import subprocess, sys\n"
+        "assert sys.argv[1] == 'split-window'\n"
+        "sys.exit(subprocess.run(sys.argv[-3:]).returncode)\n",
+    )
+    # Any manual Git worktree creation would invoke this stub and fail the test.
+    executable(tmp_path / "bin/git", "raise SystemExit('unexpected manual Git call')\n")
+    context = tmp_path / "context's $(touch injected).txt"
+    context.write_text("Review context\n")
+    prompt = "Review 'quoted' context; $(touch injected) `touch injected`"
+    flags = ["--worktree", "review-auth"] if isolated else []
+    result = subprocess.run(
+        [
+            "bash", str(ROOT / "scripts/spawn-session.sh"), "researcher",
+            *flags, "--context", context.name, "--", prompt,
+        ],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "PATH": f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}",
+            "TMUX": "" if isolated else "existing",
+            "TEST_SPAWN": str(record),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    expected = [
+        "--plugin-dir", str(ROOT), "--agent", "agentic-coding-workflow:researcher",
+        *(["--name", "review-auth"] if isolated else []),
+        *(["--worktree", "review-auth", "--tmux"] if isolated else []),
+        f"Read the context file at {context} before starting.\n\n{prompt}",
+    ]
+    assert json.loads(record.read_text()) == {"argv": expected, "cwd": str(tmp_path)}
+    assert not (tmp_path / "injected").exists()
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [[], ["../researcher"], ["missing-role"], ["researcher", "--worktree"],
+     ["researcher", "--context", "missing.txt"], ["researcher", "--unknown"],
+     ["implementer", "--goal", ""], ["implementer", "--goal", "   "],
+     ["implementer", "--goal", "done", "another prompt"],
+     ["implementer", "--goal", "x" * 4001],
+     ["implementer", "--resume", "existing"],
+     ["--resume"], ["--resume", "existing", "--worktree", "new"],
+     ["--resume", "existing", "--name", "replacement"]],
+)
+def test_spawn_rejects_invalid_input_without_launching(
+    tmp_path: Path, arguments: list[str]
+) -> None:
+    record = tmp_path / "launched"
+    executable(tmp_path / "bin/claude", f"from pathlib import Path\nPath({str(record)!r}).touch()\n")
+    executable(tmp_path / "bin/tmux", "raise SystemExit('unexpected tmux call')\n")
+    result = subprocess.run(
+        ["bash", str(ROOT / "scripts/spawn-session.sh"), *arguments],
+        cwd=tmp_path,
+        env={**os.environ, "PATH": f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert not record.exists()
+
+
+@pytest.mark.parametrize("isolated", [True, False])
+def test_native_goal_is_one_literal_prompt_with_context_and_a_persistent_name(
+    tmp_path: Path, isolated: bool
+) -> None:
+    record = tmp_path / "goal.json"
+    executable(
+        tmp_path / "bin/claude",
+        "import json, os, sys\nfrom pathlib import Path\n"
+        "Path(os.environ['TEST_GOAL']).write_text(json.dumps({'argv': sys.argv[1:], 'ralph_mode': os.environ.get('RALPH_MODE')}))\n",
+    )
+    executable(
+        tmp_path / "bin/tmux",
+        "import os, subprocess, sys\n"
+        "assert sys.argv[1] == 'split-window'\n"
+        "env = {**os.environ, 'RALPH_MODE': '1'}\n"
+        "sys.exit(subprocess.run(sys.argv[-3:], env=env).returncode)\n",
+    )
+    executable(tmp_path / "bin/git", "raise SystemExit('unexpected Git call')\n")
+    context = tmp_path / "context's $(touch injected).md"
+    context.write_text("Acceptance criteria\n")
+    condition = "The 'auth' tests pass; $(touch injected) `touch injected`"
+    result = subprocess.run(
+        [
+            "bash", str(ROOT / "scripts/spawn-session.sh"), "implementer",
+            "--name", "auth-feature", *(["--worktree", "auth"] if isolated else []),
+            "--context", context.name, "--goal", condition,
+        ],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "PATH": f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}",
+            "TMUX": "" if isolated else "existing",
+            "RALPH_MODE": "1",
+            "TEST_GOAL": str(record),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(record.read_text()) == {
+        "argv": [
+            "--plugin-dir", str(ROOT), "--agent", "agentic-coding-workflow:implementer",
+            "--name", "auth-feature", *(["--worktree", "auth", "--tmux"] if isolated else []),
+            f"/goal Read the context file at {context} before starting.\n\n{condition}",
+        ],
+        "ralph_mode": "0",
+    }
+    assert not (tmp_path / "injected").exists()
+    assert not (tmp_path / ".claude").exists()
+
+
+@pytest.mark.parametrize("native_status", [0, 37])
+@pytest.mark.parametrize("condition", [None, "The next related task is verified."])
+def test_resume_keeps_the_native_session_and_propagates_failure_without_restart(
+    tmp_path: Path, native_status: int, condition: str | None
+) -> None:
+    record = tmp_path / "resume.jsonl"
+    executable(
+        tmp_path / "bin/claude",
+        "import json, os, sys\n"
+        "assert os.environ.get('RALPH_MODE') == '0'\n"
+        "with open(os.environ['TEST_RESUME'], 'a') as stream:\n"
+        "    stream.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+        "sys.exit(int(os.environ['TEST_NATIVE_STATUS']))\n",
+    )
+    executable(tmp_path / "bin/tmux", "raise SystemExit('resume must not launch tmux')\n")
+    executable(tmp_path / "bin/git", "raise SystemExit('resume must not create a worktree')\n")
+    session = "auth's $(touch injected)"
+    result = subprocess.run(
+        [
+            "bash", str(ROOT / "scripts/spawn-session.sh"), "--resume", session,
+            *(["--goal", condition] if condition else []),
+        ],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "PATH": f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}",
+            "TMUX": "",
+            "RALPH_MODE": "1",
+            "TEST_RESUME": str(record),
+            "TEST_NATIVE_STATUS": str(native_status),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == native_status, result.stderr
+    assert [json.loads(line) for line in record.read_text().splitlines()] == [[
+        "--plugin-dir", str(ROOT), "--resume", session,
+        *([f"/goal {condition}"] if condition else []),
+    ]]
+    assert not (tmp_path / "injected").exists()

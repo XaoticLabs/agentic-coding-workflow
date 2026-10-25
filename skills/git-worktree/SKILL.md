@@ -8,7 +8,7 @@ description: |
   Keywords: worktree, git worktree, parallel branches, multiple working directories,
   branch isolation, git add worktree, worktree status, worktree cleanup, remove worktrees,
   clean worktrees, prune worktrees, worktree activity, monitor worktrees, check progress.
-allowed-tools: Bash, Read, AskUserQuestion
+allowed-tools: Bash, Read, AskUserQuestion, EnterWorktree, ExitWorktree
 effort: low
 user-invocable: true
 ---
@@ -19,7 +19,8 @@ user-invocable: true
 
 | Command | Description |
 |---------|-------------|
-| `/agentic-coding-workflow:git-worktree add [branch]` | Create worktree (creates branch if needed) |
+| `/agentic-coding-workflow:git-worktree add [name]` | Enter a native isolated worktree in this session |
+| `/agentic-coding-workflow:git-worktree add --managed <branch>` | Create an owned worktree for a specialized executor |
 | `/agentic-coding-workflow:git-worktree list` | Show all worktrees |
 | `/agentic-coding-workflow:git-worktree remove [name]` | Remove a worktree |
 | `/agentic-coding-workflow:git-worktree status` | Dashboard of all worktrees with activity |
@@ -33,18 +34,32 @@ git rev-parse --is-inside-work-tree 2>/dev/null || echo "NOT_A_GIT_REPO"
 
 If not a git repo, inform user and stop.
 
-Use the same `WORKTREE_OWNER_TOKEN` for all calls in a session. Scripts inherit it,
+For managed worktrees only, use the same `WORKTREE_OWNER_TOKEN` for all calls in a session. Scripts inherit it,
 or use `CLAUDE_SESSION_ID` when available. Standalone callers should export a unique
 token before creating worktrees and retain it for later cleanup. Ownership is recorded
 in the linked worktree's Git metadata; existing or legacy worktrees are never adopted.
 
-## /worktree add [branch]
+## /worktree add [name]
+
+Use native `EnterWorktree` to create or enter the requested checkout. Report the
+actual path and branch returned by the tool; a native worktree name is not an
+existing branch selection. Native `ExitWorktree` owns its keep/remove lifecycle.
+For a new isolated tmux session, use `claude --worktree <name> --tmux` or `/spawn`.
+Do not create a manual worktree or require an existing tmux session first.
+See the [native worktree documentation](https://code.claude.com/docs/en/worktrees).
+
+### Explicit managed creation
+
+Use this path only for `add --managed <branch>` or a specialized executor that
+needs exact branch selection and the plugin's ownership/preservation contract:
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/skills/git-worktree/scripts/worktree-add.sh" "<branch>"
 ```
 
-Output: `CREATED:<path>` or `EXISTS:<path>`. Report path and `cd` command to switch.
+Output: `CREATED:<path>` or `EXISTS:<path>`. Report the actual path; an existing
+worktree is not adopted. Native and user-created worktrees remain outside this
+ownership contract and are preserved by automatic cleanup.
 
 ## /worktree list
 
@@ -55,6 +70,10 @@ bash "${CLAUDE_PLUGIN_ROOT}/skills/git-worktree/scripts/worktree-list.sh"
 Formats output as a table: path, branch, commit. Highlights worktrees under `.claude/worktrees/`.
 
 ## /worktree remove [name]
+
+For a native worktree, use native `ExitWorktree` with its keep/remove flow in
+the owning session. The scripts below apply only to plugin-owned worktrees;
+unknown ownership is preserved rather than bypassed with raw deletion.
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/skills/git-worktree/scripts/worktree-remove.sh" "<name>"

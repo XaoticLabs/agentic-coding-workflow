@@ -10,7 +10,8 @@ Use the least elaborate workflow that resolves material uncertainty and produces
 |------|------------------|
 | Small, clear change | Inspect relevant context → implement → verify → report |
 | Substantial feature | Clarify material uncertainty → maintain a concise plan → implement → verify → review |
-| Long unattended task | Approve scope and limits → execute in isolation → preserve progress → verify outcomes → present evidence |
+| Ordinary unattended work | Define a measurable native `/goal` → continue in one isolated feature session → verify → review |
+| Enforced limits or coordinated recovery | Select Ralph with agreed boundaries → execute in owned worktrees → verify → review |
 
 - Choose the initial path from the task's uncertainty, impact, reversibility, and scope. A short permissions change may require careful planning; a broad mechanical edit may be straightforward.
 - Inspect relevant code and existing behavior first. Reassess the path when inspection reveals a material decision, dependency, or risk. Explain a change of path briefly; ask only when a decision needs user input.
@@ -21,7 +22,42 @@ Use the least elaborate workflow that resolves material uncertainty and produces
 
 - Use the current checkout for clear interactive work when project policy permits. Use an isolated worktree for unattended execution, concurrent changes, or an explicit isolation request; reuse an appropriate existing worktree.
 - Verify every change using checks appropriate to its behavior and consequences, including project-required gates. Add behavioral or regression tests where useful; use direct inspection or targeted validation for changes without testable behavior. Report actual checks, outcomes, and unresolved limitations. Never imply an unrun check passed.
-- Before unattended execution, establish scope, completion checks, iteration/time limits, allowed operations, and stop conditions. Preserve commits, task status, and recovery evidence. If a material decision exceeds the agreed scope, preserve progress and stop for input. Build authorization does not itself authorize publishing.
+- Before unattended execution, establish scope, completion checks, allowed operations, and stop conditions. Use the native goal path when conversational continuation is sufficient. Select Ralph when externally enforced iteration/time limits, dependency waves, rollback, or durable executor records are required. If a material decision exceeds the agreed scope, preserve progress and stop for input. Build authorization does not itself authorize publishing.
+
+## Native Goals and Session Continuity
+
+Keep related implementation tasks in the current feature session. Use native
+automatic compaction, or `/compact` with focus instructions when needed. Carry
+acceptance criteria, user decisions, allowed operations, remaining work, and
+verification commands across compaction. Recheck results when the source state
+changes; a summary of an earlier passing check is not evidence for later edits.
+No spec directory, generated briefing, per-task commit, or session restart is
+required by this path. Honor explicitly selected approvals and project gates.
+
+For ordinary unattended work, use native `/goal` in an appropriate isolated
+session. State a measurable completion condition, the checks that demonstrate
+it, and relevant constraints. Let native Claude Code own continuation and its
+goal status. Do not add a keep-working hook, custom goal state, or an outer
+loop. Native goals retain the session's permission mode. Time/turn clauses are
+judged from conversation evidence; use Ralph when an enforced bound is needed.
+Native completion does not replace deterministic verification or independent
+review required by **Test and Verification Integrity**.
+
+Enter `/goal <condition>` directly in the current Claude session. For an
+explicitly requested separate session, `/spawn implementer --worktree <name>
+--goal "<condition>"` passes the native command as its initial prompt. Do not
+claim to activate a built-in command by writing it in a report or storing a
+marker. A normal implementation request can proceed without configuring a goal.
+Use [native goal controls](https://code.claude.com/docs/en/goal) for status and
+clearing; an impossible verdict, a cleared goal, or an error is not acceptance.
+
+Name sessions by feature. After an interruption, use native `/resume <name>` or
+`claude --resume <name>` and inspect current files and interrupted commands
+before continuing. The launcher also supports `/spawn --resume <name>`; a
+failed resume must not silently start a new session. Never resume one transcript
+into two active workers. Start fresh for unrelated work, strict isolation, or
+demonstrated context degradation. Independent reviewers and explicit Ralph
+workers keep separate contexts. See [session controls](https://code.claude.com/docs/en/sessions).
 
 ## External Actions and Approval
 
@@ -135,21 +171,22 @@ When a command accepts a file path, directory, or pattern:
 
 ## Worktree Creation
 
-Standard worktree setup for commands that need branch isolation:
+For interactive isolation, use native `EnterWorktree` to create or enter the
+appropriate checkout in the current session. Resolve external context paths
+before switching. Use native `ExitWorktree` and its keep/remove flow when done;
+preserve work and required artifacts before removal. Do not repeat manual Git
+creation or edit `.gitignore` on every command invocation.
 
-```bash
-REPO_ROOT=$(git rev-parse --show-toplevel)
-WORKTREE_BASE="${REPO_ROOT}/.claude/worktrees"
+For a separate isolated session, use `claude --worktree <name> --tmux` or the
+`spawn` command. Native names need not match an existing branch name. Carry
+ignored environment files through project-owned `.worktreeinclude` settings.
+See the [worktree documentation](https://code.claude.com/docs/en/worktrees).
 
-# Ensure .claude/worktrees/ is gitignored
-grep -q '\.claude/worktrees/' "${REPO_ROOT}/.gitignore" 2>/dev/null || \
-  echo -e '\n.claude/worktrees/' >> "${REPO_ROOT}/.gitignore"
-
-mkdir -p "$WORKTREE_BASE"
-
-# Create worktree on a new branch
-git worktree add -b "<branch-name>" "${WORKTREE_BASE}/<branch-name>"
-```
+The Ralph, review, and dependency-aware parallel executors retain their owned
+worktree helpers for lifecycle tracking, exact branch placement, preservation,
+and merge checks. They must not adopt native or user-created worktrees for
+automatic removal. If native isolation is unavailable, report the limitation
+rather than silently replacing it with a different lifecycle.
 
 ## Error Handling Template
 

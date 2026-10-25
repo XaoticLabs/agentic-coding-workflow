@@ -13,7 +13,7 @@ source "${SCRIPT_DIR}/lib/common.sh"
 
 input=$(read_hook_input)
 echo "$input" | jq -e 'type == "object"' >/dev/null 2>&1 || exit 0
-cd_project
+cd_project "$input"
 STATE_SCRIPT="${SCRIPT_DIR}/verification-state.py"
 
 # Detect project type

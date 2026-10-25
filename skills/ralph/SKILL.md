@@ -1,14 +1,11 @@
 ---
 name: ralph
 description: |
-  Autonomous coding loop using Geoffrey Huntley's Ralph methodology. Repeatedly invokes
-  Claude with fresh context, using git and files as memory. Each iteration picks one task,
-  implements it, tests it, commits, updates the plan, and exits. Backpressure from tests
-  and lint ensures quality without human oversight. Includes separated evaluator for
-  independent code evaluation and tiered evaluation modes (end-of-run or per-iteration).
-  Keywords: ralph, autonomous loop, autonomous coding, auto-implement, headless, unattended,
-  batch implement, ralph loop, geoffrey huntley, self-driving, auto-pilot coding, evaluator,
-  evaluation.
+  Specialized Ralph executor for explicit Ralph requests, enforced iteration/time
+  limits, dependency-ordered workers, rollback, and durable run records. Uses
+  isolated single-task iterations, external verification, and independent integrity
+  review. Ordinary unattended feature work uses native /goal in a continuing
+  session; it does not require this executor.
 allowed-tools: Bash, Read, Write, Glob, Grep
 effort: medium
 user-invocable: false
@@ -17,6 +14,11 @@ user-invocable: false
 # Ralph Loop Orchestrator
 
 Manages autonomous Claude coding loops. Not user-invocable directly — invoked by the `/agentic-coding-workflow:ralph` command.
+
+Select this executor for its scheduling, enforced boundaries, or recovery
+contract. Native `/goal` is the default continuation mechanism for ordinary
+unattended work. A fresh context per Ralph task is an explicit executor isolation
+boundary; related tasks outside Ralph stay in their feature session.
 
 ## Scripts
 
@@ -219,7 +221,7 @@ uses `git branch -d`; cleanup never falls back to filesystem deletion.
 
 ### Evaluation Results
 
-All evaluation modes use `scripts/evaluate.py`: `ACCEPT`, `REVISE`, `ERROR`, or `NOT_RUN`.
+All evaluation modes use `${CLAUDE_PLUGIN_ROOT}/scripts/evaluate.py`: `ACCEPT`, `REVISE`, `ERROR`, or `NOT_RUN`.
 The evaluator has Read, Glob, and Grep under native restricted permissions; it cannot run
 shell commands, write source or verdict files, or call MCP tools. The controller supplies
 diff/log evidence, validates structured CLI output against the score and evidence contract,

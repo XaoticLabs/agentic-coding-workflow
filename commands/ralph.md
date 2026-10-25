@@ -11,7 +11,14 @@ effort: medium
 
 # Ralph — Autonomous Coding Loop
 
-Launches Geoffrey Huntley's Ralph loop: autonomous Claude iterations that pick tasks, implement, test, commit, and update the plan — no human in the loop.
+Launches the specialized Ralph executor for agreed external iteration/time
+limits, dependency waves, rollback, and durable run records. Its isolated
+workers pick tasks, implement, verify, commit, and update the plan.
+
+For ordinary unattended work, prefer native `/goal` in a continuing feature
+session using **Native Goals and Session Continuity** in
+`commands/shared-patterns.md`. An explicit `/ralph` request selects this
+executor and retains all of its gates; do not silently redirect it.
 
 ## Input
 

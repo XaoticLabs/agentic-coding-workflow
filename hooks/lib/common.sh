@@ -1,5 +1,6 @@
 #!/bin/bash
 # Shared utilities for hook scripts
+HOOK_LIBRARY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Read hook input from stdin (call once, store result)
 # Usage: HOOK_INPUT=$(read_hook_input)
@@ -22,8 +23,13 @@ check_ralph_mode() {
   [ "${RALPH_MODE}" = "1" ]
 }
 
-# Change to project directory or exit gracefully
-# Usage: cd_project
+# Follow hook cwd after native EnterWorktree; never verify the old checkout.
+# Usage: cd_project "$input"
 cd_project() {
-  cd "$CLAUDE_PROJECT_DIR" || exit 0
+  local directory input="${1:-}"
+  [ -n "$input" ] || input='{}'
+  if ! directory=$(printf '%s\n' "$input" | python3 "${HOOK_LIBRARY_DIR}/../project_directory.py") || ! cd "$directory"; then
+    echo '{"decision":"block","reason":"Cannot enter the active checkout. Verification is unavailable; completion has not been verified."}'
+    exit 0
+  fi
 }

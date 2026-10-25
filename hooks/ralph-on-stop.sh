@@ -10,7 +10,7 @@ source "${SCRIPT_DIR}/lib/common.sh"
 input=$(read_hook_input)
 check_stop_hook_active "$input" && exit 0
 check_ralph_mode || exit 0
-cd_project
+cd_project "$input"
 
 # ── Gate 1: Plan update enforcement ──────────────────────────────────
 

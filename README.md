@@ -42,7 +42,8 @@ Then type any of these:
 - `/agentic-coding-workflow:prime` — loads your project context (git history, docs, structure)
 - `/agentic-coding-workflow:implement "<change>"` — inspects, implements, verifies, and reports; plans when needed
 - `/agentic-coding-workflow:plan` — get a concise plan for a substantial or ambiguous task
-- `/agentic-coding-workflow:ralph` — autonomous mode
+- `/goal <measurable completion condition>` — ordinary unattended continuation in the same session
+- `/agentic-coding-workflow:ralph` — specialized execution with enforced limits and recovery
 
 ## Why This Exists
 
@@ -56,13 +57,28 @@ Use the least elaborate workflow that resolves material uncertainty and produces
 |------|------------------|
 | Small, clear change | Inspect relevant context → implement → verify → report |
 | Substantial feature | Clarify material uncertainty → maintain a concise plan → implement → verify → review |
-| Long unattended task | Approve scope and limits → execute in isolation → preserve progress → verify outcomes → present evidence |
+| Ordinary unattended work | Set a native `/goal` → continue in one isolated feature session → verify → review |
+| Enforced limits or coordinated recovery | Select Ralph with agreed boundaries → execute in owned worktrees → verify → review |
 
 Choose by uncertainty, impact, reversibility, and scope. Inspection may reveal a need for more planning, or show that existing context is sufficient. Clarification ends when the outcome, scope, material decisions, and verification approach are clear. Every path includes verification and reports its evidence and limitations.
 
 For interactive work, a conversational plan is often enough. Save a plan or generate a detailed spec when requested or useful for handoff. `/plan --interview` selects deeper questioning; `/write-spec` selects detailed specification; `/explain` and `/review --learn` select teaching; `/implement --approve-tests` selects explicit approval of acceptance-test expectations. `/implement --plan` selects plan mode and plan approval, and `--worktree` requests isolation. These are optional modes, with no fixed question or document-length quotas.
 
-**Autonomous mode (Ralph):** Uses Geoffrey Huntley's Ralph methodology — an autonomous coding loop where Claude picks tasks, implements, tests, commits, and updates the plan. Unattended execution adds agreed limits, isolated worktrees, stop conditions, durable progress, and completion evidence. Ralph preserves acceptance criteria with behavioral/regression testing, external checks, and mandatory independent verification-integrity review. RED/GREEN commits are optional; test files are not frozen. Corrections or possible coverage reductions need rationale and review, and human-approved expectations need human approval to change. The launch command confirms scope and limits before starting unless those settings are already authorized.
+**Ordinary unattended work:** Use native `/goal` in a continuing feature session.
+Keep related tasks and their decisions together, compact context when needed,
+and resume the named session after an interruption. The normal path does not
+require a spec directory, task partitioner, generated briefings, or a commit and
+fresh session after every task. Deterministic verification and required
+independent review still apply.
+
+**Specialized execution (Ralph):** Select this executor for enforced iteration/time
+limits, dependency waves, rollback, or durable execution records. It uses
+isolated single-task workers, external checks, and mandatory independent
+verification-integrity review. RED/GREEN commits are optional; test files are
+not frozen. Corrections or possible coverage reductions need rationale and
+review, and human-approved expectations need human approval to change. The
+launch command confirms scope and limits before starting unless those settings
+are already authorized.
 
 ## Commands
 
@@ -85,7 +101,7 @@ For interactive work, a conversational plan is often enough. Save a plan or gene
 | `/agentic-coding-workflow:ralph` | Autonomous coding loop. Works through every task unattended — implements, tests, commits, updates the plan, repeats. Supports `--once` (one observed autonomous iteration), `--clean-room` (greenfield), `--harvest` (extract patterns), `--parallel` (multiple worktrees), `--checkpoint-every=N` (human steering pauses), `--eval-gates-merge` (require a fresh end-of-run ACCEPT verdict before merge), and `--time-budget=N` (per-iteration time limit). Desktop notifications for key events. |
 | `/agentic-coding-workflow:parallel` | Spins up N worktrees with tmux panes and Claude sessions for parallel task work. |
 | `/agentic-coding-workflow:reunify` | Merges parallel worktree branches back, runs tests after each merge, resolves conflicts, and verifies against the spec. |
-| `/agentic-coding-workflow:spawn` | Launches a full Claude Code session in a tmux pane with an agent role preloaded — for when you need a visible, steerable instance. |
+| `/agentic-coding-workflow:spawn` | Starts a named plugin agent with native worktree/tmux support; `--goal` starts native continuation, and `--resume <session>` restores existing work. |
 | `/agentic-coding-workflow:dashboard` | Live tmux dashboard monitoring all active worktrees and Claude activity. |
 
 ### Debugging & Analysis
@@ -113,8 +129,7 @@ For interactive work, a conversational plan is often enough. Save a plan or gene
 
 | Skill | What it does |
 |-------|--------------|
-| `/agentic-coding-workflow:checkpoint` | Manage session checkpoints — save, list, restore, fork, rewind |
-| `/agentic-coding-workflow:git-worktree` | Manages git worktrees — add, list, remove, status dashboard, and cleanup |
+| `/agentic-coding-workflow:git-worktree` | Uses native interactive worktrees; retains owned-worktree creation, status, preservation, and cleanup for specialized executors |
 | `/agentic-coding-workflow:parallel` | Creates multiple worktrees with tmux panes and Claude sessions for parallel work |
 | `/agentic-coding-workflow:reunify` | Reunifies parallel worktree branches back onto a parent feature branch |
 | `/agentic-coding-workflow:skill-forge` | Build, fix, and optimize Claude Code skills — scaffolding, progressive disclosure, eval-driven iteration |
@@ -123,6 +138,34 @@ For interactive work, a conversational plan is often enough. Save a plan or gene
 | `pr-reviewer` | The brains behind `/agentic-coding-workflow:review` — uses the PERFECT framework (Purpose, Edge Cases, Reliability, Form, Evidence, Clarity, Taste) with repository-grounded findings and explicit verification limits. Knows Elixir and Python patterns, auto-detects language |
 | `ralph` | Orchestrates autonomous Ralph loop iterations with separated evaluator, tiered evaluation modes, pre-flight checks (override staleness, plan-spec alignment), and desktop notifications |
 | `data-analytics` | Database querying and data analysis support — MCP server config, connection setup, SQL help |
+
+### Native sessions and recovery
+
+The custom `/agentic-coding-workflow:checkpoint` skill has been retired. Use
+native `/rewind` for session recovery, `/resume` to continue a saved session,
+and `/branch` for a conversation branch. Existing `.claude/checkpoints/` files
+are left untouched; their metadata and notes do not restore conversation state
+or uncommitted file contents. Keep durable history in Git. Native recovery has
+[documented coverage and retention limits](https://code.claude.com/docs/en/checkpointing).
+Ralph's `--checkpoint-every` remains a separate human steering pause.
+
+For ordinary interactive isolation, use native `EnterWorktree` in a session or
+`claude --worktree <name> --tmux` for a new one. `/spawn <role> --worktree <name>`
+loads the plugin's agent and delegates the same setup to Claude Code. Names
+follow native worktree semantics. Shared-checkout panes and specialized Ralph,
+review, and parallel executors retain their explicit lifecycle controls. Plugin
+cleanup preserves native worktrees, whose lifecycle is managed by Claude Code.
+See the [native worktree guide](https://code.claude.com/docs/en/worktrees).
+
+Keep one session for related feature work. `/spawn` uses `--name` when supplied,
+or the worktree name for an isolated session. Return with `/resume <name>` or
+`/spawn --resume <name>`; the latter restores the saved agent and checkout
+without creating another worktree. Native compaction retains a summary; keep
+the criteria, decisions, constraints, remaining work, and verification commands
+in focus. Recheck current state after resume, including interrupted commands.
+Start fresh for unrelated work, strict isolation, or demonstrated context
+degradation. Independent reviewers and explicit Ralph workers keep their own
+contexts. See [session management](https://code.claude.com/docs/en/sessions).
 
 ## Agents
 
@@ -223,9 +266,39 @@ For a detailed handoff, select the spec workflow:
 9. `/agentic-coding-workflow:review --spec` — Make sure it matches the spec
 10. `/agentic-coding-workflow:ship` — Create the PR
 
-### Long unattended task (Ralph loop)
+### Ordinary unattended feature work
 
-Best when scope and completion checks are clear and you'd rather review a finished branch. Unattended execution can apply to either small or substantial work; it adds isolation and execution limits to the task's planning needs.
+In an already isolated feature session, enter the completion condition directly:
+
+```text
+/goal The agreed authentication criteria hold, and the project's configured tests and lint pass with final results shown.
+```
+
+To start a separate named feature session with the plugin's implementation role:
+
+```text
+/agentic-coding-workflow:spawn implementer --worktree auth-update --goal "The agreed authentication criteria hold, and configured tests and lint pass with final results shown."
+```
+
+This delegates to native `/goal` as the initial prompt, names the session
+`auth-update`, and leaves permission handling unchanged. Continue related
+follow-ups there. Use `/goal` for status, `/goal clear` to clear the condition,
+and native `/compact` when a focused summary would help. Return later with
+`claude --resume auth-update`; an active goal restores with the session, while
+an achieved or cleared goal does not. Set a new goal explicitly when needed.
+
+Write conditions that can be demonstrated by real checks. The native evaluator
+judges surfaced conversation evidence and does not inspect the environment
+independently. A time/turn clause is model-judged, not an enforced process limit.
+Keep deterministic checks and required independent review; use Ralph when
+external bounds or executor recovery are required. An impossible verdict or a
+cleared goal is not verified completion. See [native goals](https://code.claude.com/docs/en/goal).
+
+### Enforced limits and coordinated recovery (Ralph)
+
+Use Ralph when the task needs its external limits, scheduling, rollback, or
+durable executor records. Its one-task worker sessions remain an explicit
+isolation boundary. Ordinary serial feature work uses the native goal path above.
 
 1. `/agentic-coding-workflow:prime` — Load context
 2. `/agentic-coding-workflow:plan AI-1234` — Plan the feature
@@ -241,4 +314,35 @@ Best when scope and completion checks are clear and you'd rather review a finish
 For greenfield work, add `--clean-room` to skip codebase search. For large features, `--parallel 3` splits work across worktrees — three independent Claude instances working through dependency-ordered tasks simultaneously.
 
 **"Where do I start?"**
-Run `claude` in a project and use `/agentic-coding-workflow:implement "<clear change>"`. For an ambiguous feature, start with `/agentic-coding-workflow:plan`. Select `/agentic-coding-workflow:ralph` when you want bounded unattended execution.
+Run `claude` in a project and use `/agentic-coding-workflow:implement "<clear change>"`.
+For an ambiguous feature, start with `/agentic-coding-workflow:plan`. Keep related
+tasks in that session. Use native `/goal` for ordinary unattended continuation;
+select `/agentic-coding-workflow:ralph` for enforced bounds or executor recovery.
+
+## Validation and behavioral evaluation
+
+Local structural diagnostics identify missing skill files, frontmatter fields,
+resources, and script issues. They do not assign a quality score or establish
+that a skill improves outcomes:
+
+```bash
+python3 skills/skill-forge/scripts/validate-skill.py skills/skill-forge --verbose
+python3 -m pytest -q
+bash scripts/validate-hooks.sh
+claude plugin validate .
+```
+
+Reusable native eval cases under `evals/` cover skill creation, a triggering
+near-miss, native isolated and goal sessions, feature-session resume, and
+workflow selection. With Claude Code
+v2.1.269 or later and model access, run them from this trusted checkout:
+
+```bash
+claude plugin eval . --allow-tools Write Edit --no-publish
+```
+
+The default comparison runs cases with and without the plugin. Inspect outcome
+differences, failures, cost, and duration; invocation checks diagnose triggering
+rather than prove an outcome improved. Runs use model calls and their results
+remain under ignored `evals/results/`. Native evals complement the deterministic
+repository tests. See [plugin eval documentation](https://code.claude.com/docs/en/plugin-evals).

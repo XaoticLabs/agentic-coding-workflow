@@ -13,7 +13,11 @@ user-invocable: true
 
 # tmux Multiplexer for Multi-Agent Coordination
 
-Orchestrate terminal panes and coordinate multiple Claude Code instances for parallel task execution.
+Use native `claude --worktree <name> --tmux` for an ordinary isolated Claude
+session, or `/agentic-coding-workflow:spawn` to select a plugin role. Native
+launches do not require an existing tmux session. Use this skill's pane helpers
+for explicit layouts, shared-checkout jobs, output capture, or coordination that
+needs those controls; do not recreate native worktree/session setup first.
 
 ## Quick Start
 
@@ -27,6 +31,9 @@ For tmux command syntax (sessions, windows, panes, layouts, key bindings), load 
 ## Claude Code Patterns
 
 ### Launch Claude in New Pane
+
+These are specialized print-mode jobs in the current checkout. They finish after
+one invocation. Use native worktree launch or `/spawn` for interactive sessions.
 
 ```bash
 # Split and run claude with prompt

@@ -44,11 +44,28 @@ Keep changes focused and review maintainability in context: clear responsibiliti
 |------|------------------|
 | Small, clear change | Inspect relevant context → implement → verify → report |
 | Substantial feature | Clarify material uncertainty → maintain a concise plan → implement → verify → review |
-| Long unattended task | Approve scope and limits → execute in isolation → preserve progress → verify outcomes → present evidence |
+| Ordinary unattended work | Set a native `/goal` → continue in one isolated feature session → verify → review |
+| Enforced limits or coordinated recovery | Select Ralph with agreed boundaries → execute in owned worktrees → verify → review |
 
 `/agentic-coding-workflow:implement "<change>"` supports direct interactive work. `/agentic-coding-workflow:plan` writes a concise plan when context is sufficient; `--interview` selects deeper questioning. `/agentic-coding-workflow:write-spec` is available for detailed task handoffs. Teaching (`explain`, `review --learn`) and explicit contract-test approval (`implement --approve-tests`) remain selected modes. Planning, specs, new worktrees, and repeated approvals are not universal prerequisites. Verification and project-required gates apply to every path.
 
-Save generated artifacts in `.claude/plans/` and `.claude/specs/` when needed. Use `/agentic-coding-workflow:ralph` for unattended execution with agreed limits and isolated worktrees; it handles task partitioning, progress records, verification, and reunification. For manual parallel work, use `/agentic-coding-workflow:parallel` and `/agentic-coding-workflow:reunify`. Review and ship when requested; honor project approval policy and existing authorization using **External Actions and Approval** in `commands/shared-patterns.md`. Local files and approval grants do not authenticate human review.
+Keep related tasks in the current feature session. Use native compaction for
+context management and native resume after interruptions, preserving acceptance
+criteria, user decisions, remaining work, and verification requirements. Recheck
+current source state after resume. Fresh sessions remain appropriate for
+unrelated work, required isolation, demonstrated context degradation, and
+independent reviewers. Follow **Native Goals and Session Continuity** in
+`commands/shared-patterns.md`.
+
+Save generated artifacts in `.claude/plans/` and `.claude/specs/` when needed.
+Use native `/goal` for ordinary unattended continuation; it judges surfaced
+evidence and does not replace deterministic verification or required independent
+review. Select `/agentic-coding-workflow:ralph` for enforced iteration/time bounds,
+dependency waves, rollback, or durable executor records. For manual parallel
+work, use `/agentic-coding-workflow:parallel` and `/agentic-coding-workflow:reunify`.
+Review and ship when requested; honor project approval policy and existing
+authorization using **External Actions and Approval** in `commands/shared-patterns.md`.
+Local files and approval grants do not authenticate human review.
 
 Always inspect recent `git log` before committing and follow the repository's historical commit pattern. Current history uses concise, lowercase `type: description` subjects (for example, `fix: ...`), normally without a body.
 
@@ -58,7 +75,7 @@ Always inspect recent `git log` before committing and follow the repository's hi
 - Keep `hooks.json` as the single source of truth for hook registration
 - New scripts must be `chmod +x` and use appropriate shebangs
 - Reference materials are scoped to their skill — don't create global reference dumps
-- **Runtime artifacts go in `.claude/`** — plans, specs, checkpoints, prime-context, logs, and any other generated output. Never write runtime artifacts to top-level directories
+- **Runtime artifacts go in `.claude/`** — plans, specs, prime-context, logs, and generated workflow output. Native plugin evals write ignored results to `evals/results/`; keep their reusable case definitions under `evals/`.
 
 ## What NOT to Do
 
@@ -70,7 +87,7 @@ Always inspect recent `git log` before committing and follow the repository's hi
 
 ## Testing & Validation
 
-- Use `skills/skill-forge/scripts/validate-skill.py` to validate skill structure
+- Use `skills/skill-forge/scripts/validate-skill.py` for structural diagnostics, `claude plugin validate .` for native schema checks, and native `claude plugin eval .` plus deterministic tests for behavioral evidence. Structural diagnostics are not quality scores.
 - Optional audit and notification hooks fail open. Policy gates intentionally block unmet or unverifiable requirements; test failure and timeout behavior as well as successful checks.
 - **Local plugin development**: Validate with `claude plugin validate .`, then start a development session with `claude --plugin-dir "$PWD"`. From another project, pass the absolute path to this checkout. Reload components with `/reload-plugins` after edits, or restart the development session. Keep installed plugin caches managed by Claude Code. See the [plugin reference](https://code.claude.com/docs/en/plugins-reference) and [local plugin testing guide](https://code.claude.com/docs/en/plugins/create#load-a-plugin-for-one-session).
 
