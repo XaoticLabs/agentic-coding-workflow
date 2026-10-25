@@ -109,7 +109,7 @@ while pgrep -f "claude.*stage1" >/dev/null; do sleep 1; done
 
 # Stage 2: Review the generated code
 tmux new-window -n "stage2"
-tmux send-keys -t ":stage2" "claude --context /tmp/stage1.ts -p 'Review this code and suggest improvements' > /tmp/stage2.md" Enter
+tmux send-keys -t ":stage2" "claude -p 'Review this code and suggest improvements' < /tmp/stage1.ts > /tmp/stage2.md" Enter
 
 # Wait for stage 2
 sleep 2
@@ -117,7 +117,7 @@ while pgrep -f "claude.*stage2" >/dev/null; do sleep 1; done
 
 # Stage 3: Generate tests
 tmux new-window -n "stage3"
-tmux send-keys -t ":stage3" "claude --context /tmp/stage1.ts -p 'Generate comprehensive unit tests for this code' > /tmp/stage3.ts" Enter
+tmux send-keys -t ":stage3" "claude -p 'Generate comprehensive unit tests for this code' < /tmp/stage1.ts > /tmp/stage3.ts" Enter
 
 tmux select-window -t ":stage1"
 ```
@@ -177,7 +177,7 @@ done
 
 # Reduce phase will be manual or in another tab
 echo "After completion, synthesize with:"
-echo "claude -p 'Synthesize these accessibility findings' --context /tmp/a11y-*.md"
+echo "cat /tmp/a11y-*.md | claude -p 'Synthesize these accessibility findings'"
 ```
 
 ### 3.2 Distributed Code Search

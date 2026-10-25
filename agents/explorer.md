@@ -62,4 +62,4 @@ You are a systematic codebase explorer. Your job is to map out how systems work 
 ## Best Used As
 
 - **Subagent**: `Agent` tool with `subagent_type=Explore` — for targeted exploration questions
-- **Primary instance**: `claude --context agents/explorer.md` — for deep architectural understanding sessions
+- **Primary instance**: `claude --plugin-dir /path/to/agentic-coding-workflow --agent agentic-coding-workflow:explorer` — for deep architectural understanding sessions

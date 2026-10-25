@@ -73,6 +73,7 @@ def plugin(tmp_path: Path) -> Path:
     plugin_dir = tmp_path / "plugin with spaces"
     for relative in (
         LOOP,
+        Path("skills/ralph/scripts/options.sh"),
         Path("skills/ralph/scripts/orchestrate-parallel.sh"),
         Path("skills/ralph/scripts/merge-workers.sh"),
         Path("skills/ralph/references/PROMPT_build.md"),
@@ -97,6 +98,7 @@ def plugin(tmp_path: Path) -> Path:
     write_executable(
         tmp_path / "bin/claude",
         'cat > "$CLAUDE_PROJECT_DIR/prompt.txt"\n'
+        'printf "%s" "${RALPH_MODE:-}" > "$CLAUDE_PROJECT_DIR/ralph-mode.txt"\n'
         'if [ "$TEST_COMMIT" = true ]; then\n'
         '  printf "change\\n" > changed.txt\n'
         "  git add changed.txt\n"
@@ -118,7 +120,7 @@ def project(plugin: Path) -> Path:
     (spec / "IMPLEMENTATION_PLAN.md").write_text(
         "## Status: IN_PROGRESS\n- [ ] **Task 1: Pipeline status**\n"
     )
-    (project_dir / ".gitignore").write_text(".claude/\nprompt.txt\n")
+    (project_dir / ".gitignore").write_text(".claude/\nprompt.txt\nralph-mode.txt\n")
     git(project_dir, "init", "--quiet")
     git(project_dir, "config", "user.name", "Test")
     git(project_dir, "config", "user.email", "test@example.com")
@@ -197,6 +199,7 @@ def test_claude_status_reaches_recorded_outcomes(
     project: Path, time_budget: str, claude_exit: int
 ) -> None:
     result = run_loop(project, time_budget=time_budget, claude_exit=claude_exit)
+    assert (project / "ralph-mode.txt").read_text() == "1"
 
     assert result.returncode == (0 if claude_exit == 0 else 1), result.stderr
     outcome = "success" if claude_exit == 0 else f"error (code {claude_exit})"
@@ -728,6 +731,7 @@ PYRESULT
   fi
   if [ "$TEST_EVAL_CASE" = nonzero ]; then exit 7; fi
 else
+  printf '%s' "${RALPH_MODE:-}" > "$TEST_ROOT_PROJECT/.claude/worker-mode"
   echo implementation > changed.txt
   git add changed.txt
   git commit --quiet -m Implementation
@@ -873,6 +877,32 @@ def test_parallel_required_accept_gate_rejects_revise(
     )
     assert result.returncode == 1, result.stdout + result.stderr
     assert list((project / ".claude/worktrees").iterdir())
+
+
+def test_parallel_options_reach_workers_and_disable_all_evaluators(
+    plugin: Path, project: Path
+) -> None:
+    result = run_parallel(
+        plugin,
+        project,
+        flags=(
+            "--time-budget",
+            "42",
+            "--checkpoint-every",
+            "2",
+            "--no-eval",
+        ),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    run = next((project / ".claude/ralph/status-test/runs").iterdir())
+    output = next(
+        (run / "worktree-artifacts").glob("*/.claude/tmux-output.log")
+    ).read_text()
+    assert "Time budget: 42s" in output
+    assert "Checkpoint: every 2 iterations" in output
+    assert (project / ".claude/worker-mode").read_text() == "1"
+    assert "evaluate" not in (project / ".claude/order").read_text().splitlines()
+    assert json.loads((run / "eval-verdict.json").read_text())["verdict"] == "NOT_RUN"
 
 
 @pytest.mark.parametrize(

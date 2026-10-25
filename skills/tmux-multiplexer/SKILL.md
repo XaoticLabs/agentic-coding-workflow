@@ -33,7 +33,7 @@ For tmux command syntax (sessions, windows, panes, layouts, key bindings), load 
 tmux split-window -h "claude -p 'Review this code for bugs'"
 
 # Launch with context file
-tmux split-window -v "claude --context file.ts -p 'Explain this file'"
+tmux split-window -v "claude -p 'Explain this file' < file.ts"
 
 # Non-interactive with output capture
 tmux split-window -h "claude -p 'Generate unit tests' > /tmp/tests-output.txt 2>&1"

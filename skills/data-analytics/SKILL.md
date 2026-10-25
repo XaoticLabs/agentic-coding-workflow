@@ -28,7 +28,9 @@ This skill provides reference material for database connectivity and the `/agent
 
 ## References
 
-- `references/database-mcp-setup.md` — Full setup guide for Postgres, BigQuery, MySQL, SQLite via MCP servers, CLIs, or Docker Compose
+- Read `references/database-mcp-setup.md` when configuring or troubleshooting database access. It covers pinned DBHub for PostgreSQL, MySQL, and SQLite, plus the official BigQuery CLI.
+- Copy `references/dbhub.toml` when setting up the read-only DBHub tools; it reads the connection string from `ANALYTICS_DATABASE_URL`.
+- Run `scripts/smoke-test-db-mcp.py` when verifying or upgrading the pinned DBHub integration. It tests MCP initialization, tool discovery, a SQLite query, and write rejection using a temporary database.
 
 ## Related Commands
 

@@ -42,4 +42,4 @@ You are a focused research agent. Your job is to explore codebases, gather infor
 ## Best Used As
 
 - **Subagent**: `Agent` tool with this file as prompt context — for bounded research questions
-- **Primary instance**: `claude --context agents/researcher.md` — for open-ended exploration sessions
+- **Primary instance**: `claude --plugin-dir /path/to/agentic-coding-workflow --agent agentic-coding-workflow:researcher` — for open-ended exploration sessions

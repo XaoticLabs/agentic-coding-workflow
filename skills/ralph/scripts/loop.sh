@@ -6,10 +6,10 @@
 #   spec-dir:       Path to the spec directory containing IMPLEMENTATION_PLAN.md
 #   mode:           "build" (default), "plan", or "harvest"
 #   max-iterations: Maximum iterations before stopping (default: 50)
-#   --once:         Run a single iteration then stop (HITL mode)
+#   --once:         Run one observed autonomous iteration, then stop
 #   --clean-room:   Skip codebase search (greenfield mode)
 #   --time-budget:  Max seconds per iteration (default: 600, 0 = no limit)
-#   --checkpoint-every N: Pause for human steering every N iterations
+#   --checkpoint-every=N: Pause for human steering every N iterations
 #   --eval-gates-merge: Require a fresh end-of-run ACCEPT verdict before merging
 
 set -euo pipefail
@@ -17,22 +17,8 @@ set -euo pipefail
 SPEC_DIR="${1:?Usage: loop.sh <spec-dir> [mode] [max-iterations] [flags...]}"
 MODE="${2:-build}"
 MAX_ITERATIONS="${3:-50}"
-ONCE_FLAG=""
-CLEAN_ROOM_FLAG=""
-TIME_BUDGET="600"  # 10 minutes default, 0 = no limit
-CHECKPOINT_EVERY=""  # Pause for human steering every N iterations
-EVAL_GATES_MERGE=""  # Require a fresh end-of-run ACCEPT verdict
-
-# Check for flags in any position
-for arg in "$@"; do
-  case "$arg" in
-    --once)       ONCE_FLAG="1" ;;
-    --clean-room) CLEAN_ROOM_FLAG="1" ;;
-    --time-budget=*) TIME_BUDGET="${arg#--time-budget=}" ;;
-    --checkpoint-every=*) CHECKPOINT_EVERY="${arg#--checkpoint-every=}" ;;
-    --eval-gates-merge) EVAL_GATES_MERGE="1" ;;
-  esac
-done
+source "$(dirname "$(realpath "$0")")/options.sh"
+ralph_parse_options "${@:4}"
 
 PROJECT_DIR=$(realpath "${CLAUDE_PROJECT_DIR:-.}")
 SPEC_DIR=$(realpath "$SPEC_DIR")
@@ -661,7 +647,11 @@ ${BRIEFING}
     break
   fi
 
-  if run_claude_pipeline "$PROMPT" "$LOG_FILE" "$TRACE_FILE" "$TIME_BUDGET" "$STREAM_PROCESSOR" \
+  # Activate plan-update enforcement only for build calls, including workers.
+  # Planning, harvest, and evaluator calls must not inherit build-only hooks.
+  BUILD_RALPH_MODE=0
+  [ "$MODE" != build ] || BUILD_RALPH_MODE=1
+  if RALPH_MODE="$BUILD_RALPH_MODE" run_claude_pipeline "$PROMPT" "$LOG_FILE" "$TRACE_FILE" "$TIME_BUDGET" "$STREAM_PROCESSOR" \
     -p --dangerously-skip-permissions --verbose --model sonnet --output-format stream-json; then
     echo "Iteration ${ITERATION} completed successfully."
   else

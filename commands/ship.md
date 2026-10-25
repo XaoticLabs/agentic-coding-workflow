@@ -160,7 +160,15 @@ A PreToolUse hook (`ship-gate.sh`) will **block** `gh pr create` unless `.claude
 
 ```bash
 # Add approval marker — ship-gate.sh hook checks for this before allowing gh pr create
-sed -i '' '1s/^/<!-- user-approved -->\n/' .claude/pr-description.md
+python3 - <<'PYAPPROVAL'
+from pathlib import Path
+
+path = Path(".claude/pr-description.md")
+content = path.read_bytes()
+marker = b"<!-- user-approved -->\n"
+if not content.startswith(marker):
+    path.write_bytes(marker + content)
+PYAPPROVAL
 ```
 
 Only then proceed to Phase 6.

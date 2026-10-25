@@ -22,14 +22,8 @@ SLUG="${2:?Usage: orchestrate-parallel.sh <spec-dir> <slug> <num-workers> <max-i
 NUM_WORKERS="${3:?Usage: orchestrate-parallel.sh <spec-dir> <slug> <num-workers> <max-iterations> [flags...]}"
 MAX_ITERATIONS="${4:-50}"
 
-CLEAN_ROOM_FLAG=""
-EVAL_GATES_MERGE=""
-for arg in "$@"; do
-  case "$arg" in
-    --clean-room) CLEAN_ROOM_FLAG="--clean-room" ;;
-    --eval-gates-merge) EVAL_GATES_MERGE=1 ;;
-  esac
-done
+source "$(dirname "$(realpath "$0")")/options.sh"
+ralph_parse_options "${@:5}"
 
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 REPO_ROOT=$(git rev-parse --show-toplevel)
@@ -218,8 +212,7 @@ RUN_START_COMMIT=$(git rev-parse "$TARGET_BRANCH")
 
 BRANCH_PREFIX="ralph-${SLUG}/${RUN_TIMESTAMP}"
 BASH_PATH=$(command -v bash)
-FLAGS=""
-[ -n "$CLEAN_ROOM_FLAG" ] && FLAGS="$FLAGS --clean-room"
+printf -v FLAGS '%q ' "${RALPH_LOOP_FLAGS[@]}"
 
 # Track all created worktrees/branches for cleanup
 declare -a ALL_WORKTREE_PATHS=()
@@ -580,7 +573,7 @@ print(value["status"], value["merged"], value["failed"])
 
         # Inject evaluator findings into reconcile prompt
         export RALPH_EVAL_ISSUES="$EVAL_ISSUES"
-        RALPH_WORKER_ID="reconciler" "$SCRIPT_DIR/loop.sh" "$SPEC_DIR" reconcile 2 || true
+        RALPH_WORKER_ID="reconciler" "$SCRIPT_DIR/loop.sh" "$SPEC_DIR" reconcile 2 "${RALPH_LOOP_FLAGS[@]}" || true
         unset RALPH_EVAL_ISSUES
 
         EVAL_RETRY=$((EVAL_RETRY + 1))
@@ -595,7 +588,7 @@ print(value["status"], value["merged"], value["failed"])
   # Fall back to test-only reconciliation if eval not enabled or tests still failing
   if [ "$WAVE_TESTS_PASS" = false ] && [ "$WAVE_EVAL_VERDICT" != "REVISE" ]; then
     echo "Wave ${wave}: tests failing — running reconciliation..."
-    RALPH_WORKER_ID="reconciler" "$SCRIPT_DIR/loop.sh" "$SPEC_DIR" reconcile 3 || {
+    RALPH_WORKER_ID="reconciler" "$SCRIPT_DIR/loop.sh" "$SPEC_DIR" reconcile 3 "${RALPH_LOOP_FLAGS[@]}" || {
       echo "Wave ${wave}: reconciliation had issues."
     }
 
@@ -708,7 +701,7 @@ if [ "$AUTO_HARVEST" = "true" ]; then
     #   - RALPH_OVERRIDES.md (in spec dir)
     #   - Updates to AGENTS.md
     RALPH_WORKER_ID="" RALPH_NO_MERGE_PROMPT=1 \
-      "$SCRIPT_DIR/loop.sh" "$SPEC_DIR" harvest 1 2>"${RUN_DIR}/harvest-stderr.log" || {
+      "$SCRIPT_DIR/loop.sh" "$SPEC_DIR" harvest 1 "${RALPH_LOOP_FLAGS[@]}" 2>"${RUN_DIR}/harvest-stderr.log" || {
         echo "Warning: auto-harvest failed (non-fatal). Check ${RUN_DIR}/harvest-stderr.log"
       }
 

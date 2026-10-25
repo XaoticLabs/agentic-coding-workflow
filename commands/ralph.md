@@ -19,9 +19,11 @@ $ARGUMENTS - One of:
 - `<spec-slug>` — start autonomous build loop for the named spec
 - `<spec-slug> --parallel N` — run N parallel worktrees
 - `<spec-slug> --plan` — planning mode only (gap analysis, generate plan)
-- `<spec-slug> --once` — single iteration, watched (HITL mode for prompt tuning)
+- `<spec-slug> --once` — one observed autonomous iteration for prompt tuning
 - `<spec-slug> --clean-room` — greenfield mode, skip codebase search
 - `<spec-slug> --harvest` — extract patterns and conventions after a completed run
+- `<spec-slug> --checkpoint-every=N` — pause between iterations for human steering (requires a terminal)
+- `<spec-slug> --eval-gates-merge` — require a fresh end-of-run ACCEPT verdict before merge
 - `<spec-slug> --time-budget=N` — max seconds per iteration (default: 600, 0 = no limit)
 - `<spec-slug> --eval-per-iter` — enable per-iteration LLM evaluation (default: end-of-run only)
 - `<spec-slug> --no-eval` — disable all LLM evaluation (mechanical gates only)
@@ -38,13 +40,17 @@ Extract from `$ARGUMENTS`:
 - **--plan**: optional, planning-only mode
 - **--eval-per-iter**: optional, enable per-iteration LLM evaluation (for edge-of-capability tasks)
 - **--no-eval**: optional, disable all LLM evaluation
-- **--once**: optional, single iteration then stop (HITL mode)
+- **--once**: optional, one autonomous iteration in the foreground, then stop
 - **--clean-room**: optional, skip codebase search for greenfield work
 - **--harvest**: optional, extract patterns after completed run
 - **--status**: optional, show dashboard and exit
 - **--stop**: optional, create stop sentinel and exit
 - **--max N**: optional, max iterations (default 50)
 - **--time-budget=N**: optional, max seconds per iteration (default 600, 0 = unlimited)
+- **--checkpoint-every=N**: optional, pause between iterations every N iterations when a terminal is available
+- **--eval-gates-merge**: optional, require a fresh end-of-run ACCEPT verdict before merge
+
+Keep all option tokens after the slug in a Bash array named `RALPH_ARGS`. Pass them unchanged to `scripts/launch.sh`; its shared parser validates values and combinations. Do not construct flag strings, environment prefixes, or separate per-mode invocations. Both `--option=value` and `--option value` forms are supported for numeric options.
 
 ### Phase 2: Handle Quick Actions
 
@@ -76,20 +82,6 @@ Also read `.claude/specs/<slug>/IMPLEMENTATION_PLAN.md` and display:
 
 Exit after displaying.
 
-**If `--harvest`:**
-Run the loop in harvest mode (single iteration):
-
-```bash
-bash "${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/loop.sh" "$SPEC_DIR" harvest 1
-```
-
-This analyzes the completed ralph run, extracts reusable patterns, updates AGENTS.md with discovered conventions, and writes a harvest report to `.claude/ralph-logs/ralph-harvest-<slug>.md`.
-
-Exit after harvesting.
-
-**If `--once`:**
-Launch a single iteration in the foreground (not in tmux) for HITL prompt tuning. This lets you watch Ralph work on one task, validate the approach, then decide whether to go AFK.
-
 ### Phase 3: Validate Spec Directory
 
 ```bash
@@ -101,183 +93,45 @@ Verify the spec directory exists. If not:
 - If monolithic exists but no directory, suggest: "Run `/agentic-coding-workflow:write-spec ${SLUG} --ralph` to generate Ralph-compatible specs"
 - If nothing exists, list available specs and exit
 
-### Phase 4: Generate Project Guide
+### Phase 4: Confirm Launch
 
-Run the agents generator to initialize `.claude/project-commands.json` and refresh `.claude/AGENTS.md`. Existing configured commands are preserved:
+For `--plan` or `--harvest`, proceed directly to Phase 5.
 
-```bash
-bash "${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/generate-agents-md.sh"
-```
+Before a build, use AskUserQuestion to confirm the spec, worker count, iteration limit, timeout, checkpoints, and evaluation settings. Explain that Ralph runs Claude autonomously with `--dangerously-skip-permissions`, and stops via `/agentic-coding-workflow:ralph <slug> --stop`.
 
-If it detects "Unknown" project type, warn the user and suggest configuring commands in `.claude/project-commands.json`.
+`--once` runs one autonomous `claude -p` iteration in the foreground. You can observe its progress and inspect its output logs and commits afterward. It cannot ask for test approval during the iteration. For steering between iterations, use `--checkpoint-every=N` in a terminal; without a terminal, checkpoints are logged and execution continues.
 
-### Phase 5: Planning Mode
+### Phase 5: Launch Through the Shared Implementation
 
-**If `--plan` or no `IMPLEMENTATION_PLAN.md` exists:**
-
-Run the loop in planning mode (single iteration):
+Use the same launcher for planning, harvest, foreground, tmux, and parallel execution:
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/loop.sh" "$SPEC_DIR" plan 1
+bash "${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/launch.sh" "$SPEC_DIR" "${RALPH_ARGS[@]}"
 ```
 
-If `--plan` was explicitly requested, exit after planning.
-If plan was auto-generated because it didn't exist, continue to Phase 5b.
+The launcher initializes `.claude/project-commands.json`, preserving overrides, and refreshes `.claude/AGENTS.md`. If no plan exists, it runs one planning iteration before building. `--plan` and `--harvest` run one iteration and exit; `--once` builds once in the foreground. Other builds launch a tmux window or session. `--parallel N` selects the full parallel orchestrator and forwards the same timeout, checkpoint, and evaluation options to its workers and reconciliation loops. Parallel mode is exclusive with `--once`, `--plan`, and `--harvest`. `--no-eval` disables both per-iteration and final evaluation and cannot be combined with `--eval-per-iter` or `--eval-gates-merge`.
 
-### Phase 6: Launch Loop
-
-**Confirm with user before launching:**
-
-Use AskUserQuestion:
-> Ready to launch Ralph loop.
->
-> - Spec: `<slug>`
-> - Tasks: N incomplete (M total)
-> - Mode: build
-> - Max iterations: N
->
-> This will run Claude autonomously with `--dangerously-skip-permissions`.
-> Each iteration picks one task, implements it, tests it, and commits.
->
-> Stop anytime with: `/agentic-coding-workflow:ralph <slug> --stop`
->
-> Proceed? (yes/no)
-
-**If `--once` mode**, run in foreground:
+For example, these are shell invocations of that same entry point:
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/loop.sh" "$SPEC_DIR" build 1 --once $CLEAN_ROOM_FLAG
+bash "${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/launch.sh" "$SPEC_DIR" --once --time-budget=300
+bash "${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/launch.sh" "$SPEC_DIR" --checkpoint-every=5 --eval-gates-merge
+bash "${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/launch.sh" "$SPEC_DIR" --parallel 3 --time-budget=300 --eval-gates-merge
 ```
 
-Report what happened and suggest next steps: run another `--once`, or drop the flag to go AFK.
+### Phase 6: Report
 
-**Otherwise, launch in tmux:**
+For foreground runs, summarize the outcome and point to the logs. For tmux runs, report the session/window (`ralph-<slug>` or `ralph-<slug>-orch`) and how to attach or switch to it.
 
-```bash
-SESSION_NAME="ralph-${SLUG}"
+Include these paths and commands:
 
-# Check if already running (as window or session)
-ALREADY_RUNNING=false
-if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-  ALREADY_RUNNING=true
-elif [ -n "${TMUX:-}" ] && tmux list-windows -F '#{window_name}' 2>/dev/null | grep -q "^${SESSION_NAME}$"; then
-  ALREADY_RUNNING=true
-fi
+- Status: `/agentic-coding-workflow:ralph <slug> --status`
+- Stop: `/agentic-coding-workflow:ralph <slug> --stop`
+- Steering: write instructions to `.claude/ralph/inject.md`
+- Runs: `.claude/ralph/<slug>/runs/` (in the worktree during standalone builds)
+- Dashboard: `.claude/ralph/status.md`
 
-if [ "$ALREADY_RUNNING" = true ]; then
-  echo "Ralph '$SESSION_NAME' already running!"
-  echo "Switch: Ctrl-B n/p (tab) or tmux attach -t $SESSION_NAME (session)"
-  echo "Stop: /agentic-coding-workflow:ralph $SLUG --stop"
-  exit 0
-fi
-
-# Build flag string
-FLAGS=""
-[ -n "$CLEAN_ROOM_FLAG" ] && FLAGS="$FLAGS --clean-room"
-EVAL_ENV=""
-[ -n "$EVAL_PER_ITER_FLAG" ] && EVAL_ENV="RALPH_EVAL_PER_ITER=true"
-[ -n "$NO_EVAL_FLAG" ] && EVAL_ENV="RALPH_EVAL_END_OF_RUN=false"
-
-# Launch in tmux — window (tab) if already in tmux, new session if not
-LOOP_CMD="$EVAL_ENV bash '${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/loop.sh' '$SPEC_DIR' build $MAX_ITERATIONS $FLAGS; echo 'Ralph loop finished. Press enter to close.'; read"
-
-if [ -n "$TMUX" ]; then
-  tmux new-window -n "$SESSION_NAME" "$LOOP_CMD"
-else
-  tmux new-session -d -s "$SESSION_NAME" "$LOOP_CMD"
-fi
-```
-
-Report:
-```
-Ralph loop launched!
-
-Tab/Session: ralph-<slug>
-Worktree:    .claude/worktrees/<slug>-<run-id> (see launch output)
-Branch:      ralph-<slug>/<run-id>
-Switch:      Ctrl-B n/p (if tab) or tmux attach -t ralph-<slug> (if session)
-Status:      /agentic-coding-workflow:ralph <slug> --status
-Stop:        /agentic-coding-workflow:ralph <slug> --stop
-Steer:       echo 'instructions' > .claude/ralph/inject.md
-Run dir:     .claude/ralph/<slug>/runs/ (inside worktree)
-Journal:     .claude/ralph/<slug>/journal.tsv
-Dashboard:   .claude/ralph/status.md
-
-Changes land on the <slug> branch. Merge via ORC or `git merge <slug>`.
-```
-
-### Phase 7: Parallel Mode
-
-**If `--parallel N`:**
-
-1. Verify IMPLEMENTATION_PLAN.md exists (run planning mode if not)
-
-2. Verify N is between 2 and 6
-
-3. Check tmux is available: `command -v tmux >/dev/null 2>&1`
-
-4. Launch the full parallel lifecycle via the orchestrator script. This handles everything automatically: partitioning tasks with file affinity, creating worktrees, launching workers, polling for completion, merging branches, running reconciliation, and cleaning up.
-
-```bash
-# Build flag string
-FLAGS=""
-[ -n "$CLEAN_ROOM_FLAG" ] && FLAGS="$FLAGS --clean-room"
-
-PID_FILE=".claude/ralph/${SLUG}/orchestrator.pid"
-
-# Check if already running via PID file
-if [ -f "$PID_FILE" ]; then
-  EXISTING_PID=$(cat "$PID_FILE")
-  if kill -0 "$EXISTING_PID" 2>/dev/null; then
-    echo "Parallel orchestrator already running! (PID: $EXISTING_PID)"
-    echo "Attach: tmux attach -t ralph-${SLUG}-orch"
-    echo "Status: /agentic-coding-workflow:ralph $SLUG --status"
-    echo "Stop:   /agentic-coding-workflow:ralph $SLUG --stop"
-    exit 0
-  else
-    echo "Stale PID file found (process $EXISTING_PID not running). Cleaning up."
-    rm -f "$PID_FILE"
-  fi
-fi
-
-# Launch orchestrator in a dedicated tmux window/session for live visibility.
-# Its stdout shows banners, poll updates, and wave progress in real time.
-# Workers get their own tmux sessions per-wave; the orchestrator gets its own persistent pane.
-mkdir -p ".claude/ralph/${SLUG}"
-ORCH_SESSION="ralph-${SLUG}-orch"
-ORCH_CMD="bash ${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/orchestrate-parallel.sh $SPEC_DIR $SLUG $N $MAX_ITERATIONS $FLAGS"
-if [ -n "${TMUX:-}" ]; then
-  # Inside tmux — create a new window (tab) in the current session
-  tmux new-window -n "$ORCH_SESSION" -d "$ORCH_CMD"
-else
-  # Outside tmux — create a detached session
-  tmux kill-session -t "$ORCH_SESSION" 2>/dev/null || true
-  tmux new-session -d -s "$ORCH_SESSION" "$ORCH_CMD"
-fi
-```
-
-5. Report:
-```
-Ralph parallel orchestrator launched!
-
-Tmux:      tmux attach -t ralph-<slug>-orch  (live orchestrator output)
-PID:       $(cat .claude/ralph/<slug>/orchestrator.pid)
-Runs:      .claude/ralph/<slug>/runs/
-Journal:   .claude/ralph/<slug>/journal.tsv
-Branch:    <slug>
-Lifecycle: partition → wave → merge → reconcile → harvest → verify → evaluate → preserve → guarded cleanup (all automatic)
-
-Status:    /agentic-coding-workflow:ralph <slug> --status
-Stop:      /agentic-coding-workflow:ralph <slug> --stop
-Steer:     echo 'instructions' > .claude/ralph/inject.md
-```
-
-The orchestrator runs the full lifecycle automatically:
-- **Partition**: Tasks assigned to workers by file affinity (each file owned by one worker)
-- **Work**: N workers run in parallel, each in its own worktree and branch
-- **Merge**: Worker branches merged sequentially into the target branch (conflicts resolved by Claude)
-- **Reconcile**: Post-merge verification loop (max 3 iterations) ensures tests pass on combined code
-- **Cleanup**: Worktrees, branches, and temporary files removed
+Standalone builds preserve their worktree until merge/cleanup decisions finish. Parallel execution handles partitioning, waves, merging, reconciliation, verification, evaluation, and guarded cleanup. Report any preserved work or failed gate from the script output.
 
 ## Error Handling
 
@@ -291,7 +145,7 @@ The orchestrator runs the full lifecycle automatically:
 ```
 /agentic-coding-workflow:ralph auth-feature --once
 ```
-Single watched iteration (HITL mode) — validate your spec and plan before going AFK.
+One observed autonomous iteration — validate your spec and plan before going AFK.
 
 ```
 /agentic-coding-workflow:ralph auth-feature

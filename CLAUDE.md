@@ -43,7 +43,7 @@ There are two ways to throw more compute at a problem. Pick the right one:
 | Summarize recent commits | Subagent | Read-only, bounded |
 | Refactor a major system | Primary instance | High-stakes, needs oversight |
 
-**Agent definitions are shared context** — the same `agents/researcher.md` works as a subagent prompt (`Agent` tool) or a full instance context (`claude --context agents/researcher.md` or `/agentic-coding-workflow:spawn researcher`).
+**Agent definitions are shared context** — the same `agents/researcher.md` works as a subagent prompt (`Agent` tool) or a full instance context (`claude --plugin-dir /path/to/agentic-coding-workflow --agent agentic-coding-workflow:researcher` or `/agentic-coding-workflow:spawn researcher`).
 
 ## Workflow
 
@@ -68,7 +68,7 @@ The plugin's core workflow is: `/agentic-coding-workflow:prime` → `/agentic-co
 
 - Use `skills/skill-forge/scripts/validate-skill.py` to validate skill structure
 - Optional audit and notification hooks fail open. Policy gates intentionally block unmet or unverifiable requirements; test failure and timeout behavior as well as successful checks.
-- **Plugin cache vs working directory**: Edits to plugin files in the working directory don't take effect until the plugin cache is updated. The cache lives at `~/.claude/plugins/cache/`. To test changes immediately, copy modified files to the cache location
+- **Local plugin development**: Validate with `claude plugin validate .`, then start a development session with `claude --plugin-dir "$PWD"`. From another project, pass the absolute path to this checkout. Reload components with `/reload-plugins` after edits, or restart the development session. Keep installed plugin caches managed by Claude Code. See the [plugin reference](https://code.claude.com/docs/en/plugins-reference) and [local plugin testing guide](https://code.claude.com/docs/en/plugins/create#load-a-plugin-for-one-session).
 
 ## Learning & Output Styles
 

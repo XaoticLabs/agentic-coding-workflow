@@ -98,4 +98,4 @@ Return a JSON verdict:
 ## Best Used As
 
 - **Subagent**: In Ralph loop evaluator phase — grades one iteration's output, returns verdict
-- **Primary instance**: `claude --context agents/evaluator.md` — for detailed code review sessions where you want to steer the evaluation
+- **Primary instance**: `claude --plugin-dir /path/to/agentic-coding-workflow --agent agentic-coding-workflow:evaluator` — for detailed code review sessions where you want to steer the evaluation

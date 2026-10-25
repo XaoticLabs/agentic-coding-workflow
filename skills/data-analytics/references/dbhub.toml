@@ -1,0 +1,13 @@
+[[sources]]
+id = "analytics"
+dsn = "${ANALYTICS_DATABASE_URL}"
+
+[[tools]]
+name = "execute_sql"
+source = "analytics"
+readonly = true
+max_rows = 100
+
+[[tools]]
+name = "search_objects"
+source = "analytics"

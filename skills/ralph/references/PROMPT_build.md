@@ -102,24 +102,11 @@ Contract tests for: <task name>
 - <criterion 2>
 ```
 
-**In HITL mode (`--once`):** After this commit, present the failing tests to the user for confirmation. Use AskUserQuestion:
-> RED tests committed for Task N: `<name>`
->
-> Tests written:
-> - `<test file>`: `<test name>` — verifies <what>
-> - `<test file>`: `<test name>` — verifies <what>
->
-> These tests will become the immutable contract — once confirmed, they cannot be modified during implementation.
->
-> Are these tests correct? (yes / no / adjust: <feedback>)
-
-If the user says "no" or provides adjustment feedback, update the tests, re-run to confirm they still fail for the right reasons, amend the contract commit, and ask again. Repeat until confirmed.
-
-**In autonomous mode:** The contract commit locks automatically. No confirmation step — you are autonomous and must get the tests right the first time. Study the spec carefully before writing them.
+**All runs, including `--once`, are autonomous `claude -p` invocations.** The contract locks when committed. Do not use AskUserQuestion or wait for approval during an iteration. Study the spec carefully before writing the tests. With `--once`, the user observes one complete iteration and reviews the results afterward; steering happens before a later run or between iterations at a launcher checkpoint.
 
 **CONTRACT IMMUTABILITY RULE — This is the single most important rule in the TDD flow:**
 
-Once the contract commit exists (confirmed by user in HITL, or committed in autonomous):
+Once the contract commit exists:
 - **Test files from the contract commit are FROZEN.** You may not modify, delete, rename, skip, or mark as expected-failure any test from the contract commit.
 - **You may only ADD new test files or new test cases** — never change existing contract tests.
 - **If a test is "wrong"**, that means your understanding of the spec is wrong, not that the test needs changing. Re-read the spec.
@@ -210,8 +197,7 @@ You are done. Exit cleanly. Do NOT pick up another task — the outer loop will 
 - **One task per iteration.** Never do more than one.
 - **Red before green.** Write failing tests first, then implement. The tests are the spec made executable. Skip only for non-testable tasks (config, wiring, deletion).
 - **Never modify contract tests.** Once committed in Step 4b, test files from the contract commit are frozen. If a test seems wrong, re-read the spec — don't weaken the test. This is non-negotiable.
-- **No questions (autonomous mode).** You are autonomous. Make reasonable decisions. The human may be asleep — do not pause, ask, or hedge. If you are unsure, make the best call you can and document your reasoning in the Learnings section.
-- **Confirm tests (HITL mode).** In `--once` mode, present contract tests for user confirmation before implementing. This is the one exception to "no questions."
+- **No questions (including `--once`).** You are autonomous. Make reasonable decisions. Do not pause for approval inside an iteration. If unsure, document your reasoning in the Learnings section for later review.
 - **Never give up.** If your first approach doesn't work, try a different one. If you run out of ideas, think harder. A failed iteration that produces no commit wastes tokens and time. The only acceptable no-commit outcome is discovering the task is already done.
 - **Must commit.** Every iteration produces at least two commits: the contract tests (RED) and the implementation (GREEN). Or marks a task as already done.
 - **Must update plan.** The plan is the shared state between iterations.

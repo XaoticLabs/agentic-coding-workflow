@@ -65,12 +65,14 @@ Plan and harvest modes run in-place (read-only/analytical, no commits). Parallel
 
 ## Workflow
 
-### HITL Mode (--once)
+### Observed Autonomous Iteration (--once)
 
 1. Generate project guide: `scripts/generate-agents-md.sh`
 2. Run single iteration: `scripts/loop.sh <spec-dir> build 1 --once`
-3. Watch Ralph work on one task, validate approach
+3. Observe the autonomous `claude -p` run and review its output and commits afterward. There is no interactive approval inside the iteration.
 4. Graduate to AFK mode once prompts are tuned
+
+All command launches use `scripts/launch.sh <spec-dir> [options...]`. It shares `scripts/options.sh` with the loop and orchestrator so foreground, tmux, and parallel paths receive the same options.
 
 ### Single-Track Mode (AFK)
 
@@ -150,7 +152,7 @@ Use this when:
 
 | Flag | Purpose |
 |------|---------|
-| `--once` | Single iteration, foreground (HITL mode) |
+| `--once` | One autonomous iteration, foreground; review afterward |
 | `--clean-room` | Skip codebase search — greenfield mode |
 | `--checkpoint-every=N` | Pause for human steering every N iterations |
 | `--eval-gates-merge` | Require a fresh end-of-run ACCEPT verdict before offering a merge |
@@ -160,7 +162,7 @@ Use this when:
 
 ### Steering Checkpoints (`--checkpoint-every=N`)
 
-Pauses the loop every N iterations for human input. At each checkpoint you can:
+Pauses the loop every N iterations for human input when stdin is a terminal. Without a terminal, it logs the checkpoint and continues. At each checkpoint you can:
 - **Continue** (Enter) — resume autonomous execution
 - **Stop** (s) — graceful stop at the checkpoint
 - **Inject** (i) — opens `inject.md` in your editor for mid-loop steering

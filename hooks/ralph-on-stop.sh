@@ -85,7 +85,7 @@ FAIL: <one-sentence description of the issue that must be fixed>
 
 Nothing else."
 
-VERDICT=$(echo "$JUDGE_PROMPT" | claude -p --model haiku --output-format text 2>/dev/null | tail -1)
+VERDICT=$(echo "$JUDGE_PROMPT" | RALPH_MODE=0 claude -p --model haiku --output-format text 2>/dev/null | tail -1)
 
 if echo "$VERDICT" | grep -q "^FAIL:"; then
   REASON=$(echo "$VERDICT" | sed 's/^FAIL: //')

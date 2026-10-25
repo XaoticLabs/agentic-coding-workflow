@@ -57,5 +57,5 @@ Write test files directly. Include a brief summary of what's covered and any not
 
 ## Best Used As
 
-- **Primary instance**: `claude --context agents/test-writer.md` — for writing tests with visibility and steering
+- **Primary instance**: `claude --plugin-dir /path/to/agentic-coding-workflow --agent agentic-coding-workflow:test-writer` — for writing tests with visibility and steering
 - **Subagent**: Only for small, well-defined test additions where the scope is clear

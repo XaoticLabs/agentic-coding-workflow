@@ -20,7 +20,7 @@ brew install --cask claude-code
 claude
 # then inside Claude Code:
 /plugin marketplace add XaoticLabs/agentic-coding-workflow
-/plugin install agentic-coding-workflow@xaoticlabs-marketplace
+/plugin install agentic-coding-workflow@agentic-coding-marketplace
 ```
 
 Alternatively, use the interactive UI:
@@ -72,7 +72,7 @@ Then type any of these:
 
 | Command | What it does |
 |---------|--------------|
-| `/agentic-coding-workflow:ralph` | Autonomous coding loop. Works through every task unattended — implements, tests, commits, updates the plan, repeats. Supports `--once` (HITL mode), `--clean-room` (greenfield), `--harvest` (extract patterns), `--parallel` (multiple worktrees), `--checkpoint-every=N` (human steering pauses), `--eval-gates-merge` (require a fresh end-of-run ACCEPT verdict before merge), and `--time-budget=N` (per-iteration time limit). Desktop notifications for key events. |
+| `/agentic-coding-workflow:ralph` | Autonomous coding loop. Works through every task unattended — implements, tests, commits, updates the plan, repeats. Supports `--once` (one observed autonomous iteration), `--clean-room` (greenfield), `--harvest` (extract patterns), `--parallel` (multiple worktrees), `--checkpoint-every=N` (human steering pauses), `--eval-gates-merge` (require a fresh end-of-run ACCEPT verdict before merge), and `--time-budget=N` (per-iteration time limit). Desktop notifications for key events. |
 | `/agentic-coding-workflow:parallel` | Spins up N worktrees with tmux panes and Claude sessions for parallel task work. |
 | `/agentic-coding-workflow:reunify` | Merges parallel worktree branches back, runs tests after each merge, resolves conflicts, and verifies against the spec. |
 | `/agentic-coding-workflow:spawn` | Launches a full Claude Code session in a tmux pane with an agent role preloaded — for when you need a visible, steerable instance. |
@@ -116,7 +116,7 @@ Then type any of these:
 
 ## Agents
 
-Reusable agent role definitions in `agents/` — work as both subagent prompts (via the `Agent` tool) and full primary instances (via `claude --context`).
+Reusable agent role definitions in `agents/` — work as both subagent prompts (via the `Agent` tool) and full primary instances (via `claude --plugin-dir /path/to/agentic-coding-workflow --agent agentic-coding-workflow:<role>`).
 
 | Agent | Role |
 |-------|------|
@@ -137,7 +137,7 @@ Tool approvals use Claude Code's normal permission handling.
 | `audit-logger.py` | PostToolUse / PostToolUseFailure | Logs all tool calls to `.claude/logs/tool-calls.jsonl` for audit and debugging |
 | `lint-on-stop.sh` | Stop | Checks formatting, lint, types, and tests across committed and working files without running fixes; records the verified revision and worktree fingerprint |
 | `rule-capture-on-stop.sh` | Stop | After implementation, prompts about capturing learned patterns as rules |
-| `ralph-on-stop.sh` | Stop | In Ralph mode, manages iteration handoff and plan updates |
+| `ralph-on-stop.sh` | Stop | During Ralph builds, enforces plan updates and reviews committed changes |
 | `validate-output.py` | Stop | Validates command output artifacts exist and contain required sections |
 | `toast-notify.sh` | Stop | Pops up a macOS notification when Claude needs your attention |
 | `stop-failure-logger.sh` | StopFailure | Logs API failures (rate limits, auth errors) and sends toast notifications |
@@ -206,7 +206,7 @@ Best when the spec is solid and you'd rather review a finished branch than babys
 2. `/agentic-coding-workflow:plan AI-1234` — Plan the feature
 3. `/agentic-coding-workflow:review --plan` — Critique the plan (don't skip — last chance to steer before Ralph takes over)
 4. `/agentic-coding-workflow:write-spec feature-name --ralph` — Generate atomic specs + implementation plan
-5. `/agentic-coding-workflow:ralph feature-name --once` — Run a single watched iteration to validate spec and plan (HITL mode)
+5. `/agentic-coding-workflow:ralph feature-name --once` — Observe one autonomous iteration, then review its results to validate the spec and plan
 6. `/agentic-coding-workflow:ralph feature-name` — Launch the autonomous loop
 7. Go do something else. Check back with `/agentic-coding-workflow:ralph feature-name --status` or read `.claude/ralph-status.md`
 8. Steer mid-loop by writing instructions to `.claude/ralph-inject.md`

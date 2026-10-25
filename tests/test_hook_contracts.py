@@ -52,6 +52,65 @@ def invoke(
     )
 
 
+@pytest.mark.parametrize("mode", ["0", "1"])
+def test_ralph_plan_update_gate_is_active_only_for_builds(
+    project: Path, mode: str
+) -> None:
+    (project / "IMPLEMENTATION_PLAN.md").write_text("- [ ] Task\n")
+    (project / "code.txt").write_text("before\n")
+    git(project, "add", ".")
+    git(project, "commit", "--quiet", "-m", "Initial")
+    base = git(project, "rev-parse", "HEAD")
+    (project / "code.txt").write_text("after\n")
+    git(project, "commit", "--quiet", "-am", "Implement without plan update")
+    result = invoke(
+        project,
+        "ralph-on-stop.sh",
+        {"stop_hook_active": False},
+        RALPH_MODE=mode,
+        RALPH_PRE_COMMIT=base,
+    )
+    assert result.returncode == 0, result.stderr
+    if mode == "1":
+        assert json.loads(result.stdout)["decision"] == "block"
+        assert "IMPLEMENTATION_PLAN.md was not updated" in result.stdout
+    else:
+        assert result.stdout == ""
+
+
+def test_ralph_quality_judge_does_not_reenter_build_hook(project: Path) -> None:
+    (project / "IMPLEMENTATION_PLAN.md").write_text("- [ ] Task\n")
+    (project / "code.txt").write_text("before\n")
+    git(project, "add", ".")
+    git(project, "commit", "--quiet", "-m", "Initial")
+    base = git(project, "rev-parse", "HEAD")
+    (project / "IMPLEMENTATION_PLAN.md").write_text("- [x] Task\n")
+    (project / "code.txt").write_text("after\n")
+    git(project, "commit", "--quiet", "-am", "Implement and update plan")
+    executable(
+        project.parent / "bin/claude",
+        """
+import os
+from pathlib import Path
+Path(os.environ["TEST_JUDGE_MODE"]).write_text(os.environ.get("RALPH_MODE", ""))
+print("PASS")
+""",
+    )
+    mode_file = project.parent / "judge-mode"
+    result = invoke(
+        project,
+        "ralph-on-stop.sh",
+        {"stop_hook_active": False},
+        RALPH_MODE="1",
+        RALPH_PRE_COMMIT=base,
+        TEST_JUDGE_MODE=str(mode_file),
+        PATH=f"{project.parent / 'bin'}{os.pathsep}{os.environ['PATH']}",
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+    assert mode_file.read_text() == "0"
+
+
 def tool_environment(
     project: Path, language: str, *, fail_format: bool = False, mutate: bool = False
 ) -> dict[str, str]:

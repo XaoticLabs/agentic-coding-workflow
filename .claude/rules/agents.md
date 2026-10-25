@@ -17,7 +17,7 @@ description: Rules for writing and modifying agents and subagents
 - Names should describe the role, not the task: `researcher` not `search-codebase`
 
 ## Dual-Use Design
-- Agent definitions work for BOTH subagents (via `Agent` tool prompt) and primary instances (via `claude --context`)
+- Agent definitions work for BOTH subagents (via `Agent` tool prompt) and primary instances (via `claude --plugin-dir /path/to/plugin --agent agentic-coding-workflow:<role>`); use `--append-system-prompt-file` for a standalone role file (only the Markdown instructions, without agent frontmatter metadata)
 - Write instructions that make sense in either context
 - Specify constraints appropriate for autonomous operation (subagent mode) — the human-in-the-loop will add oversight in primary instance mode
 

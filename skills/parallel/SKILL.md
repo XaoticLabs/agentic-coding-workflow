@@ -132,7 +132,7 @@ tmux send-keys -t ":${WINDOW_NAME}.${pane_index}" \
 If a spec file was provided, include it as context:
 ```bash
 tmux send-keys -t ":${WINDOW_NAME}.${pane_index}" \
-  "claude --context '${SPEC_FILE}' -p 'Implement tasks ${ASSIGNED_TASKS} from the spec. Work through them sequentially.'" Enter
+  "claude -p 'Implement tasks ${ASSIGNED_TASKS} from the spec. Work through them sequentially.' < '${SPEC_FILE}'" Enter
 ```
 
 For inline task descriptions (no spec):

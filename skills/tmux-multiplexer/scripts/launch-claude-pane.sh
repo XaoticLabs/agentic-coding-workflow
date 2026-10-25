@@ -10,7 +10,7 @@
 #   prompt       Required. The prompt to send to Claude
 #
 # Options:
-#   --context    File to pass as context
+#   --context    File to load as input (helper option, not a Claude CLI flag)
 #   --output     File to capture output to
 #   --split      Split direction: h (horizontal) or v (vertical, default)
 #   --size       Pane size as percentage (default: 50)
@@ -43,6 +43,7 @@ NO_ATTACH=false
 while [[ $# -gt 0 ]]; do
   case $1 in
     --context)
+      [ "$#" -ge 2 ] || error "--context requires a file"
       CONTEXT_FILE="$2"
       shift 2
       ;;
@@ -88,23 +89,21 @@ if ! [[ "$PANE_SIZE" =~ ^[0-9]+$ ]] || [ "$PANE_SIZE" -lt 10 ] || [ "$PANE_SIZE"
 fi
 
 # Validate context file if provided
-if [ -n "$CONTEXT_FILE" ] && [ ! -f "$CONTEXT_FILE" ]; then
-  error "Context file not found: $CONTEXT_FILE"
+if [ -n "$CONTEXT_FILE" ] && [ ! -r "$CONTEXT_FILE" ]; then
+  error "Context file not readable: $CONTEXT_FILE"
 fi
 
 # Check if in tmux
-[ -z "$TMUX" ] && [ -z "$TARGET_SESSION" ] && error "Not in tmux and no session specified. Use --session or run from within tmux"
+[ -z "${TMUX:-}" ] && [ -z "$TARGET_SESSION" ] && error "Not in tmux and no session specified. Use --session or run from within tmux"
 
-# Build claude command
-CLAUDE_CMD="claude -p"
-
-# Escape prompt for shell
-ESCAPED_PROMPT=$(printf '%q' "$PROMPT")
-CLAUDE_CMD="$CLAUDE_CMD $ESCAPED_PROMPT"
+# Build argv first; serialize only at tmux's command boundary.
+CLAUDE_ARGS=(claude -p "$PROMPT")
+printf -v CLAUDE_CMD '%q ' "${CLAUDE_ARGS[@]}"
 
 # Add context if provided
 if [ -n "$CONTEXT_FILE" ]; then
-  CLAUDE_CMD="$CLAUDE_CMD --context $(printf '%q' "$CONTEXT_FILE")"
+  # stdin is a documented context interface for print mode.
+  CLAUDE_CMD="$CLAUDE_CMD < $(printf '%q' "$CONTEXT_FILE")"
 fi
 
 # Add output redirection if provided
@@ -113,10 +112,10 @@ if [ -n "$OUTPUT_FILE" ]; then
 fi
 
 # Build tmux command
-TMUX_CMD="tmux split-window -$SPLIT_DIR -p $PANE_SIZE"
+TMUX_ARGS=(split-window "-$SPLIT_DIR" -p "$PANE_SIZE")
 
 if [ -n "$TARGET_SESSION" ]; then
-  TMUX_CMD="$TMUX_CMD -t $TARGET_SESSION"
+  TMUX_ARGS+=(-t "$TARGET_SESSION")
 fi
 
 # Execute
@@ -126,7 +125,7 @@ echo "Prompt: $PROMPT"
 [ -n "$OUTPUT_FILE" ] && echo "Output: $OUTPUT_FILE"
 
 # Create pane and run claude
-eval "$TMUX_CMD \"$CLAUDE_CMD; echo '--- Claude finished ---'; exec bash\""
+tmux "${TMUX_ARGS[@]}" bash -c "$CLAUDE_CMD; echo '--- Claude finished ---'; exec bash"
 
 if [ "$NO_ATTACH" = false ]; then
   # The split-window command already selects the new pane

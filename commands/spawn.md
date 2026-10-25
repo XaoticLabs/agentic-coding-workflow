@@ -15,7 +15,7 @@ Launches a new full Claude Code session in a tmux pane with an agent role preloa
 
 $ARGUMENTS - One of:
 - An agent role name: `researcher`, `test-writer`, `explorer`
-- An agent role + context: `code-reviewer --context pr-diff.patch`
+- An agent role + context: `evaluator --context pr-diff.patch`
 - An agent role + task prompt: `test-writer "Write tests for the auth module"`
 - An agent role + worktree: `test-writer --worktree feature-branch`
 
@@ -28,6 +28,8 @@ Extract from the input:
 - **`--context <file>`** (optional) — additional context file to load
 - **`--worktree <branch>`** (optional) — create/use a git worktree for isolation
 - **Task prompt** (optional) — quoted string describing what the instance should do
+
+`--context` is an option of this slash command only. Load the file explicitly in the initial prompt; the Claude CLI uses documented `--agent` selection, not a `--context` flag. See the [CLI reference](https://code.claude.com/docs/en/cli-reference).
 
 **Validate the role:**
 ```bash
@@ -84,35 +86,36 @@ fi
 
 ### Phase 4: Launch Claude Instance
 
-Build the claude command:
+Select the plugin agent and build an interactive Claude invocation. Resolve the extra context path before changing to a worktree:
 
 ```bash
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT}"
 ROLE_FILE="${PLUGIN_ROOT}/agents/${ROLE_NAME}.md"
 WORK_DIR="${WORKTREE_PATH:-$(pwd)}"
 
-# Base command with agent context
-CMD="claude --context '$ROLE_FILE'"
+# Loading the plugin registers its agents and applies their frontmatter settings.
+CLAUDE_ARGS=(claude --plugin-dir "$PLUGIN_ROOT" --agent "agentic-coding-workflow:${ROLE_NAME}")
+INITIAL_PROMPT="${TASK_PROMPT:-}"
 
 # Add extra context if provided
-if [ -n "$CONTEXT_FILE" ]; then
-  CMD="$CMD --context '$CONTEXT_FILE'"
+if [ -n "${CONTEXT_FILE:-}" ]; then
+  [ -r "$CONTEXT_FILE" ] || { echo "Context file not readable: $CONTEXT_FILE" >&2; exit 1; }
+  CONTEXT_FILE=$(realpath "$CONTEXT_FILE")
+  INITIAL_PROMPT="Read the context file at ${CONTEXT_FILE} before starting.
+
+${INITIAL_PROMPT}"
 fi
 
-# Add task prompt if provided (non-interactive mode)
-if [ -n "$TASK_PROMPT" ]; then
-  CMD="$CMD -p '$TASK_PROMPT'"
-fi
+# A positional initial prompt keeps the instance interactive and steerable.
+[ -z "$INITIAL_PROMPT" ] || CLAUDE_ARGS+=("$INITIAL_PROMPT")
+printf -v CMD '%q ' "${CLAUDE_ARGS[@]}"
 ```
 
 Create a new tmux pane and send the command:
 
 ```bash
-# Split current window to create a new pane
-tmux split-window -h -c "$WORK_DIR"
-
-# Send the claude command to the new pane
-tmux send-keys "$CMD" Enter
+# Run through Bash so the quoted argument array survives tmux's shell boundary.
+tmux split-window -h -c "$WORK_DIR" bash -lc "$CMD"
 
 # Rebalance panes
 tmux select-layout tiled
@@ -150,14 +153,14 @@ Switch to pane: Ctrl+B then arrow keys
 Opens a new tmux pane with an interactive Claude session loaded with the researcher role.
 
 ```
-/agentic-coding-workflow:spawn code-reviewer --context pr-diff.patch
+/agentic-coding-workflow:spawn evaluator --context pr-diff.patch
 ```
-Opens a reviewer instance with both the code-reviewer role and PR diff as context.
+Opens an evaluator instance and explicitly reads the PR diff as context.
 
 ```
 /agentic-coding-workflow:spawn test-writer "Write integration tests for the accounts API"
 ```
-Launches a test writer with a specific task — runs non-interactively.
+Launches an interactive test writer with an initial task prompt.
 
 ```
 /agentic-coding-workflow:spawn explorer --worktree explore/auth-system
