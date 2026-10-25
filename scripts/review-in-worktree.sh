@@ -51,8 +51,10 @@ if [ -f "mix.exs" ]; then
   mix deps.get 2>&1 && mix compile 2>&1 || echo "Warning: mix bootstrap failed — tests may not run"
 elif [ -f "pyproject.toml" ] || [ -f "setup.py" ]; then
   echo "Python project detected — installing dependencies..."
-  if [ -f "pyproject.toml" ] && command -v uv >/dev/null 2>&1; then
+  if [ -f "uv.lock" ] && command -v uv >/dev/null 2>&1; then
     uv sync 2>&1 || echo "Warning: uv sync failed — tests may not run"
+  elif [ -f "poetry.lock" ] && command -v poetry >/dev/null 2>&1; then
+    poetry install 2>&1 || echo "Warning: poetry install failed — tests may not run"
   elif [ -f "requirements.txt" ]; then
     python -m venv .venv 2>&1 && .venv/bin/pip install -r requirements.txt 2>&1 || echo "Warning: pip install failed — tests may not run"
   fi
@@ -72,6 +74,8 @@ fi
 
 # Launch interactive Claude session with the skill loaded as context.
 # The skill handles review logic; we just tell it what to review.
+# --allowedTools grants prompt-free approval for these patterns; it does not
+# restrict Bash to them. The no-edit instruction is workflow policy, not a sandbox.
 # Worktree setup is already done — skip that section of the skill.
 claude \
   --allowedTools "Read" "Glob" "Grep" "Bash(git diff *)" "Bash(git log *)" "Bash(git show *)" "Bash(git status *)" "Bash(mix test *)" "Bash(mix format *)" "Bash(mix credo *)" "Bash(mix dialyzer *)" "Bash(uv run pytest *)" "Bash(uv run ruff *)" "Bash(uv run basedpyright *)" "Bash(npm test *)" "Bash(gh pr view *)" \

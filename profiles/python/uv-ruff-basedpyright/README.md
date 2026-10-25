@@ -1,0 +1,9 @@
+# Optional Python profile
+
+Select this profile explicitly with `/agentic-coding-workflow:setup-python-rules --profile uv-ruff-basedpyright`. Installation of the plugin does not enable it.
+
+The profile uses uv, Ruff, basedpyright, and pytest. Merge `pyproject.toml` into the project's actual configuration, adapting the Python target, source roots, test paths, and exclusions. Preserve unrelated settings and avoid duplicate TOML tables. Ruff enforces formatting and selected lint conventions; basedpyright enforces strict typing. If `pyrightconfig.json` already exists, merge type policy there because it takes precedence over TOML. Put semantic design guidance in path-scoped project instructions. See the [Ruff configuration reference](https://docs.astral.sh/ruff/configuration/) and [basedpyright configuration reference](https://docs.basedpyright.com/latest/configuration/config-files/).
+
+Add development tools using the project's dependency layout (for a new uv project, `uv add --dev ruff basedpyright pytest`) and prepare the environment with `uv sync`. Merge `project-commands.json` into `.claude/project-commands.json`, preserving existing overrides and intentional disables. Use the same check commands in CI. Verification uses check-only flags and `--frozen --no-sync`; formatting is a separate explicit action. No Pydantic dependency or migration is implied.
+
+Existing Black, mypy, Poetry, pip, and other stacks should keep their current configuration. For example, configure `lint` as `python -m black --check . && python -m mypy .`, `test` as the project's test command, and `format` as `python -m black .` when those match the project. Custom commands must check without fixes or dependency installation; the hook preserves them as written and detects source changes during verification.

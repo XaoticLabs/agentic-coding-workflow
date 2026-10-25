@@ -66,7 +66,7 @@ For each component, decide:
 - **SKILL.md** — Workflow phases, decision points, routing logic, output format. Target: 1,500-2,000 words.
 - **Scripts** — List each script with: name, purpose, inputs, outputs, exit codes. Anything deterministic (validation, scaffolding, format conversion, detection) should be a script.
 - **References** — List each reference with: topic, estimated length, when it should load (the condition). Each should be a self-contained knowledge unit (2,000-5,000 words).
-- **allowed-tools** — Only list tools the skill actually needs.
+- **allowed-tools** — Grant prompt-free approval only to tools the skill needs. This field is not a complete tool whitelist; omitted tools still use normal permission handling. CLI `--tools` restricts availability and `--disallowedTools` adds denies. See the [CLI reference](https://code.claude.com/docs/en/cli-reference).
 
 **Critical rules:**
 - All references must be **one level deep** from SKILL.md. Never chain references (SKILL.md → ref-a.md → ref-b.md) — Claude may only partially read nested references.
@@ -122,7 +122,7 @@ Now write the orchestrator — it references everything built in steps 2-3. The 
 - Start with YAML frontmatter — available fields:
   - `name` (kebab-case, max 64 chars, no reserved words like "anthropic"/"claude")
   - `description` (max 1024 chars, third-person, trigger-rich, slightly "pushy")
-  - `allowed-tools` (only what the skill needs)
+  - `allowed-tools` (only the prompt-free approval grants the skill needs)
   - `user-invocable` (default true; set false for background knowledge)
   - `disable-model-invocation` (set true for manual-only skills like `/deploy`)
   - `argument-hint` (shown during autocomplete, e.g., `[issue-number]`)

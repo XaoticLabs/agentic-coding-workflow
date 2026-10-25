@@ -25,6 +25,26 @@ else
   exit 0
 fi
 
+# Python verification is project-owned. A language marker does not select a
+# package manager, formatter, linter, type checker, or test framework.
+if [ "$PROJECT_TYPE" = python ]; then
+  COMMANDS_SCRIPT="${SCRIPT_DIR}/../scripts/project-commands.py"
+  for action in lint test; do
+    if resolved=$(python3 "$COMMANDS_SCRIPT" get "$PWD" "$action" 2>&1); then
+      :
+    else
+      config_status=$?
+      if [ "$config_status" -ne 1 ]; then
+        jq -n --arg reason "$resolved" '{decision: "block", reason: $reason}'
+        exit 0
+      fi
+      resolved=""
+    fi
+    if [ "$action" = lint ]; then PYTHON_LINT_COMMAND="$resolved"; else PYTHON_TEST_COMMAND="$resolved"; fi
+  done
+  [ -n "$PYTHON_LINT_COMMAND$PYTHON_TEST_COMMAND" ] || exit 0
+fi
+
 session_id=$(echo "$input" | jq -r '.session_id // "unknown"')
 verification_blocked() {
   jq -n --arg message "$1" '{continue: false, stopReason: $message, systemMessage: $message}'
@@ -96,7 +116,8 @@ probe_infrastructure() {
   fi
 }
 
-probe_infrastructure
+# Configured Python commands own their environment and infrastructure needs.
+[ "$PROJECT_TYPE" != elixir ] || probe_infrastructure
 
 # ── Delegate to language-specific runner ─────────────────────────────
 

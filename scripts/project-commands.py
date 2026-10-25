@@ -17,6 +17,7 @@ class CommandArguments(argparse.Namespace):
         self.project_dir: Path = Path(".")
         self.action: str = ""
         self.defaults: list[str] = []
+        self.omit_empty: bool = False
 
 
 def load_commands(path: Path) -> dict[str, str | None]:
@@ -46,6 +47,7 @@ def main() -> int:
     _ = reader.add_argument("project_dir", type=Path)
     _ = reader.add_argument("action", choices=ACTIONS)
     initializer = subparsers.add_parser("init")
+    _ = initializer.add_argument("--omit-empty", action="store_true")
     _ = initializer.add_argument("project_dir", type=Path)
     _ = initializer.add_argument("defaults", nargs=len(ACTIONS), metavar="COMMAND")
     args = parser.parse_args(namespace=CommandArguments())
@@ -60,6 +62,10 @@ def main() -> int:
             defaults: dict[str, str | None] = dict(
                 zip(ACTIONS, (value or None for value in args.defaults))
             )
+            if args.omit_empty:
+                defaults = {
+                    action: value for action, value in defaults.items() if value
+                }
             defaults.update(commands)  # Preserve project overrides, including null.
             path.parent.mkdir(parents=True, exist_ok=True)
             _ = path.write_text(json.dumps(defaults, indent=2) + "\n", encoding="utf-8")

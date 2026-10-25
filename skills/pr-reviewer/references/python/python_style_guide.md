@@ -1,8 +1,8 @@
 # Python Style Guide Reference
 
-Consolidated from Google Python Style Guide and PEP 8, adapted for **ruff**, **basedpyright**, **uv**, **pydantic**.
+Use the project's configured tools, conventions, and library versions. The examples below draw on Google Python Style Guide and PEP 8; they are contextual review aids, not a mandatory toolchain or style profile.
 
-This guide covers only what requires **human judgment** during review. Formatting, import ordering, deprecated syntax, bare excepts, unused imports, and similar mechanical issues are caught and auto-fixed by ruff and basedpyright — don't flag them in review.
+Focus review on judgment and demonstrated consequences. Formatting, import ordering, annotation completeness, and other mechanical rules belong in actual tool configuration. References to Ruff or basedpyright apply only when those checks are configured; use check-only modes and report their actual results. Do not assume a named tool covers a rule that the project has not enabled.
 
 ---
 
@@ -137,7 +137,7 @@ def fetch_users(
 - Otherwise, `_private` module-level function — keeps it testable [Google 2.6]
 
 ### Class Design
-- Never `@staticmethod` — module-level function instead [Google 2.17]
+- Choose a static method or module-level function based on the project's API organization and compatibility needs
 - `@classmethod` only for alternative constructors (`from_dict`, `from_csv`)
 - `@property` for computed/derived attributes only — don't wrap trivially private attrs
 - Expensive operations never behind `@property` — callers expect cheap access
@@ -174,7 +174,9 @@ except httpx.HTTPStatusError as exc:
 
 ## 7. Pydantic Patterns
 
-### Pydantic v2 API (flag v1 patterns)
+### Pydantic v2 API (only for projects targeting v2)
+
+Confirm that the receiver is a Pydantic model and that the project requires v2 before proposing these changes. Preserve intentional `pydantic.v1` compatibility. Method names such as `.dict()` and class names such as `Config` alone do not establish library usage or a defect.
 ```python
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 

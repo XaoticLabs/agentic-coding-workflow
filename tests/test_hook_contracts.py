@@ -2,7 +2,8 @@
 
 import json
 import os
-import shutil
+import re
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -52,31 +53,75 @@ def invoke(
     )
 
 
-@pytest.mark.parametrize("unsafe_assertion", [False, True])
-def test_python_style_reviews_behavior_without_a_function_length_limit(
-    project: Path, unsafe_assertion: bool
+def invoke_event(
+    project: Path, event: str, payload: dict
+) -> list[subprocess.CompletedProcess[str]]:
+    registrations = json.loads((ROOT / "hooks/hooks.json").read_text())["hooks"]
+    results = []
+    for group in registrations.get(event, []):
+        if not re.fullmatch(group.get("matcher", ".*"), payload["tool_name"]):
+            continue
+        for hook in group["hooks"]:
+            if hook["type"] == "command":
+                command = hook["command"].replace("${CLAUDE_PLUGIN_ROOT}", str(ROOT))
+                results.append(
+                    subprocess.run(
+                        shlex.split(command),
+                        cwd=project,
+                        input=json.dumps(payload),
+                        env={**os.environ, "CLAUDE_PROJECT_DIR": str(project)},
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                        timeout=10,
+                    )
+                )
+    return results
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "pip install example",
+        "black .",
+        "mypy .",
+        "python script.py",
+        "gh pr create --title 'Final change'",
+        "git push origin feature",
+    ],
+)
+def test_global_hooks_allow_project_python_tools_and_publishing_without_a_marker(
+    project: Path, command: str
 ) -> None:
     (project / "pyproject.toml").touch()
-    content = "def collect():\n    values = []\n"
-    content += "".join(f"    values.append({index})\n" for index in range(45))
-    if unsafe_assertion:
-        content += "    assert values\n"
-    content += "    return values\n"
-    result = invoke(
+    results = invoke_event(
         project,
-        "python-style-check.py",
+        "PreToolUse",
         {
-            "tool_name": "Write",
-            "tool_input": {"file_path": "collect.py", "content": content},
+            "tool_name": "Bash",
+            "tool_input": {"command": command},
         },
     )
-    assert result.returncode == 0, result.stderr
-    if unsafe_assertion:
-        feedback = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
-        assert "`assert` outside tests" in feedback
-        assert "limit: 40" not in feedback
-    else:
-        assert result.stdout == ""
+    assert results
+    assert all(result.returncode == 0 for result in results)
+    assert all(result.stdout == "" for result in results)
+
+
+def test_global_edit_hooks_do_not_infer_pydantic_apis(project: Path) -> None:
+    (project / "pyproject.toml").touch()
+    results = invoke_event(
+        project,
+        "PostToolUse",
+        {
+            "tool_name": "Write",
+            "tool_input": {
+                "file_path": "source.py",
+                "content": "class Config: pass\nresult = unrelated.dict()\n",
+            },
+        },
+    )
+    assert results
+    assert all(result.returncode == 0 and result.stdout == "" for result in results)
 
 
 @pytest.mark.parametrize("mode", ["0", "1"])
@@ -176,11 +221,20 @@ if "format" in args:
 
 def setup_source(project: Path, language: str) -> Path:
     (project / ("pyproject.toml" if language == "python" else "mix.exs")).touch()
+    if language == "python":
+        (project / ".claude").mkdir(exist_ok=True)
+        (project / ".claude/project-commands.json").write_bytes(
+            (
+                ROOT / "profiles/python/uv-ruff-basedpyright/project-commands.json"
+            ).read_bytes()
+        )
     source = project / (
         "source 'with spaces'.py" if language == "python" else "source 'with spaces'.ex"
     )
     source.write_text("original\n")
     git(project, "add", ".")
+    if language == "python":
+        git(project, "add", "--force", ".claude/project-commands.json")
     git(project, "commit", "--quiet", "-m", "Committed code must be checked")
     return source
 
@@ -206,10 +260,9 @@ def test_stop_checks_committed_files_on_main_without_rewriting(
         for line in Path(environment["TEST_CALLS"]).read_text().splitlines()
     ]
     format_call = next(call for call in calls if "format" in call)
-    assert source.name in format_call
+    assert ("." if language == "python" else source.name) in format_call
     assert ("--check" if language == "python" else "--check-formatted") in format_call
-    if language == "python":
-        assert "--no-fix" in next(call for call in calls if "check" in call)
+    assert all("--fix" not in call for call in calls)
     record = json.loads(
         next((project / ".claude/verification").glob("*.json")).read_text()
     )
@@ -238,6 +291,11 @@ def test_verification_identifies_the_checked_revision_and_worktree(
         next((project / ".claude/verification").glob("*.json")).read_text()
     )
     assert record["status"] == "passed"
+    calls = [
+        json.loads(line)
+        for line in Path(environment["TEST_CALLS"]).read_text().splitlines()
+    ]
+    assert "--no-fix" in next(call for call in calls if "check" in call)
     assert record["checked"]["scope"] == (
         "revision" if state == "clean" else "worktree"
     )
@@ -348,69 +406,6 @@ def test_failed_corrections_have_bounded_retries_and_explicit_blocked_result(
     )
 
 
-@pytest.mark.parametrize("credo_exit", [0, 1, 2, 127])
-@pytest.mark.parametrize("diff_fails", [False, True])
-def test_ship_gate_delivers_credo_failure_as_a_block(
-    project: Path, credo_exit: int, diff_fails: bool
-) -> None:
-    (project / "mix.exs").write_text("initial\n")
-    git(project, "add", ".")
-    git(project, "commit", "--quiet", "-m", "Initial")
-    git(project, "checkout", "--quiet", "-b", "feature")
-    (project / "changed 'with spaces'.ex").write_text("changed\n")
-    git(project, "add", ".")
-    git(project, "commit", "--quiet", "-m", "Implementation")
-    (project / ".claude").mkdir()
-    (project / ".claude/pr-description.md").write_text(
-        "<!-- user-approved -->\nFixture\n"
-    )
-    tool = project.parent / "bin/mix"
-    executable(
-        tool,
-        f"import json, sys\nprint(json.dumps(sys.argv[1:]))\nsys.exit({credo_exit})\n",
-    )
-    if diff_fails:
-        executable(
-            tool.parent / "git",
-            f"import os, sys\nif 'diff' in sys.argv: sys.exit(7)\nos.execv({shutil.which('git')!r}, sys.argv)\n",
-        )
-    result = invoke(
-        project,
-        "ship-gate.sh",
-        {
-            "tool_name": "Bash",
-            "tool_input": {"command": 'gh pr create --title "Fixture"'},
-        },
-        PATH=f"{tool.parent}{os.pathsep}{os.environ['PATH']}",
-    )
-    assert result.returncode == (0 if credo_exit == 0 and not diff_fails else 2)
-    if diff_fails:
-        assert "BLOCKED: ship-gate failed" in result.stderr
-    elif credo_exit:
-        assert "BLOCKED: Credo found issues" in result.stderr
-        assert "changed 'with spaces'.ex" in result.stderr
-
-
-def test_style_warnings_use_post_tool_context(project: Path) -> None:
-    (project / "pyproject.toml").touch()
-    result = invoke(
-        project,
-        "python-style-check.py",
-        {
-            "hook_event_name": "PostToolUse",
-            "tool_name": "Edit",
-            "tool_input": {
-                "file_path": str(project / "source.py"),
-                "new_string": "@staticmethod\ndef bad(): pass",
-            },
-        },
-    )
-    assert result.returncode == 0
-    output = json.loads(result.stdout)["hookSpecificOutput"]
-    assert output["hookEventName"] == "PostToolUse"
-    assert "staticmethod" in output["additionalContext"]
-
-
 def test_failed_tool_audit_records_current_failure_payload(project: Path) -> None:
     result = invoke(
         project,
@@ -499,6 +494,85 @@ def test_formatting_is_an_explicit_mutating_action(project: Path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert source.read_text() == "rewritten"
+
+
+@pytest.mark.parametrize("commands", [None, {}, {"lint": None, "test": ""}])
+def test_python_stop_and_format_do_not_select_tools_implicitly(
+    project: Path, commands: dict | None
+) -> None:
+    setup_source(project, "python")
+    configuration = project / ".claude/project-commands.json"
+    if commands is None:
+        configuration.unlink()
+    else:
+        configuration.write_text(json.dumps(commands))
+    environment = tool_environment(project, "python")
+    result = invoke(project, "lint-on-stop.sh", {}, **environment)
+    assert result.returncode == 0 and result.stdout == ""
+    assert not (project / ".claude/verification").exists()
+    formatted = subprocess.run(
+        [str(ROOT / "scripts/format-project.sh"), str(project)],
+        env={**os.environ, **environment},
+        capture_output=True,
+        text=True,
+    )
+    assert formatted.returncode == 0, formatted.stderr
+    assert not Path(environment["TEST_CALLS"]).exists()
+
+
+@pytest.mark.parametrize("failed_tool", ["black", "mypy", "pytest", None])
+def test_python_stop_uses_configured_black_mypy_and_test_commands(
+    project: Path, failed_tool: str | None
+) -> None:
+    setup_source(project, "python")
+    (project / ".claude/project-commands.json").write_text(
+        json.dumps(
+            {
+                "lint": "black --check . && mypy .",
+                "test": "python -m pytest --label 'two spaces' | cat",
+            }
+        )
+    )
+    tool_dir = project.parent / "bin"
+    for tool in ("black", "mypy", "python"):
+        executable(
+            tool_dir / tool,
+            """
+import json, os, sys
+from pathlib import Path
+with open(os.environ["TEST_CALLS"], "a") as stream:
+    stream.write(json.dumps([Path(sys.argv[0]).name, *sys.argv[1:]]) + "\\n")
+sys.exit(1 if os.environ["TEST_FAILED_TOOL"] in [Path(sys.argv[0]).name, *sys.argv[1:]] else 0)
+""",
+        )
+    calls_file = project.parent / "calls.jsonl"
+    result = invoke(
+        project,
+        "lint-on-stop.sh",
+        {},
+        PATH=f"{tool_dir}{os.pathsep}{os.environ['PATH']}",
+        TEST_CALLS=str(calls_file),
+        TEST_FAILED_TOOL=failed_tool or "none",
+    )
+    assert result.returncode == 0, result.stderr
+    calls = [json.loads(line) for line in calls_file.read_text().splitlines()]
+    assert calls[0] == ["black", "--check", "."]
+    assert ["python", "-m", "pytest", "--label", "two spaces"] in calls
+    if failed_tool != "black":
+        assert ["mypy", "."] in calls
+    if failed_tool:
+        assert json.loads(result.stdout)["decision"] == "block"
+    else:
+        assert result.stdout == ""
+
+
+def test_invalid_python_commands_block_instead_of_skipping(project: Path) -> None:
+    setup_source(project, "python")
+    (project / ".claude/project-commands.json").write_text('{"lint": false}')
+    result = invoke(project, "lint-on-stop.sh", {})
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["decision"] == "block"
+    assert "project-commands.json" in result.stdout
 
 
 def test_infrastructure_failure_records_incomplete_and_returns_valid_json(

@@ -39,23 +39,9 @@ detect_project() {
   elif [ -f "${PROJECT_DIR}/pyproject.toml" ] || [ -f "${PROJECT_DIR}/setup.py" ]; then
     type="python"
     lang="Python"
-    if [ -f "${PROJECT_DIR}/pyproject.toml" ]; then
-      # Check for uv vs pip
-      if command -v uv >/dev/null 2>&1; then
-        build_cmd="uv sync"
-        test_cmd="uv run pytest"
-        lint_cmd="uv run ruff check --no-fix ."
-        format_cmd="uv run ruff format ."
-      else
-        build_cmd="pip install -e ."
-        test_cmd="pytest"
-        lint_cmd="ruff check --no-fix ."
-        format_cmd="ruff format ."
-      fi
-      if grep -q "basedpyright\|pyright" "${PROJECT_DIR}/pyproject.toml" 2>/dev/null; then
-        lint_cmd="${lint_cmd} && uv run basedpyright"
-      fi
-    fi
+    # Python tooling must come from project-commands.json, based on the
+    # project's CI/tool configuration or an explicitly selected profile.
+    # Installed executables and pyproject.toml alone do not establish policy.
     if [ -f "${PROJECT_DIR}/manage.py" ]; then
       framework="Django"
       run_cmd="python manage.py runserver"
@@ -125,13 +111,29 @@ detect_project() {
 
   # ── Save defaults, then read the effective project overrides ──────────
 
-  python3 "$COMMANDS_SCRIPT" init "$PROJECT_DIR" \
+  local init_options=()
+  [ "$type" != python ] || init_options+=(--omit-empty)
+  python3 "$COMMANDS_SCRIPT" init "${init_options[@]}" "$PROJECT_DIR" \
     "$build_cmd" "$test_cmd" "$lint_cmd" "$format_cmd" "$run_cmd"
-  build_cmd=$(python3 "$COMMANDS_SCRIPT" get "$PROJECT_DIR" build)
-  test_cmd=$(python3 "$COMMANDS_SCRIPT" get "$PROJECT_DIR" test)
-  lint_cmd=$(python3 "$COMMANDS_SCRIPT" get "$PROJECT_DIR" lint)
-  format_cmd=$(python3 "$COMMANDS_SCRIPT" get "$PROJECT_DIR" format)
-  run_cmd=$(python3 "$COMMANDS_SCRIPT" get "$PROJECT_DIR" run)
+  # Omitted Python actions remain unknown rather than silently disabled.
+  # init validated the complete configuration above; get may now return 1.
+  local action command status
+  for action in build test lint format run; do
+    if command=$(python3 "$COMMANDS_SCRIPT" get "$PROJECT_DIR" "$action"); then
+      :
+    else
+      status=$?
+      [ "$status" -eq 1 ] || return "$status"
+      command=""
+    fi
+    case "$action" in
+      build) build_cmd="$command" ;;
+      test) test_cmd="$command" ;;
+      lint) lint_cmd="$command" ;;
+      format) format_cmd="$command" ;;
+      run) run_cmd="$command" ;;
+    esac
+  done
 
   # ── Write AGENTS.md ──────────────────────────────────────────────────
 

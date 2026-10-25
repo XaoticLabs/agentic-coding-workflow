@@ -1,8 +1,4 @@
-#!/usr/bin/env uv run
-# /// script
-# requires-python = ">=3.11"
-# dependencies = []
-# ///
+#!/usr/bin/env python3
 
 """
 Stop Hook: Output Validator

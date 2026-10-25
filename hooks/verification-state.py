@@ -42,6 +42,7 @@ def snapshot() -> dict[str, str]:
     for name in (".claude/AGENTS.md", ".claude/project-commands.json"):
         if Path(name).is_file():
             untracked.add(os.fsencode(name))
+    untracked.difference_update(tracked)
     files = sorted(
         path for path in tracked | untracked if not is_runtime(os.fsdecode(path))
     )

@@ -12,8 +12,6 @@ else
   command=""
   if [ -f "${PROJECT_DIR}/mix.exs" ]; then
     command="mix format"
-  elif [ -f "${PROJECT_DIR}/pyproject.toml" ] || [ -f "${PROJECT_DIR}/setup.py" ]; then
-    command="uv run ruff format ."
   fi
 fi
 cd "$PROJECT_DIR"

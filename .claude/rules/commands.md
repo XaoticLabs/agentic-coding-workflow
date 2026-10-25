@@ -6,8 +6,9 @@ paths:
 # Command Development Rules
 
 ## Frontmatter
-- Every command MUST have YAML frontmatter with `allowed-tools` listing exactly the tools it needs
-- Only grant tools the command actually uses — don't copy-paste the full list from another command
+- Every command MUST have YAML frontmatter with `allowed-tools` granting prompt-free approval only for tools it needs
+- These are approval grants, not a complete whitelist: omitted tools remain subject to normal permissions. Use CLI `--tools` to restrict available tools and `--disallowedTools` for explicit denies; see the [CLI reference](https://code.claude.com/docs/en/cli-reference).
+- Only grant approvals the command actually uses — don't copy-paste the full list from another command
 - Include `EnterPlanMode`/`ExitPlanMode` if the command has a planning phase
 - Include `AskUserQuestion` if the command needs user interaction
 

@@ -96,12 +96,7 @@ mix credo        # if configured
 mix dialyzer     # if configured
 ```
 
-**Python:**
-```bash
-uv run pytest -v           # or pytest
-uv run ruff check .        # or ruff
-uv run basedpyright        # or pyright, if configured
-```
+**Python:** Resolve the project's existing checks from `.claude/project-commands.json`, CI, and task/tool configuration. Use its chosen environment, formatter, linter, type checker, test runner, and file scope. Do not infer uv, Ruff, basedpyright, or pytest merely from Python files. Report missing required checks as verification limitations. The uv/Ruff/basedpyright profile is optional; see **Project Context: Test and Lint Command Detection** in `commands/shared-patterns.md`.
 
 Also check CI status if PR number is available: `gh pr checks <number>`
 
@@ -134,7 +129,7 @@ Check alignment with design principles and codebase conventions:
 Load language-specific references conditionally:
 - **Elixir**: `references/elixir/elixir_style_guide.md` — formatting, naming, module structure
 - **Elixir**: `references/elixir/ecto_phoenix_patterns.md` — schemas, changesets, controllers, LiveView
-- **Python**: `references/python/python_style_guide.md` — naming, imports, type annotations, pydantic, ruff rules (Google + PEP 8 adapted for ruff/basedpyright/uv)
+- **Python**: `references/python/python_style_guide.md` — contextual design review; apply the project's configured tools, conventions, and library versions
 - **Python**: `references/python/python_review_checklist.md` — code quality section
 
 Severity: **MAJOR** for demonstrated design or compatibility problems, **MINOR** for evidenced convention violations. Personal preferences belong in Taste.

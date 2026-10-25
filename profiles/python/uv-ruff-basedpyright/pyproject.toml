@@ -1,0 +1,20 @@
+# Optional configuration to merge into a consuming project's pyproject.toml.
+# Preserve its Python target, source roots, exclusions, and existing rules.
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "B", "A", "G", "N", "S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+"**/test_*.py" = ["S101"]
+"**/*_test.py" = ["S101"]
+"**/conftest.py" = ["S101"]
+
+[tool.basedpyright]
+typeCheckingMode = "strict"
+
+[tool.pytest.ini_options]
+addopts = "-ra"

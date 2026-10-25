@@ -6,13 +6,12 @@ allowed-tools:
   - Glob
   - Grep
   - AskUserQuestion
-  - Agent
 effort: medium
 ---
 
-# Ship — From Approved Code to Merged PR
+# Ship — Push a Branch and Create a PR
 
-Takes the current branch from approved implementation to a clean PR in one step: pushes, creates a PR with a generated description, and reports the URL.
+Prepares a concrete publishing action, applies the project’s approval policy and existing authorization, pushes the branch, creates a PR, and reports the URL. Creating a PR does not merge it.
 
 ## Input
 
@@ -20,16 +19,13 @@ $ARGUMENTS - Either:
 - Empty — operates on current branch, auto-detects spec
 - A spec path or slug (e.g., `batch-analysis` or `.claude/specs/batch-analysis-spec.md`) — uses for PR description context
 - `--draft` flag — creates a draft PR instead of a ready-for-review PR
-- `--no-squash` flag — skip the WIP squash phase (commits are already clean)
+- `--no-squash` — accepted for compatibility; this command preserves commits. History rewriting requires a separate request.
 
 ## Instructions
 
 ### Phase 1: Pre-flight
 
 ```bash
-# Remove any stale PR description from a previous run
-rm -f .claude/pr-description.md
-
 # Get current branch
 BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null)
 
@@ -57,9 +53,11 @@ git status --porcelain
 
 **If on main/master:** Stop with "You're on the base branch. Switch to a feature branch first."
 
-**If there are uncommitted changes:** Use AskUserQuestion: "You have uncommitted changes. Commit them first, or ship without them?"
+**If there are uncommitted changes:** Follow any existing instruction to commit or exclude them. Otherwise, use AskUserQuestion to resolve which changes to ship before preparing the publishing proposal.
 
 **If zero commits ahead of base:** Stop with "No commits to ship. Nothing to do."
+
+Read the project's verification requirements and configured commands using **Project Context: Test and Lint Command Detection** in `commands/shared-patterns.md`. Reuse verification evidence only for the current commit and relevant working inputs; otherwise run the required configured checks. Resolve failing required checks before publishing. Report unavailable or unconfigured required checks explicitly and follow project policy for proceeding; do not replace them with a preferred toolchain or claim they passed.
 
 ### Phase 2: Find Context for PR Description
 
@@ -71,7 +69,7 @@ git status --porcelain
 
 **Gather context:**
 ```bash
-# Clean commit log after squash
+# Commit history for context
 git log --oneline "${BASE}..HEAD"
 
 # Diff stats
@@ -81,7 +79,7 @@ git diff --stat "${BASE}..HEAD"
 git diff "${BASE}..HEAD"
 ```
 
-### Phase 4: Detect PR Template
+### Phase 3: Detect PR Template
 
 Check for a PR template in the repository. Search these locations in order:
 
@@ -110,7 +108,7 @@ ls "${REPO_ROOT}/.github/PULL_REQUEST_TEMPLATE/" 2>/dev/null
 
 If multiple templates exist, use AskUserQuestion to let the user pick one.
 
-### Phase 5: Generate PR Description
+### Phase 4: Generate PR Description and Title
 
 **If a PR template was found:**
 
@@ -148,70 +146,44 @@ Write to `.claude/pr-description.md`.
 
 In both cases, keep content concise. The diff speaks for itself — focus on the "why" and testing strategy, not re-describing every line changed.
 
-### Phase 5.5: User Review of PR Description (ENFORCED BY HOOK)
+Choose a concise PR title that describes the final change, following repository conventions. Use the full diff and resulting behavior; the first commit subject is context, not a required title. Save the exact title to `.claude/pr-title.txt`.
 
-A PreToolUse hook (`ship-gate.sh`) will **block** `gh pr create` unless `.claude/pr-description.md` contains the marker `<!-- user-approved -->` at the top. You cannot skip this step — the hook runs in the harness and will reject the command.
+### Phase 5: Review the Proposed External Action
 
-1. Read back the full contents of `.claude/pr-description.md` and display it to the user.
-2. Use AskUserQuestion to ask: "Here's the PR description I generated. Approve it as-is, or tell me what to change."
-3. Wait for the user's response. Do not continue until they reply.
-4. If the user requests changes: apply them to `.claude/pr-description.md`, show the updated version, and ask again.
-5. After the user explicitly approves (e.g., "looks good", "yes", "ship it"), add the approval marker:
+Before any push or PR creation, prepare and show the concrete proposal:
 
-```bash
-# Add approval marker — ship-gate.sh hook checks for this before allowing gh pr create
-python3 - <<'PYAPPROVAL'
-from pathlib import Path
+- Repository identity and remote push destination (redact credentials if present)
+- Local branch and exact HEAD commit; destination branch and push refspec
+- PR repository, base and head branches, exact title, complete description, and draft status
+- Verification results and any unresolved limitations
 
-path = Path(".claude/pr-description.md")
-content = path.read_bytes()
-marker = b"<!-- user-approved -->\n"
-if not content.startswith(marker):
-    path.write_bytes(marker + content)
-PYAPPROVAL
-```
+Apply **External Actions and Approval** in `commands/shared-patterns.md`. Honor any project requirement to review this proposal. Ask for approval only when the action is outside existing authorization or the workflow explicitly requires review of the final content. An instruction to implement code alone does not authorize publishing. An instruction to ship can authorize ordinary pushes and PR creation within that scope; do not repeatedly ask for the same approval.
 
-Only then proceed to Phase 6.
+If approval is needed, finish the proposal first, ask using AskUserQuestion, and wait. Apply requested changes and present the revised proposal before proceeding. Preserve the approved content for execution. A Markdown comment, local description file, or agent-authored log is never proof of human approval.
+
+This plugin supplies an instruction-level review policy, not an enforceable approval boundary. There is no ship gate or approval marker. If an organization requires enforcement, the external permission service or publishing executor must hold approvals outside agent-writable storage and validate the bound action and content. See the shared policy for the binding requirements. Do not claim that shell-string matching or `allowed-tools` proves approval.
 
 ### Phase 6: Push and Create PR
 
-Run the following script block **exactly as written** — do not modify, summarize, or reinterpret any part of it. Copy-paste the entire block into a single Bash tool call:
+Immediately before each external action, compare the current repository, remote destination, branch, HEAD, base/head selection, title, body, and draft status with the proposal. If a material value changed, update the proposal and obtain any newly required authorization. Do not reuse approval for changed content.
+
+Use explicit repository and branch arguments. The following is a command shape: substitute the reviewed values and preserve their exact contents. Read the title from `.claude/pr-title.txt` and pass the body as a file; do not interpolate body text into shell source.
 
 ```bash
-# Determine base and branch
-BRANCH=$(git symbolic-ref --short HEAD)
-for candidate in main master; do
-  if git show-ref --verify --quiet "refs/heads/$candidate"; then BASE="$candidate"; break; fi
-done
-
-# Push with upstream tracking
-git push -u origin "${BRANCH}"
-
-# PR title is ALWAYS the first commit message — no exceptions
-PR_TITLE=$(git log --oneline --reverse "${BASE}..HEAD" | head -1 | cut -d' ' -f2-)
-
-echo "BRANCH=$BRANCH"
-echo "PR_TITLE=$PR_TITLE"
-```
-
-Then create the PR using the **exact** `$PR_TITLE` value printed above. If `--draft` was in $ARGUMENTS, add the `--draft` flag:
-
-```bash
+# REVIEWED_* values come from the proposal, revalidated immediately above.
+PR_TITLE=$(cat .claude/pr-title.txt)
+git push "$REVIEWED_REMOTE" "${REVIEWED_COMMIT}:refs/heads/${REVIEWED_HEAD_BRANCH}"
 gh pr create \
-  --title "<exact PR_TITLE from above>" \
+  --repo "$REVIEWED_PR_REPOSITORY" \
+  --base "$REVIEWED_BASE_BRANCH" \
+  --head "$REVIEWED_PR_HEAD" \
+  --title "$PR_TITLE" \
   --body-file .claude/pr-description.md
 ```
 
-If `gh pr create` fails because a PR already exists:
-```bash
-gh pr view "${BRANCH}" --json url --jq '.url'
-```
-Report the existing PR URL instead.
+Add `--draft` only when included in the proposal. Run the push and PR creation sequentially and stop on failure. Never force-push as a recovery step without authorization. If the push succeeds and PR creation fails, report the published branch and retain the description for a retry; do not ask to approve the unchanged push again.
 
-**After the PR is successfully created (or existing PR found):**
-```bash
-rm -f .claude/pr-description.md
-```
+If a PR already exists, retrieve its URL with `gh pr view` using the reviewed repository and branch. Report the existing PR without editing its title or description unless that edit is authorized. Keep the local proposal until the outcome is confirmed.
 
 ### Phase 7: Report
 
@@ -219,10 +191,9 @@ rm -f .claude/pr-description.md
 Shipped!
 
 Branch: feature/batch-analysis
-Commits: 3 (squashed from 14)
+Published commit: <SHA>
+Commits: 3
 PR: https://github.com/org/repo/pull/123
-
-Backup branch: backup/feature/batch-analysis-20260325-143200
 
 Next steps:
   gh pr view 123 --web     # Open in browser
@@ -234,14 +205,15 @@ Next steps:
 - **Push rejected (behind remote):** Warn user and suggest `git pull --rebase` first
 - **gh not authenticated:** Tell user to run `gh auth login`
 - **No upstream remote:** Suggest `git remote add origin <url>`
-- **Squash conflicts:** Shouldn't happen (soft reset), but if anything goes wrong, restore from backup branch
+- **Proposal changed:** Revalidate the action and content against existing authorization before publishing
+- **Partial publishing failure:** Report which action succeeded and retain the proposal for retry
 
 ## Example Usage
 
 ```
 /agentic-coding-workflow:ship
 ```
-Ships the current branch — auto-detects spec, squashes WIP, creates PR.
+Ships the current branch — auto-detects context, prepares the publishing proposal, and creates a PR within the applicable authorization.
 
 ```
 /agentic-coding-workflow:ship batch-analysis
@@ -256,7 +228,7 @@ Creates a draft PR.
 ```
 /agentic-coding-workflow:ship --no-squash
 ```
-Skips WIP squashing (commits are already clean).
+Preserves commits (also the default).
 
 ```
 /agentic-coding-workflow:ship --draft --no-squash

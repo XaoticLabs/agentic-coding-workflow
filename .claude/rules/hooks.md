@@ -6,7 +6,8 @@ paths:
 # Hook Development Rules
 
 ## Registration
-- All hooks MUST be registered in `hooks/hooks.json` — unregistered scripts do nothing
+- Default plugin hooks are registered in `hooks/hooks.json`; keep language policy in consuming-project configuration and enable optional checks there
+- Set a tool matcher for hooks that handle specific tools; do not infer a Python toolchain or library version from a language marker or method name
 - Use `${CLAUDE_PLUGIN_ROOT}` for script paths in hooks.json
 - Set appropriate `timeout` values (default is fine for most; use 5s for fast checks)
 

@@ -8,7 +8,7 @@ paths:
 ## SKILL.md Frontmatter
 - `name`: lowercase, hyphenated
 - `description`: exhaustive trigger phrases — this is the most important field. Include exact user phrases, synonyms, adjacent concepts, and anti-patterns (when NOT to trigger)
-- `allowed-tools`: minimum set needed
+- `allowed-tools`: minimum prompt-free approval grants needed, not a restriction on all available tools (see CLI `--tools` / `--disallowedTools`)
 - `user-invocable: true` if it's a slash command skill
 
 ## Directory Structure

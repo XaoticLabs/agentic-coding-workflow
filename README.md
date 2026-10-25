@@ -140,20 +140,23 @@ Read a few relevant files directly. Delegate investigations whose intermediate o
 
 ## Hooks
 
-Tool approvals use Claude Code's normal permission handling.
+The default hooks require Python 3.11+, Bash, Git, and jq; their Python scripts use the standard library and do not require uv. Tool approvals use Claude Code's normal permission handling. Command/skill `allowed-tools` and CLI `--allowedTools` grant prompt-free approval; they are not a complete tool whitelist. CLI `--tools` restricts available tools and `--disallowedTools` adds explicit denies. See the [CLI reference](https://code.claude.com/docs/en/cli-reference).
 
 | Hook | Event | What it does |
 |------|-------|--------------|
 | `dangerous_command_blocker.py` | PreToolUse | Catches dangerous commands (`rm -rf /`, `.env` access) and blocks them |
-| `ship-gate.sh` | PreToolUse | Blocks `gh pr create` unless PR description exists and user approved it |
 | `audit-logger.py` | PostToolUse / PostToolUseFailure | Logs all tool calls to `.claude/logs/tool-calls.jsonl` for audit and debugging |
-| `lint-on-stop.sh` | Stop | Checks formatting, lint, types, and tests across committed and working files without running fixes; records the verified revision and worktree fingerprint |
+| `lint-on-stop.sh` | Stop | Runs configured Python lint/test commands or Elixir checks without fixes; records the verified revision and worktree fingerprint |
 | `rule-capture-on-stop.sh` | Stop | After implementation, prompts about capturing learned patterns as rules |
 | `ralph-on-stop.sh` | Stop | During Ralph builds, enforces plan updates and reviews committed changes |
 | `validate-output.py` | Stop | Validates command output artifacts exist and contain required sections |
 | `toast-notify.sh` | Stop | Pops up a macOS notification when Claude needs your attention |
 | `stop-failure-logger.sh` | StopFailure | Logs API failures (rate limits, auth errors) and sends toast notifications |
 | `cleanup-review-worktrees.sh` | SessionEnd | Removes owned, inactive, clean review worktrees after ancestry and artifact preservation checks |
+
+Python tooling is project-specific. The global toolchain blocker and regex style hook have been removed. `/agentic-coding-workflow:setup-python-rules` adapts judgment guidance to the existing stack. The optional [uv/Ruff/basedpyright profile](profiles/python/uv-ruff-basedpyright/README.md) supplies actual tool configuration and check commands only when explicitly selected. Tool configuration owns formatting, lint, typing, and file exclusions.
+
+`/ship` prepares the destination, branch/commit, PR title, complete body, base/head, and draft status before any required review. It chooses a title from the final change and reuses existing authorization for unchanged actions. The agent-writable approval marker and ship hook have been removed: the workflow is an instruction-level policy, not authenticated approval enforcement. Organizations requiring enforcement need a trusted external permission service or publishing executor with approval storage inaccessible to the agent, bound to the exact outgoing action and content. See [External Actions and Approval](commands/shared-patterns.md#external-actions-and-approval).
 
 ## CLAUDE.md & Rules System
 
@@ -171,19 +174,19 @@ The `/agentic-coding-workflow:update-rules` command helps you build these up ove
 
 ## Typical Workflow
 
-Project commands are configured in `.claude/project-commands.json`:
+Project commands are configured in `.claude/project-commands.json`. For an existing Black/mypy project, for example:
 
 ```json
 {
-  "test": "uv run pytest",
-  "lint": "uv run ruff format --check . && uv run ruff check --no-fix . && uv run basedpyright",
-  "format": "uv run ruff format ."
+  "test": "python -m pytest",
+  "lint": "python -m black --check . && python -m mypy .",
+  "format": "python -m black ."
 }
 ```
 
-Supported keys are `build`, `test`, `lint`, `format`, and `run`. Missing test/lint keys use framework auto-detection; `null` or `""` explicitly disables an action. Invalid configuration stops verification. Ralph's `generate-agents-md.sh` initializes detected defaults, preserves existing overrides, and renders `.claude/AGENTS.md` from the same values. Move custom commands previously kept in the Markdown guide into this JSON file. Both files are copied into worker worktrees.
+Supported keys are `build`, `test`, `lint`, `format`, and `run`. Missing test/lint keys use framework auto-detection outside Python; Python commands must be selected from the consuming project’s CI/task configuration and saved explicitly; `null` or `""` explicitly disables an action. Invalid configuration stops verification. Ralph also blocks on unconfigured Python test/lint commands; its generator leaves unknown Python actions missing rather than inventing tools or silently disabling checks. Ralph's `generate-agents-md.sh` initializes detected defaults, preserves existing overrides, and renders `.claude/AGENTS.md` from the same values. Move custom commands previously kept in the Markdown guide into this JSON file. Both files are copied into worker worktrees.
 
-Formatting is an explicit action: `"${CLAUDE_PLUGIN_ROOT}/scripts/format-project.sh"` runs the configured `format` command, with Python/Elixir defaults when it is absent. Stop checks use `ruff format --check`, `ruff check --no-fix`, and `mix format --check-formatted`. Python tools run with `uv run --frozen --no-sync` so verification does not update lockfiles or install dependencies. They check the whole project on every branch, including committed code.
+Formatting is an explicit action: `"${CLAUDE_PLUGIN_ROOT}/scripts/format-project.sh"` runs the configured `format` command, with an Elixir default when absent. Python Stop checks run only configured `lint` and `test` commands, preserving quoting and operators. Missing or disabled actions do not run and do not count as successful verification. Include check-only formatting and typing in `lint`, and keep source/test scope in actual tool configuration. Check commands must not run fixes or install dependencies. The optional uv profile uses `--frozen --no-sync`. Configured checks run on every branch, including committed code.
 
 Verification records in `.claude/verification/<session-hash>.json` identify `HEAD` and a SHA-256 of the working inputs before and after checks. Ignored project commands, rules, guidance, and specs participate in the fingerprint; runtime logs and markers do not. `scope: "worktree"` includes local inputs beyond the committed tree. Correction turns verify again, and an earlier success is reused only for unchanged inputs. Three failed attempts produce an explicit `blocked` result and stop with a user-visible failure; a new user turn can retry. Infrastructure failures remain `incomplete`, state-capture failures remain `unavailable`, and a crash leaves `running`, never a stale success.
 
@@ -193,7 +196,7 @@ All evaluator modes use the same `ACCEPT` / `REVISE` / `ERROR` / `NOT_RUN` contr
 
 Final verification precedes evaluation and cleanup. Single-run merges recheck the candidate and target after confirmation and fast-forward to the verified SHA; a diverged target requires integration and fresh verification. Parallel runs also invalidate verification after any candidate change. `--eval-gates-merge` requires a current ACCEPT; optional advisory evaluation can report REVISE, while ERROR remains a failed run. UI evaluation reads evidence captured before final verification from `RALPH_EVAL_UI_EVIDENCE`, a nonempty directory inside the project, rather than starting a server or browser with evaluator permissions.
 
-Hook feedback follows the [Claude Code hook protocol](https://code.claude.com/docs/en/hooks). The ship gate returns an intentional block on failed Credo checks; its Bash-only registration also blocks hook crashes and timeouts through `onFailure: "block"` (Claude Code v2.1.295 or later). Style feedback uses PostToolUse `hookSpecificOutput.additionalContext`. Failed tool calls are audited through PostToolUseFailure. StopFailure logs API errors, including the rendered error message, to `.claude/logs/stop-failures.jsonl`; it provides observability and notifications, with no automatic retry or worker lifecycle transition.
+Hook feedback follows the [Claude Code hook protocol](https://code.claude.com/docs/en/hooks). Failed tool calls are audited through PostToolUseFailure. StopFailure logs API errors, including the rendered error message, to `.claude/logs/stop-failures.jsonl`; it provides observability and notifications, with no automatic retry or worker lifecycle transition.
 
 Ralph plans use a fenced JSON `{"tasks": [...]}` index under `## Task Index`. Each task has `id`, `name`, `status` (`pending`/`done`), `priority`, `deps` (integer IDs), and `files` (path strings), with optional `spec` and `completed_in`. The shared `scripts/task-plan.py` parser validates the entire dependency graph before scheduling. Unknown IDs, duplicates, self-dependencies, and cycles are errors. Existing checkbox plans remain supported; all comma-separated dependencies are preserved. Completed dependencies are already satisfied. The planner, progress displays, stop validator, and scheduler use the same task model.
 

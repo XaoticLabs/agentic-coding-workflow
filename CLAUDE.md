@@ -48,7 +48,7 @@ Keep changes focused and review maintainability in context: clear responsibiliti
 
 `/agentic-coding-workflow:implement "<change>"` supports direct interactive work. `/agentic-coding-workflow:plan` writes a concise plan when context is sufficient; `--interview` selects deeper questioning. `/agentic-coding-workflow:write-spec` is available for detailed task handoffs. Teaching (`explain`, `review --learn`) and explicit contract-test approval (`implement --approve-tests`) remain selected modes. Planning, specs, new worktrees, and repeated approvals are not universal prerequisites. Verification and project-required gates apply to every path.
 
-Save generated artifacts in `.claude/plans/` and `.claude/specs/` when needed. Use `/agentic-coding-workflow:ralph` for unattended execution with agreed limits and isolated worktrees; it handles task partitioning, progress records, verification, and reunification. For manual parallel work, use `/agentic-coding-workflow:parallel` and `/agentic-coding-workflow:reunify`. Review and ship when requested; existing publishing gates still apply.
+Save generated artifacts in `.claude/plans/` and `.claude/specs/` when needed. Use `/agentic-coding-workflow:ralph` for unattended execution with agreed limits and isolated worktrees; it handles task partitioning, progress records, verification, and reunification. For manual parallel work, use `/agentic-coding-workflow:parallel` and `/agentic-coding-workflow:reunify`. Review and ship when requested; honor project approval policy and existing authorization using **External Actions and Approval** in `commands/shared-patterns.md`. Local files and approval grants do not authenticate human review.
 
 Always inspect recent `git log` before committing and follow the repository's historical commit pattern. Current history uses concise, lowercase `type: description` subjects (for example, `fix: ...`), normally without a body.
 
@@ -64,7 +64,8 @@ Always inspect recent `git log` before committing and follow the repository's hi
 
 - Don't duplicate logic between a command and a skill — commands invoke skills, not the other way around
 - Don't put project-specific context (like database schemas or deployment details) in plugin files — that belongs in the consuming project's own CLAUDE.md
-- Don't create commands without YAML frontmatter — they won't get proper tool permissions
+- Command `allowed-tools` frontmatter grants prompt-free approval; it does not restrict the available tool set. Use CLI `--tools` / `--disallowedTools` when restriction is required.
+- Respect consuming projects' configured tooling. Language-specific tool preferences belong in optional profiles and project configuration, not global hooks. Keep mechanical rules in formatter, linter, and type-checker configuration; use agent instructions for contextual judgment.
 - Don't hardcode paths — use `${CLAUDE_PLUGIN_ROOT}` for plugin-relative and `${CLAUDE_PROJECT_DIR}` for project-relative paths
 
 ## Testing & Validation

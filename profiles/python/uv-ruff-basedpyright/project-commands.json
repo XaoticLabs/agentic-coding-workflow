@@ -1,0 +1,5 @@
+{
+  "test": "uv run --frozen --no-sync pytest",
+  "lint": "uv run --frozen --no-sync ruff format --check . && uv run --frozen --no-sync ruff check --no-fix . && uv run --frozen --no-sync basedpyright",
+  "format": "uv run --frozen --no-sync ruff format ."
+}

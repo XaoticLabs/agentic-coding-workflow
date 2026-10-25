@@ -12,86 +12,56 @@ effort: low
 
 # Setup Python Rules
 
-Installs Python conventions as `.claude/rules/python.md` in the consumer's project. Rules are adapted from Google Python Style Guide and PEP 8, focused on human-judgment checks that ruff, basedpyright, and CI won't catch.
+Installs project-specific judgment guidance in `.claude/rules/python.md`. The default keeps the project's existing tools and library versions. Formatting, lint, and typing policy belongs in actual tool configuration; installing this plugin enables no Python toolchain gate or regex style hook.
 
 ## Input
 
 $ARGUMENTS — Optional flags:
-- `--preview` — show the rules without installing
-- `--force` — overwrite existing rules file without asking
-- Empty — install with confirmation
+
+- `--preview` — show proposed rules and any profile/configuration changes without writing files or installing dependencies
+- `--force` — replace the existing rules file without asking; does not authorize replacing tool configuration or migrating tooling
+- `--profile uv-ruff-basedpyright` — explicitly select the optional uv, Ruff, basedpyright, and pytest profile
+- Empty — install guidance adapted to the current project
+
+Reject unknown profiles before making changes.
 
 ## Instructions
 
-### Phase 1: Check Existing State
+### Phase 1: Inspect the Project
 
-1. Check if `.claude/rules/python.md` already exists in the project:
-   ```bash
-   ls "${CLAUDE_PROJECT_DIR}/.claude/rules/python.md" 2>/dev/null
-   ```
+Read existing `.claude/rules/python.md`, project instructions, `pyproject.toml`, `setup.cfg`, dependency/lock files, CI, task runners, and `.claude/project-commands.json` where present. Identify the supported Python version, actual tooling, source/test scope, exclusions, and library versions. An installed executable or `pyproject.toml` alone does not select a toolchain.
 
-2. If it exists and `--force` not specified, read the existing file and ask:
-   > A Python rules file already exists at `.claude/rules/python.md`. Options:
-   > 1. **Merge** — add missing rules to your existing file
-   > 2. **Replace** — overwrite with the latest version
-   > 3. **Cancel** — keep your current file
+If rules already exist and `--force` is absent, offer merge, replace, or cancel, unless the user already chose. In preview mode, show the proposed merge without prompting to install. Respect pip, Poetry, Black, mypy, unittest, Pydantic v1 compatibility, and other configured choices. Ask only when missing information affects the proposed setup.
 
-3. Check what Python tooling the project uses:
-   ```bash
-   # Check pyproject.toml for tooling
-   cat "${CLAUDE_PROJECT_DIR}/pyproject.toml" 2>/dev/null | grep -E '(ruff|basedpyright|pyright|mypy|black|flake8|pytest|pydantic)'
-   ```
+### Phase 2: Prepare Guidance and Tool Configuration
 
-### Phase 2: Adapt Rules
+Read `${CLAUDE_PLUGIN_ROOT}/.claude/rules/python.md` as a judgment-oriented starting point. Keep its `paths: ["**/*.py"]` scope and adapt the guidance to the project. Include library-specific guidance only when that library and version apply. Do not copy mandatory tool preferences, mechanical lint rules, or API migration requirements into agent instructions.
 
-Read the reference rules from the plugin:
-```bash
-cat "${CLAUDE_PLUGIN_ROOT}/.claude/rules/python.md"
-```
+Without `--profile`, preserve the current toolchain. When existing CI/task commands clearly identify the project's checks, propose corresponding missing `lint`, `test`, and `format` entries in `.claude/project-commands.json`. Preserve existing entries, including intentional null/empty disables. `lint` should run the project's check-only formatting, lint, and typing requirements; `test` runs its selected framework. Do not invent commands for unconfigured tools; report missing required checks. Keep paths and exclusions in the tools' own configuration. Custom hooks, if requested, must match the relevant tool and files and invoke configured checks rather than infer library semantics from regexes.
 
-Adapt based on what the project actually uses:
-- If project uses `mypy` instead of `basedpyright`, adjust type checker references
-- If project uses `pyright` instead of `basedpyright`, adjust accordingly
-- If project uses `pip`/`poetry` instead of `uv`, adjust package manager references
-- If project doesn't use `pydantic`, remove the Pydantic section
-- If project uses `black` instead of ruff formatter, note that
-- Keep all human-judgment rules regardless of tooling
+With `--profile uv-ruff-basedpyright`, read the files under `${CLAUDE_PLUGIN_ROOT}/profiles/python/uv-ruff-basedpyright/`. Prepare concrete merges into the project's actual `pyproject.toml` and `.claude/project-commands.json`. Preserve unrelated tables, existing overrides/disables, source/test roots, and exclusions; adapt the Python target. Do not duplicate TOML tables. Identify development dependency changes and environment setup. If the project already uses a conflicting stack, present the concrete migration for approval unless that migration was already authorized; the flag alone does not authorize discarding existing policy.
 
-### Phase 3: Install
+### Phase 3: Preview or Install
 
-1. If `--preview` flag, display the adapted rules and stop.
+For `--preview`, show the adapted guidance, proposed configuration/dependency changes, and unresolved decisions, then stop without mutations.
 
-2. Ensure the directory exists:
-   ```bash
-   mkdir -p "${CLAUDE_PROJECT_DIR}/.claude/rules"
-   ```
+Otherwise, create `.claude/rules/` as needed and write the requested guidance. Apply authorized configuration merges. A routine setup request authorizes installing the adapted rules; do not add a redundant approval round. Obtain approval only for an unresolved overwrite, tooling migration, or other material scope decision. Do not install or replace dependencies merely to install judgment guidance.
 
-3. Write the adapted rules file to `${CLAUDE_PROJECT_DIR}/.claude/rules/python.md`
-
-4. Report what was installed:
-   > Installed Python rules at `.claude/rules/python.md`
-   >
-   > These rules are automatically loaded when editing `**/*.py` files and cover:
-   > - Type design (abstract types, generics, Self)
-   > - Naming (semantic quality beyond what ruff catches)
-   > - Pydantic v2 patterns
-   > - Function/class design guidelines
-   > - Error handling judgment calls
-   > - Async concurrency patterns
-   > - Security checks easy to miss
-   > - Logging conventions
-   >
-   > Rules focus on human-judgment items that ruff and basedpyright don't catch.
+Report the rules path, selected tools, changed configuration files, commands available for verification, and any checks that remain unconfigured. Validate modified TOML/JSON and run available, relevant checks. Never report unrun or unconfigured checks as passed.
 
 ## Error Handling
 
-- If the project has no Python files (`**/*.py`), warn but still install if user confirms
-- If `.claude/` directory doesn't exist, create it along with `rules/`
+- **No Python files:** Explain the mismatch; install only if Python setup is still intended.
+- **Invalid existing tool or command configuration:** Report the error and preserve the file for correction.
+- **Ambiguous runner or conflicting policy:** Prepare the supported options and resolve the material choice before changing configuration.
+- **Missing tools:** Report the environment setup needed; do not switch to the optional stack automatically.
 
 ## Example Usage
 
-```
-/setup-python-rules              # Install with confirmation
-/setup-python-rules --preview    # Show rules without installing
-/setup-python-rules --force      # Overwrite existing without asking
+```text
+/agentic-coding-workflow:setup-python-rules
+/agentic-coding-workflow:setup-python-rules --preview
+/agentic-coding-workflow:setup-python-rules --profile uv-ruff-basedpyright --preview
+/agentic-coding-workflow:setup-python-rules --profile uv-ruff-basedpyright
+/agentic-coding-workflow:setup-python-rules --force
 ```

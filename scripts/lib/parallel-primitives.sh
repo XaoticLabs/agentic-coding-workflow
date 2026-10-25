@@ -168,8 +168,9 @@ detect_test_command() {
   if [ -z "$test_cmd" ]; then
     if [ -f "${project_dir}/mix.exs" ]; then
       test_cmd="mix test"
-    elif [ -f "${project_dir}/pytest.ini" ] || [ -f "${project_dir}/pyproject.toml" ]; then
-      test_cmd="pytest"
+    elif [ -f "${project_dir}/pyproject.toml" ] || [ -f "${project_dir}/setup.py" ]; then
+      echo "Python test command is unconfigured. Set test in .claude/project-commands.json from the project's tooling (or explicitly disable it with null)." >&2
+      return 2
     elif [ -f "${project_dir}/package.json" ]; then
       if grep -q '"test"' "${project_dir}/package.json" 2>/dev/null; then
         test_cmd="npm test"
@@ -208,12 +209,11 @@ detect_lint_command() {
   if [ -z "$lint_cmd" ]; then
     if [ -f "${project_dir}/mix.exs" ]; then
       lint_cmd="mix credo"
+    elif [ -f "${project_dir}/pyproject.toml" ] || [ -f "${project_dir}/setup.py" ]; then
+      echo "Python lint command is unconfigured. Set lint in .claude/project-commands.json from the project's tooling (or explicitly disable it with null)." >&2
+      return 2
     elif [ -f "${project_dir}/.eslintrc.js" ] || [ -f "${project_dir}/.eslintrc.json" ] || [ -f "${project_dir}/eslint.config.js" ]; then
       lint_cmd="npx eslint ."
-    elif [ -f "${project_dir}/pyproject.toml" ]; then
-      if grep -q 'ruff' "${project_dir}/pyproject.toml" 2>/dev/null; then
-        lint_cmd="ruff check --no-fix ."
-      fi
     fi
   fi
 

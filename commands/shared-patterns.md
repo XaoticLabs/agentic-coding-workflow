@@ -23,6 +23,13 @@ Use the least elaborate workflow that resolves material uncertainty and produces
 - Verify every change using checks appropriate to its behavior and consequences, including project-required gates. Add behavioral or regression tests where useful; use direct inspection or targeted validation for changes without testable behavior. Report actual checks, outcomes, and unresolved limitations. Never imply an unrun check passed.
 - Before unattended execution, establish scope, completion checks, iteration/time limits, allowed operations, and stop conditions. Preserve commits, task status, and recovery evidence. If a material decision exceeds the agreed scope, preserve progress and stop for input. Build authorization does not itself authorize publishing.
 
+## External Actions and Approval
+
+- Prepare a concrete, reviewable proposal before seeking any required approval for a push, PR, deployment, or other external write. Include the destination, action, exact content, and relevant verification results. Ask only when authorization is missing, the scope materially changes, or the selected workflow requires final review. Reuse existing authorization for the same action and content, including retries after partial failure.
+- `allowed-tools` in command/skill frontmatter and CLI `--allowedTools` grant approval to run matching tools without prompting; they do not restrict the complete available tool set. Use CLI `--tools` for availability and `--disallowedTools` for denies. These settings do not prove that a user reviewed publishing content. See the [CLI reference](https://code.claude.com/docs/en/cli-reference).
+- Repository files, approval comments, and agent-authored records are workflow context, not authenticated approval. This plugin does not enforce human approval of publishing through a local marker or shell-command regex.
+- Where enforcement is required, use a trusted permission service or publishing executor whose approval storage and execution policy the agent cannot modify. Bind approval to the repository identity, remote destination, operation (push/create/edit), source and destination refs, exact commit SHA, PR base/head, exact title, description digest, and draft status as applicable. Verify the actual outgoing payload immediately before execution; reject changed values. The executor must mediate every relevant route, including pushes and API calls, rather than matching one literal CLI string. A file merely located outside the repository is insufficient if the agent can still write it.
+
 ## Test and Verification Integrity
 
 - Preserve the user's acceptance criteria. Tests are evidence for those criteria and can contain mistakes; an agent-authored test or RED commit is not human approval.
@@ -97,14 +104,14 @@ Generate initial configuration with `skills/ralph/scripts/generate-agents-md.sh`
 | Indicator | Runner | Test Command | Lint Command |
 |-----------|--------|-------------|--------------|
 | `mix.exs` | Mix (Elixir) | `mix test` | `mix format --check-formatted && mix credo` |
-| `pyproject.toml` with `[tool.pytest]` | pytest | `pytest -v` | `ruff check .` |
-| `pyproject.toml` with uv | pytest via uv | `uv run pytest -v` | `uv run ruff check .` |
-| `setup.py` or `setup.cfg` | pytest | `python -m pytest -v` | `ruff check .` |
+| Python project | Project-selected | Use the existing CI/task-runner test command | Use the existing check-only formatter/lint/type commands |
 | `package.json` with `"test"` script | npm | `npm test` | `npm run lint` (if exists) |
 | `Cargo.toml` | cargo | `cargo test` | `cargo clippy` |
 | `go.mod` | go test | `go test ./...` | `go vet ./...` |
 | `Makefile` with `test` target | make | `make test` | `make lint` (if exists) |
 | `Gemfile` with `rspec` | rspec | `bundle exec rspec` | `bundle exec rubocop` |
+
+Python has no automatic toolchain fallback: inspect CI, task runners, dependency manifests, and tool configuration, then save the actual commands to `.claude/project-commands.json`. Missing Python actions remain unconfigured; report required verification that could not run. Never interpret an unconfigured check as evidence that it passed or convert unknown commands to null disables. Ralph verification blocks on missing Python test/lint commands; explicit null/empty disables remain respected. Stop verification uses only configured `lint` and `test`; `lint` must include any required check-only formatting and typing. Keep mechanical rules and file exclusions in the tools' own configuration. `/setup-python-rules --profile uv-ruff-basedpyright` offers an optional stack for projects that choose it.
 
 ## Input: Spec/Plan Loading
 

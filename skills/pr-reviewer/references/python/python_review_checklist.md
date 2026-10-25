@@ -2,7 +2,7 @@
 
 Quick-scan index for Python PR reviews. See `python_style_guide.md` for rationale, examples, and edge cases.
 
-Tooling handles: formatting, import order, unused imports, type errors, bare excepts, deprecated syntax, test failures.
+Use the project's configured checks and library versions. Mechanical rules belong in tool configuration; confirm the actual check result and project policy before treating a convention as a finding.
 
 | # | Area | Key Cues | Severity |
 |---|------|----------|----------|
@@ -11,9 +11,9 @@ Tooling handles: formatting, import order, unused imports, type errors, bare exc
 | 3 | **Naming** | No type-encoding, no abbreviation-by-deletion, no builtin shadowing, booleans as questions | MINOR |
 | 4 | **Type Design** | Abstract params (`Sequence`/`Mapping`), concrete returns. `Self`. Parameterized generics. | MAJOR |
 | 5 | **Docstrings** | Imperative summary. Args sans types. Returns describes semantics. Comments = *why*. | MINOR |
-| 6 | **Design** | Clear responsibilities and control flow; useful decomposition without fixed size limits. Explicit returns. `*` for 3+ optionals. No `@staticmethod`. | MAJOR |
+| 6 | **Design** | Clear responsibilities and control flow; useful decomposition without fixed size limits. API choices fit semantics and compatibility. | MAJOR |
 | 7 | **Error Handling** | Minimal `try`. Actionable messages. Intentional `from None`? No `assert` for validation. | MAJOR |
-| 8 | **Pydantic** | v2 API only. Flag `.dict()`, `class Config:`, `@validator`. `BaseSettings` for config. | MAJOR |
+| 8 | **Pydantic** | Confirm model type and supported Pydantic version before flagging an API. Respect intentional v1 compatibility; unrelated `.dict()` methods and `Config` classes are valid. | MAJOR |
 | 9 | **Security** | Path traversal, JWT expiry+algorithms, cookie flags, timeouts, no sensitive logging, no unsafe deser | **BLOCKER** |
 | 10 | **Async** | `gather()` independent awaits. Check task results. Async context managers. `run()` at entry only. | MAJOR |
 | 11 | **Testing** | Behavioral names. Specific assertions. `match=` on raises. Parametrize. Mock external only. | MAJOR |

@@ -3,64 +3,18 @@ paths:
   - "**/*.py"
 ---
 
-# Python Conventions
+# Python Judgment and Project Policy
 
-## Toolchain
+Use the consuming project's Python version, dependency manager, formatter, linter, type checker, test runner, and library versions. Inspect its manifests, CI, and task commands. Do not migrate tooling as part of an unrelated change. This repository's optional stack is in `profiles/python/uv-ruff-basedpyright/`; installing the plugin does not select it.
 
-- **Package manager**: `uv` — use `uv run` to execute tools, `uv add` for dependencies
-- **Linter + formatter**: `ruff` — formatting and linting (replaces black, isort, flake8, pylint)
-- **Type checker**: `basedpyright` — strict mode by default
-- **Test runner**: `pytest` via `uv run pytest`
-- **Validation**: `pydantic` at system boundaries
+Formatting, import ordering, naming syntax, logging syntax, annotation completeness, and typing strictness belong in actual tool configuration. Run the project's configured checks; avoid repeating mechanically enforced rules in agent instructions.
 
-## Human-Judgment Rules (not caught by tooling)
-
-### Type Design
-- Prefer `collections.abc` abstract types (`Sequence`, `Mapping`, `Iterable`) in function signatures — accept broad, return narrow
-- Use `Self` for methods returning their own type
-- Annotate class variables with `ClassVar[T]`
-- Always parameterize generics (`dict[str, int]` not bare `dict`)
-
-### Naming (beyond what ruff N8xx catches)
-- No type-encoding in names: `user_dict` → `users`
-- No abbreviations by deleting letters: `msg` ok, `usr` not
-- Don't shadow builtins: `list`, `type`, `id`, `input`, `format`
-- Descriptive names — can you understand purpose without reading the body?
-
-### Pydantic
-- Pydantic v2 API only: `model_dump()`, `model_validate()`, `ConfigDict(...)`, `field_validator`
-- Pydantic for system boundaries — dataclasses for internal data
-- `BaseSettings` for config, not manual env var parsing
-- `ConfigDict(strict=True)` where type coercion is undesirable
-
-### Design
-- Keep responsibilities and control flow clear; choose decomposition from cohesion and readability rather than fixed length or nesting limits
-- Never `@staticmethod` — use module-level function
-- `@classmethod` only for alternative constructors
-- `@property` only for computed attributes — not wrapping trivial private attrs
-- Keyword-only args (`*`) for functions with 3+ optional params
-- Single return type per function — all branches return explicitly
-- Comprehensions: single for/if only — use loops for complex cases
-
-### Error Handling
-- Minimize code in `try` blocks — only the line(s) that can raise
-- `raise X from Y` for chaining — don't swallow context
-- Never `assert` for validation (stripped with `-O`)
-- No `return`/`break`/`continue` inside `finally`
-- Custom exceptions: inherit `Exception`, name ends in `Error`
-
-### Async
-- Concurrent independent operations use `asyncio.gather()` — not sequential awaits
-- Task results checked — no fire-and-forget without error handling
-- Async context managers for connection/session cleanup
-
-### Security (easy to miss)
-- File paths validated against traversal (`Path.resolve()` + prefix check)
-- JWTs: expiration set, `algorithms=` explicitly specified
-- Session cookies: `httponly=True`, `secure=True`, `samesite='Strict'`
-- External request timeouts always set
-- Sensitive data never logged (passwords, tokens, PII)
-- Input validated at every system boundary (pydantic preferred)
-
-### Logging
-- Always `%`-style: `logger.info("User %s", name)` — not f-strings (lazy evaluation)
+- Choose parameter types from caller needs and return types from the guarantees callers need. Avoid exposing internal representation unnecessarily.
+- Name domain concepts clearly; prefer established project vocabulary over new abbreviations.
+- Decompose code around cohesive responsibilities and readable control flow. Choose functions, methods, and properties from the API's semantics and compatibility needs.
+- Validate untrusted inputs at system boundaries using the project's existing approach. Choose strictness or coercion intentionally; consider dataclasses for internal containers.
+- Confirm the receiver's type and installed library version before proposing API changes. Unrelated `.dict()` methods and `Config` classes are not evidence of Pydantic usage or a migration requirement. Preserve intentional Pydantic v1 compatibility.
+- Keep exception handling focused on operations that can fail; preserve useful context and give callers actionable failures. Runtime validation must still work when Python assertions are disabled.
+- Run independent async work concurrently only when ordering, resource limits, and failure handling permit it. Handle task failures and clean up connections reliably.
+- Review path containment, secret exposure, authentication assumptions, request timeouts, and validation boundaries in context. Use path-aware containment checks rather than string prefixes.
+- Verify behavior with relevant regression cases. Report which configured checks ran and any required checks that remain unavailable.

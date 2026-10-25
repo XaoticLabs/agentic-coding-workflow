@@ -209,6 +209,44 @@ def test_generator_leaves_invalid_config_and_existing_guide_intact(
     assert (project / ".claude/AGENTS.md").read_text() == "existing guide"
 
 
+def test_python_detection_does_not_invent_a_toolchain(project: Path) -> None:
+    (project / "pyproject.toml").write_text("[tool.black]\n[tool.mypy]\n")
+    for action in ("test", "lint"):
+        detected = shell(project, f'detect_{action}_command "$2"')
+        assert detected.returncode != 0
+        assert "unconfigured" in detected.stderr
+        assert detected.stdout == ""
+    result = generate(project)
+    assert result.returncode == 0, result.stderr
+    commands = json.loads((project / ".claude/project-commands.json").read_text())
+    assert all(action not in commands for action in ("build", "test", "lint", "format"))
+    gated = shell(project, 'run_verification_gate "$2" "$2/verification"')
+    assert gated.returncode != 0
+
+
+def test_python_explicit_disables_are_preserved_and_respected(project: Path) -> None:
+    (project / "pyproject.toml").touch()
+    configure(project, {"test": None, "lint": None})
+    result = generate(project)
+    assert result.returncode == 0, result.stderr
+    gated = shell(project, 'run_verification_gate "$2" "$2/verification"')
+    assert gated.returncode == 0, gated.stderr
+
+
+def test_python_generator_preserves_the_project_stack(project: Path) -> None:
+    (project / "pyproject.toml").write_text("[tool.black]\n[tool.mypy]\n")
+    selected = {
+        "test": "poetry run pytest",
+        "lint": "poetry run mypy .",
+        "format": "poetry run black .",
+    }
+    configure(project, selected)
+    result = generate(project)
+    assert result.returncode == 0, result.stderr
+    commands = json.loads((project / ".claude/project-commands.json").read_text())
+    assert all(commands[action] == value for action, value in selected.items())
+
+
 def test_worker_worktree_inherits_untracked_command_overrides(
     project: Path, tmp_path: Path
 ) -> None:
