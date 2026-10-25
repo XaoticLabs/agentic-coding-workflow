@@ -11,6 +11,7 @@
 # Guard against double-sourcing
 [[ -n "${_PARALLEL_PRIMITIVES_LOADED:-}" ]] && return 0
 _PARALLEL_PRIMITIVES_LOADED=1
+source "$(dirname "${BASH_SOURCE[0]}")/worktree-safety.sh"
 _PROJECT_COMMANDS_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/project-commands.py"
 
 # ── Worktree lifecycle ─────────────────────────────────────────────────
@@ -19,6 +20,7 @@ _PROJECT_COMMANDS_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/proje
 # Args: <repo-root>
 ensure_worktrees_gitignored() {
   local repo_root="$1"
+  if git -C "$repo_root" check-ignore -q .claude/worktrees/.probe; then return 0; fi
   if ! grep -q '\.claude/worktrees/' "${repo_root}/.gitignore" 2>/dev/null; then
     echo -e '\n# Git worktrees (parallel branch work)\n.claude/worktrees/' >> "${repo_root}/.gitignore"
   fi
@@ -37,14 +39,11 @@ create_worker_worktree() {
   local task_list="${6:-}"
   local start_point="${7:-}"
 
-  # Remove stale worktree if it exists
-  if [ -d "$worktree_path" ]; then
-    git -C "$repo_root" worktree remove --force "$worktree_path" 2>/dev/null || rm -rf "$worktree_path"
-  fi
-
-  # Remove stale branch if it exists
-  if git -C "$repo_root" show-ref --verify --quiet "refs/heads/$branch_name"; then
-    git -C "$repo_root" branch -D "$branch_name" 2>/dev/null || true
+  # Existing paths and branches may belong to another run or contain unfinished work.
+  if [ -e "$worktree_path" ] || [ -L "$worktree_path" ] ||
+    git -C "$repo_root" show-ref --verify --quiet "refs/heads/$branch_name"; then
+    echo "ERROR: Worktree path or branch already exists; preserved: $worktree_path ($branch_name)" >&2
+    return 1
   fi
 
   if [ -n "$start_point" ]; then
@@ -52,6 +51,7 @@ create_worker_worktree() {
   else
     git -C "$repo_root" worktree add -b "$branch_name" "$worktree_path"
   fi
+  register_worktree_owner "$repo_root" "$worktree_path" "${start_point:-HEAD}" || return 1
 
   # Copy spec directory into worktree
   if [ -n "$spec_dir" ] && [ -n "$slug" ] && [ -d "$spec_dir" ]; then
@@ -78,20 +78,24 @@ create_worker_worktree() {
 }
 
 # Remove a worktree and optionally its branch.
-# Args: <repo-root> <worktree-path> <branch-name> [--keep-branch]
+# Args: <repo-root> <worktree-path> <branch-name> [--keep-branch] [<target-ref> <archive-dir>]
 cleanup_worker_worktree() {
   local repo_root="$1"
   local worktree_path="$2"
   local branch_name="$3"
   local keep_branch="${4:-}"
+  local reason
 
-  if [ -d "$worktree_path" ]; then
-    git -C "$repo_root" worktree remove --force "$worktree_path" 2>/dev/null || rm -rf "$worktree_path"
+  if [ "$(git -C "$worktree_path" symbolic-ref -q --short HEAD)" != "$branch_name" ]; then
+    echo "PRESERVED:${worktree_path}:branch_changed" >&2
+    return 1
   fi
-
-  if [ "$keep_branch" != "--keep-branch" ]; then
-    git -C "$repo_root" branch -D "$branch_name" 2>/dev/null || true
+  if ! reason=$(worktree_cleanup_check "$repo_root" "$worktree_path" "${5:-}"); then
+    echo "PRESERVED:${worktree_path}:${reason}" >&2
+    return 1
   fi
+  preserve_worktree_artifacts "$repo_root" "$worktree_path" "${6:-${repo_root}/.claude/worktree-archives/$(date +%s)-$(basename "$worktree_path")}" || return 1
+  remove_owned_worktree "$repo_root" "$worktree_path" "${5:-}" "$keep_branch"
 }
 
 # ── Tmux management ───────────────────────────────────────────────────
@@ -239,6 +243,21 @@ run_test_gate() {
   else
     return 1
   fi
+}
+
+# Verify the final candidate with both configured checks before evaluation.
+# Args: <project-dir> <log-prefix>
+run_verification_gate() {
+  local project_dir="$1" log_prefix="$2" lint_cmd passed=true
+  if ! run_test_gate "$project_dir" "${log_prefix}-test.log"; then passed=false; fi
+  if lint_cmd=$(detect_lint_command "$project_dir"); then
+    if [ -n "$lint_cmd" ] && ! (cd "$project_dir" && eval "$lint_cmd") > "${log_prefix}-lint.log" 2>&1; then
+      passed=false
+    fi
+  else
+    passed=false
+  fi
+  [ "$passed" = true ]
 }
 
 # ── Tracing ───────────────────────────────────────────────────────────

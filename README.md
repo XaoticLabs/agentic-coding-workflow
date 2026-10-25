@@ -72,7 +72,7 @@ Then type any of these:
 
 | Command | What it does |
 |---------|--------------|
-| `/agentic-coding-workflow:ralph` | Autonomous coding loop. Works through every task unattended — implements, tests, commits, updates the plan, repeats. Supports `--once` (HITL mode), `--clean-room` (greenfield), `--harvest` (extract patterns), `--parallel` (multiple worktrees), `--checkpoint-every=N` (human steering pauses), `--eval-gates-merge` (block merge on REVISE verdict), and `--time-budget=N` (per-iteration time limit). Desktop notifications for key events. |
+| `/agentic-coding-workflow:ralph` | Autonomous coding loop. Works through every task unattended — implements, tests, commits, updates the plan, repeats. Supports `--once` (HITL mode), `--clean-room` (greenfield), `--harvest` (extract patterns), `--parallel` (multiple worktrees), `--checkpoint-every=N` (human steering pauses), `--eval-gates-merge` (require a fresh end-of-run ACCEPT verdict before merge), and `--time-budget=N` (per-iteration time limit). Desktop notifications for key events. |
 | `/agentic-coding-workflow:parallel` | Spins up N worktrees with tmux panes and Claude sessions for parallel task work. |
 | `/agentic-coding-workflow:reunify` | Merges parallel worktree branches back, runs tests after each merge, resolves conflicts, and verifies against the spec. |
 | `/agentic-coding-workflow:spawn` | Launches a full Claude Code session in a tmux pane with an agent role preloaded — for when you need a visible, steerable instance. |
@@ -141,7 +141,7 @@ Tool approvals use Claude Code's normal permission handling.
 | `validate-output.py` | Stop | Validates command output artifacts exist and contain required sections |
 | `toast-notify.sh` | Stop | Pops up a macOS notification when Claude needs your attention |
 | `stop-failure-logger.sh` | StopFailure | Logs API failures (rate limits, auth errors) and sends toast notifications |
-| `cleanup-review-worktrees.sh` | SessionEnd | Removes orphaned `pr-review-*` worktrees left by crashed sessions |
+| `cleanup-review-worktrees.sh` | SessionEnd | Removes owned, inactive, clean review worktrees after ancestry and artifact preservation checks |
 
 ## CLAUDE.md & Rules System
 

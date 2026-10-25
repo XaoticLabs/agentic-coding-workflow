@@ -33,6 +33,11 @@ git rev-parse --is-inside-work-tree 2>/dev/null || echo "NOT_A_GIT_REPO"
 
 If not a git repo, inform user and stop.
 
+Use the same `WORKTREE_OWNER_TOKEN` for all calls in a session. Scripts inherit it,
+or use `CLAUDE_SESSION_ID` when available. Standalone callers should export a unique
+token before creating worktrees and retain it for later cleanup. Ownership is recorded
+in the linked worktree's Git metadata; existing or legacy worktrees are never adopted.
+
 ## /worktree add [branch]
 
 ```bash
@@ -52,13 +57,13 @@ Formats output as a table: path, branch, commit. Highlights worktrees under `.cl
 ## /worktree remove [name]
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/skills/git-worktree/scripts/worktree-remove.sh" "<name>" [--force]
+bash "${CLAUDE_PLUGIN_ROOT}/skills/git-worktree/scripts/worktree-remove.sh" "<name>"
 ```
 
 Exit codes:
 - 0 + `REMOVED:` — success
 - 1 + `NOT_FOUND:` — worktree not found
-- 2 + `DIRTY:` — has uncommitted changes, needs `--force`. Show changes, ask user to confirm.
+- 2 + `PRESERVED:<path>:<reason>` — ownership, activity, cleanliness, or merge checks failed. Report the reason and retain the worktree. `--force` does not bypass these checks.
 
 ## /worktree status
 
@@ -100,15 +105,18 @@ If output is `NO_WORKTREES`, report that no worktrees exist and stop.
 
 Format into a table, then use AskUserQuestion to offer:
 - Remove specific worktrees by number
-- Remove all merged+clean worktrees
-- Remove all (with confirmation for dirty ones)
+- Remove all eligible worktrees owned by this session
 
 For auto-remove of merged+clean:
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/skills/git-worktree/scripts/cleanup.sh" --auto-remove-merged
 ```
 
-**Safety:** Never force-remove without explicit user confirmation. Always show uncommitted changes before removing dirty worktrees. Warn if branch has unpushed commits.
+**Safety:** Automatic removal requires matching ownership, no active process/lease or tmux
+pane, a clean checkout including untracked files, and HEAD reachable from the target branch.
+The scripts copy and verify `.claude/` artifacts under `.claude/worktree-archives/` first.
+Unknown ownership, dirty or unmerged work, and failed preservation checks retain the worktree.
+Report the preservation reason; do not bypass it with raw Git or filesystem deletion.
 
 ## When to Suggest Worktrees
 
@@ -130,5 +138,6 @@ bash "${CLAUDE_PLUGIN_ROOT}/skills/git-worktree/scripts/cleanup.sh" --auto-remov
 | Not a git repo | Navigate to git repository first |
 | Branch has worktree | Show existing path |
 | Path exists | Suggest different name or remove |
-| Uncommitted changes | Warn, offer `--force` |
+| Uncommitted changes | Preserve and show the changes |
+| Unknown ownership or active work | Preserve and report the reason |
 | Branch doesn't exist | Create from HEAD |

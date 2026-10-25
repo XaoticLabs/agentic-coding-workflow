@@ -10,7 +10,7 @@
 #   --clean-room:   Skip codebase search (greenfield mode)
 #   --time-budget:  Max seconds per iteration (default: 600, 0 = no limit)
 #   --checkpoint-every N: Pause for human steering every N iterations
-#   --eval-gates-merge: Block merge if end-of-run evaluator verdict is REVISE
+#   --eval-gates-merge: Require a fresh end-of-run ACCEPT verdict before merging
 
 set -euo pipefail
 
@@ -21,7 +21,7 @@ ONCE_FLAG=""
 CLEAN_ROOM_FLAG=""
 TIME_BUDGET="600"  # 10 minutes default, 0 = no limit
 CHECKPOINT_EVERY=""  # Pause for human steering every N iterations
-EVAL_GATES_MERGE=""  # Block merge if evaluator verdict is REVISE
+EVAL_GATES_MERGE=""  # Require a fresh end-of-run ACCEPT verdict
 
 # Check for flags in any position
 for arg in "$@"; do
@@ -34,8 +34,9 @@ for arg in "$@"; do
   esac
 done
 
+PROJECT_DIR=$(realpath "${CLAUDE_PROJECT_DIR:-.}")
+SPEC_DIR=$(realpath "$SPEC_DIR")
 PLAN_FILE="${SPEC_DIR}/IMPLEMENTATION_PLAN.md"
-PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 PROMPT_DIR="${SCRIPT_DIR}/../references"
 
@@ -84,6 +85,7 @@ EVAL_PER_ITER="${RALPH_EVAL_PER_ITER:-false}"            # Run evaluator per-ite
 EVAL_DIFF_THRESHOLD="${RALPH_EVAL_DIFF_THRESHOLD:-5}"    # Files changed to trigger per-iter eval (when enabled)
 # End-of-run evaluation (default: on)
 EVAL_END_OF_RUN="${RALPH_EVAL_END_OF_RUN:-true}"         # Run evaluator once at end of run
+WORKER_ID="${RALPH_WORKER_ID:-}"
 
 mkdir -p "$RUN_DIR" || { echo "ERROR: Failed to create run directory: ${RUN_DIR}" >&2; exit 1; }
 mkdir -p "$RALPH_BASE" || { echo "ERROR: Failed to create ralph base: ${RALPH_BASE}" >&2; exit 1; }
@@ -170,7 +172,7 @@ echo "║  Criteria:   inline (in IMPLEMENTATION_PLAN.md)"
 echo "║  Evaluator:  $( [ "$EVAL_PER_ITER" = "true" ] && echo "per-iteration (>=${EVAL_DIFF_THRESHOLD} files)" || echo "end-of-run" )"
 echo "║  UI eval:    ${RALPH_EVALUATE_UI}"
 echo "║  Checkpoint: $( [ -n "$CHECKPOINT_EVERY" ] && echo "every ${CHECKPOINT_EVERY} iterations" || echo "disabled" )"
-echo "║  Eval gate:  $( [ -n "$EVAL_GATES_MERGE" ] && echo "merge blocked on REVISE" || echo "advisory only" )"
+echo "║  Eval gate:  $( [ -n "$EVAL_GATES_MERGE" ] && echo "fresh ACCEPT required" || echo "advisory only" )"
 echo "║                                                     ║"
 echo "║  Stop gracefully: touch .claude/ralph-stop          ║"
 echo "║  Steer mid-loop:  write .claude/ralph-inject.md     ║"
@@ -290,34 +292,8 @@ if [ -z "${RALPH_WORKER_ID:-}" ] && [[ "$MODE" == "build" || "$MODE" == "reconci
   # Ensure .claude/worktrees/ is gitignored
   ensure_worktrees_gitignored "$REPO_ROOT"
 
-  # Remove stale worktree if it exists
-  if [ -d "$WORKTREE_PATH" ]; then
-    echo "Removing stale worktree: ${WORKTREE_PATH}"
-    git worktree remove --force "$WORKTREE_PATH" 2>/dev/null || rm -rf "$WORKTREE_PATH"
-  fi
-
-  # Remove stale branch if it exists
-  if git show-ref --verify --quiet "refs/heads/$WORKTREE_BRANCH"; then
-    git branch -D "$WORKTREE_BRANCH" 2>/dev/null || true
-  fi
-
-  mkdir -p "$WORKTREE_BASE"
-  git worktree add -b "$WORKTREE_BRANCH" "$WORKTREE_PATH"
+  create_worker_worktree "$REPO_ROOT" "$WORKTREE_PATH" "$WORKTREE_BRANCH" "$SPEC_DIR" "$SLUG" "" "$TARGET_BRANCH"
   echo "Created worktree: ${WORKTREE_PATH} (branch: ${WORKTREE_BRANCH})"
-
-  # Copy spec directory and supporting files into worktree
-  mkdir -p "${WORKTREE_PATH}/.claude/specs/"
-  cp -r "$SPEC_DIR" "${WORKTREE_PATH}/.claude/specs/${SLUG}/" || { echo "ERROR: Failed to copy spec directory to worktree" >&2; exit 1; }
-  if [ ! -f "${WORKTREE_PATH}/.claude/specs/${SLUG}/IMPLEMENTATION_PLAN.md" ]; then
-    echo "ERROR: Plan file missing in worktree after copy: ${WORKTREE_PATH}/.claude/specs/${SLUG}/IMPLEMENTATION_PLAN.md" >&2
-    exit 1
-  fi
-  mkdir -p "${WORKTREE_PATH}/.claude/ralph/${SLUG}/runs/${RUN_TIMESTAMP}"
-  for context_file in AGENTS.md project-commands.json; do
-    if [ -f "${PROJECT_DIR}/.claude/${context_file}" ]; then
-      cp "${PROJECT_DIR}/.claude/${context_file}" "${WORKTREE_PATH}/.claude/"
-    fi
-  done
 
   # Switch into worktree and re-point all path variables
   if [ ! -d "$WORKTREE_PATH" ]; then
@@ -326,6 +302,7 @@ if [ -z "${RALPH_WORKER_ID:-}" ] && [[ "$MODE" == "build" || "$MODE" == "reconci
   fi
   cd "$WORKTREE_PATH" || { echo "ERROR: Failed to cd into worktree: ${WORKTREE_PATH}" >&2; exit 1; }
   PROJECT_DIR="$WORKTREE_PATH"
+  export CLAUDE_PROJECT_DIR="$PROJECT_DIR"
   SPEC_DIR=".claude/specs/${SLUG}"
   PLAN_FILE="${SPEC_DIR}/IMPLEMENTATION_PLAN.md"
   RALPH_BASE="${PROJECT_DIR}/.claude/ralph/${SLUG}"
@@ -355,6 +332,10 @@ if [ -z "${RALPH_WORKER_ID:-}" ] && [[ "$MODE" == "build" || "$MODE" == "reconci
   echo "  Branch:   ${WORKTREE_BRANCH}"
   echo "  ORC will auto-discover this worktree."
   echo ""
+fi
+
+if [ -n "${RALPH_WORKER_ID:-}" ] && worktree_owned "${WORKTREE_REPO_ROOT:-$PROJECT_DIR}" "$PROJECT_DIR" 2>/dev/null; then
+  activate_worktree "${WORKTREE_REPO_ROOT:-$PROJECT_DIR}" "$PROJECT_DIR"
 fi
 
 # ── Struggle detection helpers ──────────────────────────────────────────
@@ -1166,16 +1147,6 @@ ${BRIEFING}
   echo ""
 done
 
-# ── Write worker completion marker ─────────────────────────────────────
-
-WORKER_ID="${RALPH_WORKER_ID:-}"
-if [ -n "$WORKER_ID" ]; then
-  MARKER_FILE="${PROJECT_DIR}/.claude/ralph-worker-done-${WORKER_ID}"
-  echo "{\"worker\": \"${WORKER_ID}\", \"status\": \"done\", \"iterations\": ${ITERATION}, \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
-    > "$MARKER_FILE"
-  echo "Worker completion marker written: ${MARKER_FILE}"
-fi
-
 # ── Trace: run end ──────────────────────────────────────────────────────
 TOTAL_DURATION_M=$(( ($(date +%s) - START_TIME) / 60 ))
 KEPT_COUNT=$(grep -c '"outcome":"KEEP"' "$TRACE_FILE" 2>/dev/null || echo 0)
@@ -1197,90 +1168,58 @@ if [ -f "$PLAN_FILE" ]; then
   grep -E "^## Status:|^\- \[[ x]\]" "$PLAN_FILE" | head -20
 fi
 
-# ── Worktree cleanup (single-track mode) ───────────────────────────────
-if [ "$USING_WORKTREE" = true ]; then
-  echo ""
+# ── Auto-harvest on completion ──────────────────────────────────────────
+# Run harvest automatically when plan is complete or circuit breaker fired.
+# Disable with AUTO_HARVEST=false environment variable.
 
-  # Copy run artifacts back to main project before potential cleanup
-  MAIN_RUN_DIR="${MAIN_PROJECT_DIR}/.claude/ralph/${SLUG}/runs/${RUN_TIMESTAMP}"
-  mkdir -p "$MAIN_RUN_DIR"
-  cp "$TRACE_FILE" "$MAIN_RUN_DIR/" 2>/dev/null || true
-  [ -f "${RUN_DIR}/eval-verdict.json" ] && cp "${RUN_DIR}/eval-verdict.json" "$MAIN_RUN_DIR/" 2>/dev/null || true
-  [ -f "${RUN_DIR}/eval-summary.md" ] && cp "${RUN_DIR}/eval-summary.md" "$MAIN_RUN_DIR/" 2>/dev/null || true
-  [ -f "${RUN_DIR}/orchestrator.log" ] && cp "${RUN_DIR}/orchestrator.log" "$MAIN_RUN_DIR/" 2>/dev/null || true
-  # Append worktree journal to main persistent journal
-  MAIN_JOURNAL="${MAIN_PROJECT_DIR}/.claude/ralph/${SLUG}/journal.tsv"
-  mkdir -p "$(dirname "$MAIN_JOURNAL")"
-  if [ -f "$JOURNAL_FILE" ]; then
-    if [ ! -f "$MAIN_JOURNAL" ]; then
-      cp "$JOURNAL_FILE" "$MAIN_JOURNAL"
-    else
-      tail -n +2 "$JOURNAL_FILE" >> "$MAIN_JOURNAL"  # skip header, append data
-    fi
+AUTO_HARVEST="${AUTO_HARVEST:-true}"
+if [ "$AUTO_HARVEST" = "true" ] && [ "$MODE" = "build" ] && [ -z "$ONCE_FLAG" ] && [ -z "$WORKER_ID" ]; then
+  SHOULD_HARVEST=false
+  if [ -f "$PLAN_FILE" ] && grep -q "## Status: COMPLETE" "$PLAN_FILE"; then
+    SHOULD_HARVEST=true
+    echo ""
+    echo "━━━ Auto-harvesting (plan complete) ━━━"
+  elif [ "$CONSECUTIVE_REVERTS" -ge 3 ] || grep -q 'CIRCUIT_BREAK\|STRUGGLE_STOP' "${RUN_DIR}/orchestrator.log" 2>/dev/null; then
+    SHOULD_HARVEST=true
+    echo ""
+    echo "━━━ Auto-harvesting (loop stopped early — capturing failure patterns) ━━━"
   fi
 
-  BRANCH_COMMITS=$(git rev-list --count "${TARGET_BRANCH}..HEAD" 2>/dev/null || echo "0")
-
-  if [ "$BRANCH_COMMITS" -gt 0 ]; then
-    echo "Branch '${WORKTREE_BRANCH}' has ${BRANCH_COMMITS} commits ahead of ${TARGET_BRANCH}."
-    echo ""
-    echo "  To merge:   cd ${MAIN_PROJECT_DIR} && git merge ${WORKTREE_BRANCH}"
-    echo "  To review:  git log --oneline ${TARGET_BRANCH}..${WORKTREE_BRANCH}"
-    echo "  To discard: git worktree remove --force ${WORKTREE_PATH} && git branch -D ${WORKTREE_BRANCH}"
-    echo ""
-
-    # ── Eval-gates-merge: block merge if evaluator says REVISE ──────────
-    if [ -n "$EVAL_GATES_MERGE" ] && [ -f "$EVAL_VERDICT_FILE" ]; then
-      GATE_VERDICT=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['verdict'])" "$EVAL_VERDICT_FILE" 2>/dev/null || echo "UNKNOWN")
-      if [ "$GATE_VERDICT" = "REVISE" ]; then
-        echo ""
-        echo "⛔ EVAL GATE: End-of-run evaluator verdict is REVISE."
-        echo "   Merge blocked by --eval-gates-merge flag."
-        echo "   Review: ${EVAL_SUMMARY_FILE}"
-        echo "   Override with: git merge ${WORKTREE_BRANCH}  (manual merge bypasses this gate)"
-        ralph_notify "eval_warning" "Merge blocked: evaluator says REVISE. Review eval-summary.md."
-        echo ""
-        echo "Worktree preserved at: ${WORKTREE_PATH}"
-        echo "Branch preserved: ${WORKTREE_BRANCH}"
-        # Skip the merge prompt entirely
-        RALPH_NO_MERGE_PROMPT=1
-      fi
-    fi
-
-    # Prompt for merge if running interactively (not a worker)
-    if [ -t 0 ] && [ -z "${RALPH_NO_MERGE_PROMPT:-}" ]; then
-      read -p "Merge '${WORKTREE_BRANCH}' into ${TARGET_BRANCH} now? [y/N] " -n 1 -r REPLY
-      echo ""
-      if [[ "$REPLY" =~ ^[Yy]$ ]]; then
-        cd "$MAIN_PROJECT_DIR"
-        if git merge "$WORKTREE_BRANCH"; then
-          echo "Merged successfully. Cleaning up worktree..."
-          git worktree remove --force "$WORKTREE_PATH" 2>/dev/null || rm -rf "$WORKTREE_PATH"
-          git branch -D "$WORKTREE_BRANCH" 2>/dev/null || true
-          git worktree prune 2>/dev/null || true
-          echo "Worktree and branch cleaned up."
-        else
-          echo "Merge failed (conflicts?). Worktree preserved for manual resolution."
-          echo "  Resolve, then: git worktree remove --force ${WORKTREE_PATH}"
-        fi
-      else
-        echo "Worktree preserved at: ${WORKTREE_PATH}"
-        echo "Branch preserved: ${WORKTREE_BRANCH}"
-      fi
-    else
-      echo "Non-interactive mode — worktree preserved."
-      echo "Merge manually or use /agentic-coding-workflow:reunify"
-    fi
-  else
-    echo "No new commits on worktree branch. Cleaning up..."
-    cd "$MAIN_PROJECT_DIR"
-    git worktree remove --force "$WORKTREE_PATH" 2>/dev/null || rm -rf "$WORKTREE_PATH"
-    git branch -D "$WORKTREE_BRANCH" 2>/dev/null || true
-    git worktree prune 2>/dev/null || true
-    echo "Worktree and branch cleaned up (no changes to keep)."
+  if [ "$SHOULD_HARVEST" = true ]; then
+    "$0" "$SPEC_DIR" harvest 1 || echo "Warning: auto-harvest failed (non-fatal)"
+    echo "Harvest complete. Check .claude/ralph-logs/ralph-harvest-*.md and specs/<slug>/RALPH_OVERRIDES.md"
   fi
 fi
 
+# ── Generate completion summary ─────────────────────────────────────────
+
+if [ "$MODE" = "build" ] && [ -z "$ONCE_FLAG" ] && [ -z "$WORKER_ID" ]; then
+  if [ -x "${SCRIPT_DIR}/generate-summary.sh" ]; then
+    "${SCRIPT_DIR}/generate-summary.sh" "$SPEC_DIR" "$JOURNAL_FILE" "$ITERATION" "$COMMITS_AT_START" "$START_TIME" "$TRACE_FILE" 2>/dev/null || true
+  fi
+fi
+
+# Clean up ephemeral progress file
+if [ -f "$PROGRESS_FILE" ]; then
+  rm -f "$PROGRESS_FILE"
+  echo "(Cleaned up ephemeral progress scratchpad)"
+fi
+
+# ── Final verification ────────────────────────────────────────────────
+# Harvest and summary generation finish before verification and evaluation.
+FINAL_VERIFICATION_PASSED=true
+VERIFIED_COMMIT=$(git rev-parse HEAD)
+if [ "$USING_WORKTREE" = true ]; then
+  echo "Running final verification before evaluation and merge..."
+  if ! run_verification_gate "$PROJECT_DIR" "${RUN_DIR}/final"; then
+    FINAL_VERIFICATION_PASSED=false
+    echo "Merge blocked: final verification failed. Logs: ${RUN_DIR}/final-*.log"
+  fi
+  trace_event "final_verification" "passed=${FINAL_VERIFICATION_PASSED}" "commit=${VERIFIED_COMMIT}"
+fi
+
+ENDRUN_VERDICT="UNKNOWN"
+ENDRUN_EVAL_COMMIT=""
 # ── End-of-run evaluator pass ──────────────────────────────────────────
 # Single evaluator pass reviewing the FULL body of work, not per-iteration.
 # This is the default evaluation mode (per Anthropic harness design findings:
@@ -1331,13 +1270,16 @@ if [ "$EVAL_END_OF_RUN" = "true" ] && [ "$MODE" = "build" ] && [ -z "$ONCE_FLAG"
       echo "$ENDRUN_EVAL_PROMPT" | claude -p --dangerously-skip-permissions --verbose --model sonnet --output-format stream-json 2>/dev/null \
         | "$STREAM_PROCESSOR" --trace-file "$TRACE_FILE" > "$ENDRUN_EVAL_LOG"
     fi
+    ENDRUN_EVAL_STATUS=$?
     set -e
+    ENDRUN_EVAL_COMMIT="$FINAL_COMMIT"
 
-    if [ -f "$EVAL_VERDICT_FILE" ]; then
-      ENDRUN_VERDICT=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['verdict'])" "$EVAL_VERDICT_FILE" 2>/dev/null || echo "UNKNOWN")
+    if [ "$ENDRUN_EVAL_STATUS" -eq 0 ] && [ -f "$EVAL_VERDICT_FILE" ]; then
+      ENDRUN_VERDICT=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); v=d.get('verdict'); a=d.get('average'); print(v if v in ('ACCEPT', 'REVISE') and type(a) in (int, float) and 1 <= a <= 10 else 'UNKNOWN')" "$EVAL_VERDICT_FILE" 2>/dev/null || echo "UNKNOWN")
       ENDRUN_AVG=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['average'])" "$EVAL_VERDICT_FILE" 2>/dev/null || echo "?")
       if [ "$ENDRUN_VERDICT" = "UNKNOWN" ] || [ "$ENDRUN_AVG" = "?" ]; then
         echo "WARNING: Eval verdict file exists but could not be parsed — check ${EVAL_VERDICT_FILE}" >&2
+        ENDRUN_VERDICT="UNKNOWN"
       fi
       echo "End-of-run evaluation: ${ENDRUN_VERDICT} (avg score: ${ENDRUN_AVG})"
       echo "Full report: ${EVAL_SUMMARY_FILE}"
@@ -1347,7 +1289,8 @@ if [ "$EVAL_END_OF_RUN" = "true" ] && [ "$MODE" = "build" ] && [ -z "$ONCE_FLAG"
         ralph_notify "eval_warning" "End-of-run evaluator says REVISE (avg: ${ENDRUN_AVG}). Review before merging."
       fi
     else
-      echo "End-of-run evaluation did not produce a verdict (non-fatal)."
+      echo "End-of-run evaluation failed or did not produce a verdict."
+      ENDRUN_VERDICT="UNKNOWN"
       trace_event "endrun_eval" "verdict=error" "reason=no_verdict_file"
     fi
   else
@@ -1355,39 +1298,76 @@ if [ "$EVAL_END_OF_RUN" = "true" ] && [ "$MODE" = "build" ] && [ -z "$ONCE_FLAG"
   fi
 fi
 
-# ── Auto-harvest on completion ──────────────────────────────────────────
-# Run harvest automatically when plan is complete or circuit breaker fired.
-# Disable with AUTO_HARVEST=false environment variable.
 
-AUTO_HARVEST="${AUTO_HARVEST:-true}"
-if [ "$AUTO_HARVEST" = "true" ] && [ "$MODE" = "build" ] && [ -z "$ONCE_FLAG" ] && [ -z "$WORKER_ID" ]; then
-  SHOULD_HARVEST=false
-  if [ -f "$PLAN_FILE" ] && grep -q "## Status: COMPLETE" "$PLAN_FILE"; then
-    SHOULD_HARVEST=true
-    echo ""
-    echo "━━━ Auto-harvesting (plan complete) ━━━"
-  elif [ "$CONSECUTIVE_REVERTS" -ge 3 ] || grep -q 'CIRCUIT_BREAK\|STRUGGLE_STOP' "${RUN_DIR}/orchestrator.log" 2>/dev/null; then
-    SHOULD_HARVEST=true
-    echo ""
-    echo "━━━ Auto-harvesting (loop stopped early — capturing failure patterns) ━━━"
+# ── Preserve, merge, then clean up (single-track mode) ─────────────────
+if [ "$USING_WORKTREE" = true ]; then
+  MAIN_RUN_DIR="${MAIN_PROJECT_DIR}/.claude/ralph/${SLUG}/runs/${RUN_TIMESTAMP}"
+  mkdir -p "$MAIN_RUN_DIR"
+  ARTIFACTS_PRESERVED=true
+  cp -a "${RUN_DIR}/." "$MAIN_RUN_DIR/" || ARTIFACTS_PRESERVED=false
+  MAIN_JOURNAL="${MAIN_PROJECT_DIR}/.claude/ralph/${SLUG}/journal.tsv"
+  if [ -f "$JOURNAL_FILE" ]; then
+    if [ ! -f "$MAIN_JOURNAL" ]; then
+      cp "$JOURNAL_FILE" "$MAIN_JOURNAL" || ARTIFACTS_PRESERVED=false
+    else
+      tail -n +2 "$JOURNAL_FILE" >> "$MAIN_JOURNAL" || ARTIFACTS_PRESERVED=false
+    fi
+  fi
+  release_worktree "$REPO_ROOT" "$WORKTREE_PATH"
+
+  MERGE_ALLOWED="$FINAL_VERIFICATION_PASSED"
+  if [ "$(git rev-parse HEAD)" != "$VERIFIED_COMMIT" ] ||
+    [ -n "$(git status --porcelain --untracked-files=all)" ]; then
+    echo "Merge blocked: worktree changed after verification or has uncommitted work."
+    MERGE_ALLOWED=false
+  fi
+  if [ -n "$EVAL_GATES_MERGE" ] && {
+    [ "$ENDRUN_VERDICT" != ACCEPT ] || [ "$ENDRUN_EVAL_COMMIT" != "$(git rev-parse HEAD)" ];
+  }; then
+    echo "EVAL GATE: Merge blocked; a fresh end-of-run ACCEPT verdict is required (got ${ENDRUN_VERDICT})."
+    echo "Review: ${EVAL_SUMMARY_FILE}"
+    MERGE_ALLOWED=false
   fi
 
-  if [ "$SHOULD_HARVEST" = true ]; then
-    "$0" "$SPEC_DIR" harvest 1 || echo "Warning: auto-harvest failed (non-fatal)"
-    echo "Harvest complete. Check .claude/ralph-logs/ralph-harvest-*.md and specs/<slug>/RALPH_OVERRIDES.md"
+  BRANCH_COMMITS=$(git rev-list --count "${TARGET_BRANCH}..HEAD")
+  SHOULD_CLEANUP=false
+  if [ "$BRANCH_COMMITS" -eq 0 ]; then
+    SHOULD_CLEANUP=true
+  elif [ "$MERGE_ALLOWED" = true ] && [ -t 0 ] && [ -z "${RALPH_NO_MERGE_PROMPT:-}" ]; then
+    read -p "Merge '${WORKTREE_BRANCH}' into ${TARGET_BRANCH} now? [y/N] " -n 1 -r REPLY
+    echo ""
+    if [[ "$REPLY" =~ ^[Yy]$ ]]; then
+      cd "$MAIN_PROJECT_DIR"
+      if [ "$(git symbolic-ref --short HEAD)" = "$TARGET_BRANCH" ] &&
+        [ -z "$(git status --porcelain --untracked-files=all)" ] && git merge "$WORKTREE_BRANCH"; then
+        SHOULD_CLEANUP=true
+      else
+        echo "Merge failed or target checkout changed; worktree preserved."
+      fi
+    fi
+  fi
+
+  cd "$MAIN_PROJECT_DIR"
+  if [ "$SHOULD_CLEANUP" = true ] && [ "$ARTIFACTS_PRESERVED" = true ] &&
+    cleanup_worker_worktree "$REPO_ROOT" "$WORKTREE_PATH" "$WORKTREE_BRANCH" "" "$TARGET_BRANCH" "${MAIN_RUN_DIR}/worktree-artifacts"; then
+    echo "Worktree and branch cleaned up. Artifacts: ${MAIN_RUN_DIR}"
+  else
+    echo "Worktree preserved at: ${WORKTREE_PATH}"
+    echo "Branch preserved: ${WORKTREE_BRANCH}"
+    echo "Review and merge manually or use /agentic-coding-workflow:reunify."
   fi
 fi
 
-# ── Generate completion summary ─────────────────────────────────────────
-
-if [ "$MODE" = "build" ] && [ -z "$ONCE_FLAG" ] && [ -z "$WORKER_ID" ]; then
-  if [ -x "${SCRIPT_DIR}/generate-summary.sh" ]; then
-    "${SCRIPT_DIR}/generate-summary.sh" "$SPEC_DIR" "$JOURNAL_FILE" "$ITERATION" "$COMMITS_AT_START" "$START_TIME" "$TRACE_FILE" 2>/dev/null || true
-  fi
+# Workers release their lease only after all writes finish. A completion marker
+# is a scheduling signal, never permission to discard an active or dirty checkout.
+if [ -n "${RALPH_WORKER_ID:-}" ] && worktree_owned "${WORKTREE_REPO_ROOT:-$MAIN_PROJECT_DIR}" "$PROJECT_DIR" 2>/dev/null; then
+  release_worktree "${WORKTREE_REPO_ROOT:-$MAIN_PROJECT_DIR}" "$PROJECT_DIR"
 fi
+# ── Write worker completion marker ─────────────────────────────────────
 
-# Clean up ephemeral progress file
-if [ -f "$PROGRESS_FILE" ]; then
-  rm -f "$PROGRESS_FILE"
-  echo "(Cleaned up ephemeral progress scratchpad)"
+if [ -n "$WORKER_ID" ]; then
+  MARKER_FILE="${PROJECT_DIR}/.claude/ralph-worker-done-${WORKER_ID}"
+  echo "{\"worker\": \"${WORKER_ID}\", \"status\": \"done\", \"iterations\": ${ITERATION}, \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+    > "$MARKER_FILE"
+  echo "Worker completion marker written: ${MARKER_FILE}"
 fi

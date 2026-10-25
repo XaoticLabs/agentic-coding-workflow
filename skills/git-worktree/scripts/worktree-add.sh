@@ -4,10 +4,13 @@
 # Outputs the worktree path on success.
 
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../../../scripts/lib/worktree-safety.sh"
 
 BRANCH="${1:?Usage: worktree-add.sh <branch-name>}"
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
+TARGET_REF=$(git symbolic-ref --short HEAD || git rev-parse HEAD)
 WORKTREE_BASE="${REPO_ROOT}/.claude/worktrees"
 DIR_NAME=$(echo "$BRANCH" | sed 's/[\/]/-/g' | sed 's/[^a-zA-Z0-9._-]//g')
 WORKTREE_PATH="${WORKTREE_BASE}/${DIR_NAME}"
@@ -45,4 +48,6 @@ else
     || { echo "ERROR: Failed to create and add worktree for new branch '${BRANCH}' at '${WORKTREE_PATH}'" >&2; exit 1; }
 fi
 
+register_worktree_owner "$REPO_ROOT" "$WORKTREE_PATH" "$TARGET_REF"
+release_worktree "$REPO_ROOT" "$WORKTREE_PATH"
 echo "CREATED:${WORKTREE_PATH}"

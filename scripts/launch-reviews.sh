@@ -8,6 +8,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REVIEW_SCRIPT="${SCRIPT_DIR}/review-in-worktree.sh"
+source "${SCRIPT_DIR}/lib/worktree-safety.sh"
 
 LANGUAGE="$1"
 shift
@@ -42,12 +43,13 @@ for BRANCH in "${BRANCHES[@]}"; do
   DIR_NAME="pr-review-$(echo "$BRANCH" | sed 's/[\/]/-/g' | sed 's/[^a-zA-Z0-9._-]//g')"
   WORKTREE_PATH="${WORKTREE_BASE}/${DIR_NAME}"
 
-  # Remove stale worktree if it exists
-  if [ -d "$WORKTREE_PATH" ]; then
-    git worktree remove "$WORKTREE_PATH" --force 2>/dev/null || true
+  if [ -e "$WORKTREE_PATH" ] || [ -L "$WORKTREE_PATH" ]; then
+    echo "Error: review worktree already exists; preserved: ${WORKTREE_PATH}" >&2
+    exit 1
   fi
 
   git worktree add "$WORKTREE_PATH" "origin/${BRANCH}" --detach
+  register_worktree_owner "$REPO_ROOT" "$WORKTREE_PATH" "$(git -C "$WORKTREE_PATH" rev-parse HEAD)"
   WORKTREE_PATHS+=("$WORKTREE_PATH")
 done
 
@@ -63,9 +65,10 @@ if ! command -v tmux >/dev/null 2>&1; then
   echo "Install with: brew install tmux"
   # Clean up worktrees
   for WP in "${WORKTREE_PATHS[@]}"; do
-    git worktree remove "$WP" --force 2>/dev/null || true
+    release_worktree "$REPO_ROOT" "$WP"
+    preserve_worktree_artifacts "$REPO_ROOT" "$WP" "${REPO_ROOT}/.claude/worktree-archives/$(date +%s)-$(basename "$WP")" &&
+      remove_owned_worktree "$REPO_ROOT" "$WP" "" --keep-branch || true
   done
-  git worktree prune 2>/dev/null || true
   exit 1
 fi
 
@@ -77,7 +80,7 @@ for i in "${!BRANCHES[@]}"; do
   WORKTREE_PATH="${WORKTREE_PATHS[$i]}"
   PR_NUM="${PR_NUMBERS[$i]}"
 
-  CMD="bash '${REVIEW_SCRIPT}' '${REPO_ROOT}' '${WORKTREE_PATH}' '${BRANCH}' '${LANGUAGE}' '${PR_NUM}'; echo '--- Review complete. Press enter to close ---'; read"
+  printf -v CMD '%q ' env "WORKTREE_OWNER_TOKEN=${WORKTREE_OWNER_TOKEN}" bash "$REVIEW_SCRIPT" "$REPO_ROOT" "$WORKTREE_PATH" "$BRANCH" "$LANGUAGE" "$PR_NUM"
 
   if [ "$FIRST" = true ]; then
     if [ -n "${TMUX:-}" ]; then

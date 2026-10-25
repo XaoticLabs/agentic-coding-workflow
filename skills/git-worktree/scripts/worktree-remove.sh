@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Removes a git worktree by branch name or directory name.
-# Usage: worktree-remove.sh <name> [--force]
+# Usage: worktree-remove.sh <name>
 # Outputs status and any warnings.
 
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../../../scripts/lib/worktree-safety.sh"
 
-NAME="${1:?Usage: worktree-remove.sh <name> [--force]}"
-FORCE="${2:-}"
+NAME="${1:?Usage: worktree-remove.sh <name>}"
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
 WORKTREE_BASE="${REPO_ROOT}/.claude/worktrees"
@@ -24,22 +25,13 @@ if [ ! -d "$WORKTREE_PATH" ]; then
   exit 1
 fi
 
-# Check for uncommitted changes
-CHANGES=$(git -C "$WORKTREE_PATH" status --porcelain 2>/dev/null || true)
-if [ -n "$CHANGES" ] && [ "$FORCE" != "--force" ]; then
-  echo "DIRTY:${WORKTREE_PATH}"
-  echo "$CHANGES"
+# Removal flags never bypass ownership or preservation checks.
+if ! REASON=$(worktree_cleanup_check "$REPO_ROOT" "$WORKTREE_PATH"); then
+  echo "PRESERVED:${WORKTREE_PATH}:${REASON}"
   exit 2
 fi
 
-# Remove worktree
-if [ "$FORCE" = "--force" ]; then
-  git worktree remove --force "$WORKTREE_PATH"
-else
-  git worktree remove "$WORKTREE_PATH"
-fi
-
-# Prune stale refs
-git worktree prune
+preserve_worktree_artifacts "$REPO_ROOT" "$WORKTREE_PATH" "${REPO_ROOT}/.claude/worktree-archives/$(date +%s)-$(basename "$WORKTREE_PATH")"
+remove_owned_worktree "$REPO_ROOT" "$WORKTREE_PATH" "" --keep-branch
 
 echo "REMOVED:${WORKTREE_PATH}"

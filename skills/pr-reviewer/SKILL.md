@@ -44,6 +44,7 @@ Always review in an isolated worktree to keep the user's working directory clean
 
 ```bash
 REPO_ROOT=$(git rev-parse --show-toplevel)
+source "${CLAUDE_PLUGIN_ROOT}/scripts/lib/worktree-safety.sh"
 WORKTREE_BASE="${REPO_ROOT}/.claude/worktrees"
 DIR_NAME="pr-review-$(echo "$BRANCH" | sed 's/[\/]/-/g' | sed 's/[^a-zA-Z0-9._-]//g')"
 WORKTREE_PATH="${WORKTREE_BASE}/${DIR_NAME}"
@@ -51,15 +52,20 @@ WORKTREE_PATH="${WORKTREE_BASE}/${DIR_NAME}"
 mkdir -p "$WORKTREE_BASE"
 git fetch origin "$BRANCH"
 git worktree add "$WORKTREE_PATH" "origin/$BRANCH" --detach
+register_worktree_owner "$REPO_ROOT" "$WORKTREE_PATH" "$(git -C "$WORKTREE_PATH" rev-parse HEAD)"
 cd "$WORKTREE_PATH"
 ```
 
 Clean up after review:
 ```bash
 cd "$REPO_ROOT"
-git worktree remove "$WORKTREE_PATH"
-git worktree prune
+release_worktree "$REPO_ROOT" "$WORKTREE_PATH"
+preserve_worktree_artifacts "$REPO_ROOT" "$WORKTREE_PATH" "${REPO_ROOT}/.claude/worktree-archives/$(date +%s)-${DIR_NAME}" &&
+  remove_owned_worktree "$REPO_ROOT" "$WORKTREE_PATH" "" --keep-branch
 ```
+
+Carry the same `WORKTREE_OWNER_TOKEN` across setup and cleanup calls. If ownership,
+activity, cleanliness, ancestry, or preservation checks fail, report the retained path.
 
 ## Review Workflow — PERFECT Phases
 

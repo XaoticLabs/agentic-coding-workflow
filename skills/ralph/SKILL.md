@@ -119,6 +119,12 @@ By default, the evaluator runs **once at the end of the run**, reviewing the ful
 - Human reviews the report before merging
 - Disable with `RALPH_EVAL_END_OF_RUN=false`
 
+Single-track completion runs harvest and summary generation while the worktree exists,
+then final test/lint verification → end-of-run evaluation → artifact preservation →
+merge decision → guarded cleanup. Evaluation always reviews the worktree branch.
+Reports, logs, the journal, and a copy of the worktree's `.claude/` artifacts are saved
+under the main project's run directory before removal.
+
 This is the recommended mode for current models (Opus 4.6), per the Anthropic harness design findings: tasks within the model's comfort zone don't need per-iteration evaluation.
 
 ### Per-Iteration Evaluation (opt-in)
@@ -147,7 +153,7 @@ Use this when:
 | `--once` | Single iteration, foreground (HITL mode) |
 | `--clean-room` | Skip codebase search — greenfield mode |
 | `--checkpoint-every=N` | Pause for human steering every N iterations |
-| `--eval-gates-merge` | Block merge if end-of-run evaluator verdict is REVISE |
+| `--eval-gates-merge` | Require a fresh end-of-run ACCEPT verdict before offering a merge |
 | `--time-budget=N` | Max seconds per iteration (default 600) |
 
 ## Human Steering
@@ -170,9 +176,20 @@ this section carries the "why" across context boundaries and is fed into every i
 
 ### Eval Gates Merge (`--eval-gates-merge`)
 
-When set, the merge prompt checks the end-of-run evaluator verdict. If the verdict is REVISE,
-merge is blocked. The worktree and branch are preserved for manual review. Override by running
-`git merge <branch>` directly.
+When set, the merge prompt requires a successful end-of-run evaluator pass with an ACCEPT
+verdict for the verified HEAD. REVISE, missing or malformed verdicts, evaluator errors or
+timeouts, disabled evaluation, and `--once` all leave the gate closed. Per-iteration verdicts
+cannot satisfy it. Changes after verification also block the merge. The worktree and branch
+are preserved for review. A manual `git merge <branch>` bypasses this prompt gate.
+
+### Worktree Preservation
+
+Startup refuses existing paths or branch names instead of replacing them. Automatic cleanup
+requires matching run ownership, no active lease/process or tmux pane, unchanged branch
+identity, a clean checkout including untracked files, and HEAD reachable from the target.
+Cleanup copies and checks `.claude/` artifacts before removing a worktree. Failed checks,
+failed merges, and unknown ownership preserve both checkout and branch. Branch deletion
+uses `git branch -d`; cleanup never falls back to filesystem deletion.
 
 ## Pre-Flight Checks
 

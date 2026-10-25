@@ -12,6 +12,7 @@ set -euo pipefail
 # Derive plugin root from this script's location (scripts/ is one level below root)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "${SCRIPT_DIR}/lib/worktree-safety.sh"
 
 REPO_ROOT="$1"
 WORKTREE_PATH="$2"
@@ -24,13 +25,22 @@ cleanup() {
   echo ""
   echo "--- Cleaning up worktree: $(basename "$WORKTREE_PATH") ---"
   cd "$REPO_ROOT" 2>/dev/null || true
-  git worktree remove "$WORKTREE_PATH" --force 2>/dev/null || true
-  git worktree prune 2>/dev/null || true
-  echo "Worktree removed."
+  release_worktree "$REPO_ROOT" "$WORKTREE_PATH" || true
+  if preserve_worktree_artifacts "$REPO_ROOT" "$WORKTREE_PATH" "${REPO_ROOT}/.claude/worktree-archives/$(date +%s)-$(basename "$WORKTREE_PATH")" &&
+    remove_owned_worktree "$REPO_ROOT" "$WORKTREE_PATH" "" --keep-branch; then
+    echo "Worktree removed; workflow artifacts archived."
+  else
+    echo "Worktree preserved: ${WORKTREE_PATH}"
+  fi
   exit $exit_code
 }
 
-trap cleanup EXIT INT TERM HUP
+worktree_owned "$REPO_ROOT" "$WORKTREE_PATH" || { echo "Unowned worktree preserved: $WORKTREE_PATH" >&2; exit 1; }
+activate_worktree "$REPO_ROOT" "$WORKTREE_PATH"
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
 
 cd "$WORKTREE_PATH"
 

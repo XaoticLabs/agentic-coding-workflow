@@ -265,7 +265,7 @@ PID:       $(cat .claude/ralph/<slug>/orchestrator.pid)
 Runs:      .claude/ralph/<slug>/runs/
 Journal:   .claude/ralph/<slug>/journal.tsv
 Branch:    <slug>
-Lifecycle: partition → wave → merge → reconcile → preserve → cleanup (all automatic)
+Lifecycle: partition → wave → merge → reconcile → harvest → verify → evaluate → preserve → guarded cleanup (all automatic)
 
 Status:    /agentic-coding-workflow:ralph <slug> --status
 Stop:      /agentic-coding-workflow:ralph <slug> --stop

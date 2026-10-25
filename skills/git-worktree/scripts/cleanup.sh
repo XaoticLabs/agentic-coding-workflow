@@ -4,11 +4,13 @@
 # Usage: cleanup.sh [--auto-remove-merged]
 
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../../../scripts/lib/worktree-safety.sh"
 
 AUTO_REMOVE="${1:-}"
 REPO_ROOT=$(git rev-parse --show-toplevel)
 WORKTREE_BASE="${REPO_ROOT}/.claude/worktrees"
-MAIN_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "main")
+MAIN_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || git symbolic-ref --short HEAD)
 
 if [ ! -d "$WORKTREE_BASE" ]; then
   echo "NO_WORKTREES"
@@ -35,7 +37,7 @@ for wt_dir in "$WORKTREE_BASE"/*/; do
   fi
 
   # Check merged
-  if git branch --merged "$MAIN_BRANCH" 2>/dev/null | grep -q "$BRANCH"; then
+  if git merge-base --is-ancestor "$(git -C "$wt_dir" rev-parse HEAD)" "$MAIN_BRANCH" 2>/dev/null; then
     MERGED="yes"
   else
     MERGED="no"
@@ -44,14 +46,14 @@ for wt_dir in "$WORKTREE_BASE"/*/; do
   # Check unpushed
   UNPUSHED=$(git -C "$wt_dir" log --oneline "@{upstream}..HEAD" 2>/dev/null | wc -l | tr -d ' ' || echo "unknown")
 
-  # Auto-remove if merged+clean and flag is set
-  if [ "$AUTO_REMOVE" = "--auto-remove-merged" ] && [ "$MERGED" = "yes" ] && [ "$DIRTY" = "no" ]; then
-    git worktree remove "$wt_dir" 2>/dev/null && {
-      git branch -d "$BRANCH" 2>/dev/null || true
+  REASON=$(worktree_cleanup_check "$REPO_ROOT" "${wt_dir%/}" "$MAIN_BRANCH" 2>/dev/null || true)
+  if [ "$AUTO_REMOVE" = "--auto-remove-merged" ] && [ "$REASON" = eligible ]; then
+    if preserve_worktree_artifacts "$REPO_ROOT" "${wt_dir%/}" "${REPO_ROOT}/.claude/worktree-archives/$(date +%s)-${DIR_NAME}" &&
+      remove_owned_worktree "$REPO_ROOT" "${wt_dir%/}" "$MAIN_BRANCH"; then
       echo "AUTO_REMOVED:${DIR_NAME}:${BRANCH}"
       REMOVED=$((REMOVED + 1))
       continue
-    }
+    fi
   fi
 
   REMAINING=$((REMAINING + 1))
@@ -64,16 +66,14 @@ for wt_dir in "$WORKTREE_BASE"/*/; do
   echo "unpushed: ${UNPUSHED}"
 
   # Recommend action
-  if [ "$MERGED" = "yes" ] && [ "$DIRTY" = "no" ]; then
+  if [ "$REASON" = eligible ]; then
     echo "action: safe_to_remove"
   elif [ "$DIRTY" = "yes" ]; then
     echo "action: has_changes"
   else
-    echo "action: unmerged"
+    echo "action: preserve (${REASON})"
   fi
 done
-
-git worktree prune 2>/dev/null || true
 
 if [ "$REMOVED" -gt 0 ]; then
   echo "SUMMARY: removed=${REMOVED} remaining=${REMAINING}"

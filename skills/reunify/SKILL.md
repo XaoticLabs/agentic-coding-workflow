@@ -130,12 +130,13 @@ Display the compliance summary. If any criteria are FAIL or PARTIAL:
 
 Use AskUserQuestion: "Reunification complete. Want me to clean up the worktrees?"
 
-If yes, for each merged worktree:
+If yes, use the Git Worktree Manager's guarded removal script for each merged worktree:
 ```bash
-git worktree remove <worktree-path>
-git branch -d <branch>
+bash "${CLAUDE_PLUGIN_ROOT}/skills/git-worktree/scripts/worktree-remove.sh" "<worktree-directory-name>"
 ```
-Then: `git worktree prune`
+It checks session ownership, activity, cleanliness, merge ancestry, and saved workflow
+artifacts. Preserve worktrees when any check fails, including worktrees owned by other
+sessions. Only delete a branch with `git branch -d` after its worktree was removed.
 
 Remove the rollback file:
 ```bash

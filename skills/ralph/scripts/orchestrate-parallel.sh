@@ -73,7 +73,11 @@ echo $$ > "$PID_FILE"
 # Tee all output to the log file while keeping it visible in the tmux pane
 exec > >(tee -a "$LOG_FILE") 2>&1
 cleanup_pid() { rm -f "$PID_FILE"; }
-trap cleanup_pid EXIT
+cleanup_orchestrator() {
+  cleanup_pid
+  if [ -n "${WORKER_TRACE_DIR:-}" ]; then rm -rf "$WORKER_TRACE_DIR"; fi
+}
+trap cleanup_orchestrator EXIT
 
 # ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -179,6 +183,7 @@ else
   git branch "$TARGET_BRANCH"
   echo "Created target branch: ${TARGET_BRANCH} (from ${SOURCE_BRANCH})"
 fi
+RUN_START_COMMIT=$(git rev-parse "$TARGET_BRANCH")
 
 BRANCH_PREFIX="ralph-${SLUG}"
 BASH_PATH=$(command -v bash)
@@ -198,6 +203,7 @@ for ((wave=0; wave<NUM_WAVES; wave++)); do
   echo "╚══════════════════════════════════════════════════════╝"
 
   trace_event "wave_start" "wave=${wave}" "total_waves=${NUM_WAVES}"
+  PRE_WAVE_COMMIT=$(git rev-parse "$TARGET_BRANCH")
   update_phase "WAVE ${wave}" "Setting up workers"
 
   # Get tasks in this wave
@@ -269,12 +275,14 @@ for w in waves:
     WORKTREE_PATH="${WORKTREE_BASE}/${SLUG}-wave${wave}-worker-${i}"
     WORKER_SPEC_DIR=".claude/specs/${SLUG}"
 
-    LAUNCHER="${WORKTREE_PATH}/.ralph-launcher.sh"
+    LAUNCHER="${WORKTREE_PATH}/.claude/ralph-launcher.sh"
     cat > "$LAUNCHER" <<LAUNCHER_EOF
 #!/usr/bin/env bash
 export PATH="${PATH}"
 export RALPH_WORKER_ID="worker-${i}"
 export CLAUDE_PROJECT_DIR="${WORKTREE_PATH}"
+export WORKTREE_OWNER_TOKEN="${WORKTREE_OWNER_TOKEN}"
+export WORKTREE_REPO_ROOT="${REPO_ROOT}"
 exec "${BASH_PATH}" "${SCRIPT_DIR}/loop.sh" "${WORKER_SPEC_DIR}" build ${MAX_ITERATIONS} ${FLAGS}
 LAUNCHER_EOF
     chmod +x "$LAUNCHER"
@@ -374,6 +382,19 @@ LAUNCHER_EOF
     sleep "$POLL_INTERVAL"
   done
 
+  # Completion markers do not prove that timed-out workers have exited.
+  WAVE_STILL_ACTIVE=false
+  for i in "${WAVE_WORKERS[@]}"; do
+    if worktree_lease_active "$REPO_ROOT" "${WORKTREE_BASE}/${SLUG}-wave${wave}-worker-${i}"; then
+      WAVE_STILL_ACTIVE=true
+    fi
+  done
+  if [ "$WAVE_STILL_ACTIVE" = false ]; then
+    kill_session_safe "$SESSION_NAME"
+  else
+    echo "Wave ${wave}: active worker session preserved."
+  fi
+
   # ── Check for empty workers (no commits) ──────────────────────────
 
   EMPTY_WORKERS=0
@@ -456,7 +477,6 @@ LAUNCHER_EOF
   WAVE_EVAL_VERDICT="SKIP"
 
   if [ "$PARALLEL_EVAL" = "wave" ] || [ "$PARALLEL_EVAL" = "merge" ]; then
-    PRE_WAVE_COMMIT=$(git merge-base "$TARGET_BRANCH" "$SOURCE_BRANCH" 2>/dev/null || echo "")
     POST_WAVE_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")
 
     if [ -n "$PRE_WAVE_COMMIT" ] && [ "$PRE_WAVE_COMMIT" != "$POST_WAVE_COMMIT" ]; then
@@ -531,9 +551,6 @@ LAUNCHER_EOF
     fi
   fi
 
-  # Kill wave tmux session
-  kill_session_safe "$SESSION_NAME"
-
   trace_event "wave_end" "wave=${wave}" "status=done" "merged=${WAVE_MERGE_COUNT}" "failed=${WAVE_MERGE_FAILED}"
   echo "Wave ${wave} complete."
 done
@@ -555,7 +572,6 @@ STITCH_SCRIPT="${SCRIPT_DIR}/../../../scripts/stitch-traces.sh"
 
 # Collect worker trace files and journals from worktrees
 WORKER_TRACE_DIR=$(mktemp -d)
-trap "rm -rf '$WORKER_TRACE_DIR'" EXIT
 
 for worktree_path in "${ALL_WORKTREE_PATHS[@]}"; do
   [ -d "$worktree_path" ] || continue
@@ -623,6 +639,54 @@ fi
 
 rm -rf "$WORKER_TRACE_DIR"
 
+# ── Auto-harvest ───────────────────────────────────────────────────────
+# Run harvest to extract patterns, write RALPH_OVERRIDES.md, and produce
+# the harvest report. This is the parallel equivalent of loop.sh's auto-harvest.
+
+AUTO_HARVEST="${AUTO_HARVEST:-true}"
+
+if [ "$AUTO_HARVEST" = "true" ]; then
+  git checkout "$TARGET_BRANCH" 2>/dev/null || true
+  FINAL_COMMIT_HARVEST=$(git rev-parse HEAD 2>/dev/null || echo "none")
+  START_COMMIT_HARVEST="$RUN_START_COMMIT"
+
+  if [ "$START_COMMIT_HARVEST" != "$FINAL_COMMIT_HARVEST" ]; then
+    echo ""
+    echo "━━━ Phase: HARVEST ━━━"
+    update_phase "HARVEST" "Extracting patterns and writing overrides"
+
+    # Run harvest as a single iteration via loop.sh
+    # loop.sh harvest mode reads the plan, journal, git history, and writes:
+    #   - harvest-report.md
+    #   - RALPH_OVERRIDES.md (in spec dir)
+    #   - Updates to AGENTS.md
+    RALPH_WORKER_ID="" RALPH_NO_MERGE_PROMPT=1 \
+      "$SCRIPT_DIR/loop.sh" "$SPEC_DIR" harvest 1 2>"${RUN_DIR}/harvest-stderr.log" || {
+        echo "Warning: auto-harvest failed (non-fatal). Check ${RUN_DIR}/harvest-stderr.log"
+      }
+
+    # Copy harvest artifacts to run dir
+    HARVEST_REPORT="${RALPH_BASE}/harvest-report.md"
+    [ -f "$HARVEST_REPORT" ] && cp "$HARVEST_REPORT" "${RUN_DIR}/" 2>/dev/null || true
+    [ -f "${SPEC_DIR}/RALPH_OVERRIDES.md" ] && cp "${SPEC_DIR}/RALPH_OVERRIDES.md" "${RUN_DIR}/" 2>/dev/null || true
+
+    echo "Harvest complete."
+    trace_event "harvest" "status=done"
+  else
+    echo "(No new commits — skipping harvest)"
+  fi
+fi
+
+# ── Final verification ────────────────────────────────────────────────
+# Harvest finishes before the merged candidate is verified and evaluated.
+git checkout "$TARGET_BRANCH"
+FINAL_VERIFICATION_PASSED=true
+if ! run_verification_gate "$PROJECT_DIR" "${RUN_DIR}/final"; then
+  FINAL_VERIFICATION_PASSED=false
+  echo "WARNING: Final verification failed; review the saved logs."
+fi
+trace_event "final_verification" "passed=${FINAL_VERIFICATION_PASSED}"
+
 # ── End-of-run evaluation ──────────────────────────────────────────────
 # Single evaluator pass reviewing the FULL body of work across all waves.
 # Mirrors loop.sh's end-of-run evaluator but operates on the merged TARGET_BRANCH.
@@ -633,7 +697,7 @@ PARALLEL_EVAL="${RALPH_PARALLEL_EVAL:-end}"
 if [ "$EVAL_END_OF_RUN" = "true" ] || [ "$PARALLEL_EVAL" = "end" ]; then
   git checkout "$TARGET_BRANCH" 2>/dev/null || true
   FINAL_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "none")
-  START_COMMIT=$(git merge-base "$TARGET_BRANCH" "$SOURCE_BRANCH" 2>/dev/null || echo "none")
+  START_COMMIT="$RUN_START_COMMIT"
 
   if [ "$START_COMMIT" != "$FINAL_COMMIT" ] && [ "$FINAL_COMMIT" != "none" ] && [ "$START_COMMIT" != "none" ]; then
     echo ""
@@ -700,63 +764,30 @@ if [ "$EVAL_END_OF_RUN" = "true" ] || [ "$PARALLEL_EVAL" = "end" ]; then
   fi
 fi
 
-# ── Auto-harvest ───────────────────────────────────────────────────────
-# Run harvest to extract patterns, write RALPH_OVERRIDES.md, and produce
-# the harvest report. This is the parallel equivalent of loop.sh's auto-harvest.
-
-AUTO_HARVEST="${AUTO_HARVEST:-true}"
-
-if [ "$AUTO_HARVEST" = "true" ]; then
-  git checkout "$TARGET_BRANCH" 2>/dev/null || true
-  FINAL_COMMIT_HARVEST=$(git rev-parse HEAD 2>/dev/null || echo "none")
-  START_COMMIT_HARVEST=$(git merge-base "$TARGET_BRANCH" "$SOURCE_BRANCH" 2>/dev/null || echo "none")
-
-  if [ "$START_COMMIT_HARVEST" != "$FINAL_COMMIT_HARVEST" ]; then
-    echo ""
-    echo "━━━ Phase: HARVEST ━━━"
-    update_phase "HARVEST" "Extracting patterns and writing overrides"
-
-    # Run harvest as a single iteration via loop.sh
-    # loop.sh harvest mode reads the plan, journal, git history, and writes:
-    #   - harvest-report.md
-    #   - RALPH_OVERRIDES.md (in spec dir)
-    #   - Updates to AGENTS.md
-    RALPH_WORKER_ID="" RALPH_NO_MERGE_PROMPT=1 \
-      "$SCRIPT_DIR/loop.sh" "$SPEC_DIR" harvest 1 2>"${RUN_DIR}/harvest-stderr.log" || {
-        echo "Warning: auto-harvest failed (non-fatal). Check ${RUN_DIR}/harvest-stderr.log"
-      }
-
-    # Copy harvest artifacts to run dir
-    HARVEST_REPORT="${RALPH_BASE}/harvest-report.md"
-    [ -f "$HARVEST_REPORT" ] && cp "$HARVEST_REPORT" "${RUN_DIR}/" 2>/dev/null || true
-    [ -f "${SPEC_DIR}/RALPH_OVERRIDES.md" ] && cp "${SPEC_DIR}/RALPH_OVERRIDES.md" "${RUN_DIR}/" 2>/dev/null || true
-
-    echo "Harvest complete."
-    trace_event "harvest" "status=done"
-  else
-    echo "(No new commits — skipping harvest)"
-  fi
-fi
-
 # ── Cleanup ─────────────────────────────────────────────────────────────
 
 echo ""
 echo "━━━ Phase: CLEANUP ━━━"
 update_phase "CLEANUP" "Removing worktrees and temporary files"
 
+REMOVED_WORKTREES=0
+PRESERVED_WORKTREES=0
 for ((idx=0; idx<${#ALL_WORKTREE_PATHS[@]}; idx++)); do
   wt_path="${ALL_WORKTREE_PATHS[$idx]}"
   wt_branch="${ALL_WORKER_BRANCHES[$idx]}"
-  cleanup_worker_worktree "$REPO_ROOT" "$wt_path" "$wt_branch"
+  if cleanup_worker_worktree "$REPO_ROOT" "$wt_path" "$wt_branch" "" "$TARGET_BRANCH" "${RUN_DIR}/worktree-artifacts/$(basename "$wt_path")"; then
+    REMOVED_WORKTREES=$((REMOVED_WORKTREES + 1))
+  else
+    PRESERVED_WORKTREES=$((PRESERVED_WORKTREES + 1))
+    echo "Preserved worktree and branch: ${wt_path} (${wt_branch})"
+  fi
 done
-echo "Removed ${#ALL_WORKTREE_PATHS[@]} worktrees"
+echo "Removed ${REMOVED_WORKTREES} worktrees; preserved ${PRESERVED_WORKTREES}."
 
 rm -f "${PROJECT_DIR}/.claude/ralph-worker-done-"*
 
-# Kill any remaining tmux sessions from all waves
-for ((wave=0; wave<NUM_WAVES; wave++)); do
-  kill_session_safe "ralph-${SLUG}-w${wave}"
-done
+# Completed sessions were closed only after their worker leases became inactive.
+# Sessions with live workers remain available for recovery.
 
 # ── Final report ────────────────────────────────────────────────────────
 
@@ -769,11 +800,16 @@ echo "║  Branch:  ${TARGET_BRANCH}"
 echo "║  Workers: ${NUM_WORKERS}"
 echo "║  Waves:   ${NUM_WAVES}"
 echo "║                                                      ║"
-echo "║  All waves merged and reconciled.                    ║"
+echo "║  Final verification passed: ${FINAL_VERIFICATION_PASSED}"
 echo "║  Run:     ${RUN_DIR}/"
 echo "║  Journal: ${PERSISTENT_JOURNAL}"
-echo "║  Worktrees cleaned up.                               ║"
+echo "║  Worktrees: ${REMOVED_WORKTREES} removed, ${PRESERVED_WORKTREES} preserved"
 echo "╚══════════════════════════════════════════════════════╝"
 
+if [ "$FINAL_VERIFICATION_PASSED" != true ]; then
+  trace_event "parallel_end" "status=verification_failed" "slug=${SLUG}"
+  update_phase "VERIFICATION_FAILED" "Final verification failed; artifacts saved and unsafe worktrees preserved"
+  exit 1
+fi
 trace_event "parallel_end" "status=done" "slug=${SLUG}" "workers=${NUM_WORKERS}" "waves=${NUM_WAVES}" "target=${TARGET_BRANCH}"
-update_phase "DONE" "All ${NUM_WAVES} wave(s) merged into ${TARGET_BRANCH}, reconciled, artifacts preserved"
+update_phase "DONE" "Finished ${NUM_WAVES} wave(s) on ${TARGET_BRANCH}; ${REMOVED_WORKTREES} worktrees removed, ${PRESERVED_WORKTREES} preserved"
