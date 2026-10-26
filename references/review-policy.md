@@ -43,6 +43,12 @@ authorization to publish or merge.
 
 ## Findings that help reviewers
 
+Concentrate human attention on consequential behavior and decisions: data
+migrations, authorization, shared interfaces, operational recovery, and changes
+whose callers broaden their impact. Derive risk from behavior and dependencies,
+not a permanent short list of filenames or diff size. Preserve project-required
+review while letting mechanical checks and runtime evidence carry routine work.
+
 Default to actionable defects in behavior, compatibility, reliability,
 security, and materially important maintainability. Investigate callers,
 contracts, guards, and existing conventions before reporting a concern.

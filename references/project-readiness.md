@@ -20,13 +20,17 @@ copying their contents:
 - For concurrent worktrees, service/port isolation and how environment inputs
   are provided. Git worktrees alone do not isolate databases or listening ports.
 
-Provisioning and enforced execution isolation are separate work recorded in
-[the setup and unattended execution plan](../.claude/plans/reproducible-setup-and-unattended-execution.md).
+Use [private execution environments](execution-environments.md) for explicit
+setup, service readiness, resource limits, and isolated source. Trusted policy
+enforcement and production credential brokering remain separate work.
 
 ## Select existing verification commands
 
 Save the project's actual CI/task commands in `.claude/project-commands.json`.
-The supported keys remain `build`, `test`, `lint`, `format`, and `run`. The Stop
+The core keys remain `build`, `test`, `lint`, `format`, and `run`. Optional
+`install` is used only by explicit environment setup. `health`, `logs`,
+`deploy_status`, and `flag_status` support [lifecycle observations](lifecycle-observation.md).
+Initialization retains its five core arguments and preserves extra keys. The Stop
 hook runs configured **lint and test** commands; include required check-only
 formatting, typing, and other static checks in the project's lint task.
 Required build/integration checks must also be run for changes that need them

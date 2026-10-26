@@ -14,6 +14,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "${SCRIPT_DIR}/lib/worktree-safety.sh"
+source "${SCRIPT_DIR}/lib/claude-runner.sh"
 
 REPO_ROOT="$1"
 WORKTREE_PATH="$2"
@@ -71,7 +72,8 @@ fi
 # --allowedTools grants prompt-free approval for these patterns; it does not
 # restrict Bash to them. The no-edit instruction is workflow policy, not a sandbox.
 # Worktree setup is already done — skip that section of the skill.
-claude \
+workflow_model_args evaluator
+claude "${WORKFLOW_MODEL_ARGS[@]}" \
   --allowedTools "Read" "Glob" "Grep" "Bash(git diff *)" "Bash(git log *)" "Bash(git show *)" "Bash(git status *)" "Bash(mix test *)" "Bash(mix format *)" "Bash(mix credo *)" "Bash(mix dialyzer *)" "Bash(uv run pytest *)" "Bash(uv run ruff *)" "Bash(uv run basedpyright *)" "Bash(npm test *)" "Bash(gh pr view *)" \
   --disallowedTools "Edit" "Write" "NotebookEdit" \
   --append-system-prompt "You are already in an isolated worktree for this review. Skip the 'Worktree Setup' section — it is already done. Plugin root: ${PLUGIN_ROOT}. Resolve reviewer-relative references under ${PLUGIN_ROOT}/skills/pr-reviewer. Read ${PLUGIN_ROOT}/references/review-policy.md. Review mode: ${REVIEW_MODE}; include optional design/taste suggestions only in suggestions mode. ${SKILL_CONTENT}" \

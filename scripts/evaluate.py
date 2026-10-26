@@ -14,6 +14,8 @@ import sys
 import tempfile
 from typing import NotRequired, TypedDict, cast
 
+from workflow_models import model_arguments, observed_models, selection
+
 ROOT = Path(__file__).resolve().parents[1]
 DIMENSIONS = (
     "spec_fidelity",
@@ -404,8 +406,6 @@ CLAUDE_EVALUATOR = [
             },
         }
     ),
-    "--model",
-    "sonnet",
     "--output-format",
     "json",
     "--json-schema",
@@ -419,7 +419,7 @@ def run_evaluator_cli(prompt: str, log: Path, budget: float) -> Evaluation:
         Path(str(log) + ".stderr.log").open("w") as errors,
     ):
         process = subprocess.Popen(
-            CLAUDE_EVALUATOR,
+            [*CLAUDE_EVALUATOR, *model_arguments("evaluator")],
             stdin=subprocess.PIPE,
             stdout=output,
             stderr=errors,
@@ -445,6 +445,15 @@ def run_evaluator_cli(prompt: str, log: Path, budget: float) -> Evaluation:
     if fields.get("is_error") is not False or fields.get("subtype") != "success":
         raise ValueError("evaluator did not return a successful CLI result")
     verdict = validate_verdict(fields.get("structured_output"))
+    # Requested aliases are not evidence of the model that actually answered.
+    verdict = cast(
+        Evaluation,
+        {
+            **verdict,
+            "model_selection": selection("evaluator"),
+            "observed_models": observed_models(fields),
+        },
+    )
     return verdict
 
 

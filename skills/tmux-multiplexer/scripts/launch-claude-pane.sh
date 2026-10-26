@@ -18,6 +18,8 @@
 #   --no-attach  Don't select the new pane
 
 set -e
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../../../scripts/lib/claude-runner.sh"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -97,7 +99,9 @@ fi
 [ -z "${TMUX:-}" ] && [ -z "$TARGET_SESSION" ] && error "Not in tmux and no session specified. Use --session or run from within tmux"
 
 # Build argv first; serialize only at tmux's command boundary.
-CLAUDE_ARGS=(claude -p "$PROMPT")
+workflow_model_args build
+workflow_model_environment_args
+CLAUDE_ARGS=("${WORKFLOW_ENV_ARGS[@]}" claude "${WORKFLOW_MODEL_ARGS[@]}" -p "$PROMPT")
 printf -v CLAUDE_CMD '%q ' "${CLAUDE_ARGS[@]}"
 
 # Add context if provided

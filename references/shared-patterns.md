@@ -115,6 +115,12 @@ workers keep separate contexts. See [session controls](https://code.claude.com/d
 
 ## Test and Verification Integrity
 
+Use [behavioral evidence](verification-evidence.md) to connect material claims
+to actual execution and checked source. This is not evidence: imagined runs,
+agent agreement, a proposed command, or passing output for an older revision.
+Use [batch experiments](experiments.md) when they reduce repeated human steering.
+Preserve outcomes and constraints while letting implementation follow evidence.
+
 - Preserve the user's acceptance criteria. Tests are evidence for those criteria and can contain mistakes; an agent-authored test or RED commit is not human approval.
 - Record human-approved acceptance tests by case/assertion, criterion, baseline commit or diff, and approval reference when that mode is selected. Protect their behavioral expectations, not entire files. New cases and fixture/helper corrections in the same file are allowed when existing expectations remain covered and runnable.
 - Ordinary agent-authored tests may be corrected. For any changed expectation, deletion, skip/xfail, reduced input range, relaxed tolerance, snapshot update, or fixture/mock change that could weaken coverage, record the affected criterion, old/new expectation, evidence the old test was wrong, coverage retained or replaced, and validation results. Obtain independent review from a human or separate read-only reviewer before treating the change as verified; the author's own rationale is not review. A passing suite alone is insufficient justification.
@@ -178,8 +184,10 @@ if [ "$TEST_CONFIG_STATUS" -gt 1 ] || [ "$LINT_CONFIG_STATUS" -gt 1 ]; then
 fi
 ```
 
-The JSON object accepts `build`, `test`, `lint`, `format`, and `run` keys with shell
-command strings. Status `0` means use the configured command, including null or
+The JSON object accepts core `build`, `test`, `lint`, `format`, and `run` keys,
+plus explicit `install` and read-only `health`, `logs`, `deploy_status`, and
+`flag_status` actions. Values are shell strings or null; extra actions are not
+added to Stop checks. Status `0` means use the configured command, including null or
 empty explicit disables. With `--required`, missing actions in Go, Python,
 TypeScript/JavaScript, mixed projects, or an explicit command file return `2`:
 select existing CI/task commands and report incomplete verification. Status `1`

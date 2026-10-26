@@ -30,6 +30,12 @@ $ARGUMENTS — One of:
 
 ## Quick K8s Operations
 
+First read the project's documented targets, contexts, and observation commands.
+Prefer `${CLAUDE_PLUGIN_ROOT}/references/lifecycle-observation.md` for configured
+health/log/deployment/flag checks. Use explicit project-selected contexts for
+direct Kubernetes commands; examples below are placeholders, not real targets.
+Missing access is a reported limitation, never a reason to invent system state.
+
 If the input matches a kubectl shortcut pattern, skip the full troubleshooting flow and execute directly:
 
 | Pattern | Action |

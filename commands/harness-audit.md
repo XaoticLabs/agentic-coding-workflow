@@ -18,7 +18,7 @@ Every component in a harness encodes an assumption about what the model can't do
 $ARGUMENTS - Optional:
 - `(empty)` — full audit of all harness components
 - `--focus <component>` — audit a specific component (e.g., `evaluator`, `gates`, `struggle-detection`)
-- `--model <model>` — note which model to tune for (default: current default in loop.sh)
+- `--model <model>` — note the model under evaluation (default: shared model policy)
 
 ## Phase 1: Inventory All Harness Components
 
@@ -28,7 +28,7 @@ Scan the plugin to catalog every component that shapes autonomous behavior. For 
 2. **What it does** (one sentence)
 3. **What assumption it encodes** — why does this exist? What model limitation does it compensate for?
 4. **When it was last tuned** — check git blame for last modification date
-5. **Model it was tuned for** — infer from commit history or prompt content
+5. **Model it was tuned for** — use recorded model provenance; label missing evidence unknown
 
 ### Components to Inventory
 
@@ -61,8 +61,8 @@ Scan the plugin to catalog every component that shapes autonomous behavior. For 
 - PROMPT_resolve.md — conflict resolution
 
 **Context Management**:
-- Fresh session per iteration — no context carryover
-- Briefing generation — compacted metrics per iteration
+- Native compaction/resume in ordinary continuing feature sessions
+- Ralph's specialized fresh workers and generated briefings
 - Learnings section — actionable rules in plan
 - Overrides — persistent cross-run rules
 - Mid-loop injection — one-shot steering
@@ -81,10 +81,11 @@ For each component, classify the assumption:
 | **Defensive only** | Prevents rare catastrophic failure, low ongoing cost | Keep as safety net |
 | **Likely redundant** | Multiple components serve the same purpose | Candidate for removal |
 
-Use these heuristics:
-- If a component was added for Sonnet 4.5 but you're running Opus 4.6, it's "possibly stale"
-- If two components check overlapping things (e.g., evaluator + test gate both catch correctness), one may be redundant
-- If a gate has never triggered (check journal/trace data if available), it's "defensive only"
+Use these as investigation leads, not removal evidence:
+- A model upgrade makes compensating instructions candidates for retesting.
+- Overlapping checks can catch different failure modes; measure their added value.
+- A gate that never triggered may be rare-event protection or simply unexercised.
+  Inspect coverage and consequences before classifying it.
 
 ## Phase 3: Design Simplification Experiments
 
@@ -96,9 +97,10 @@ For each "possibly stale" or "likely redundant" component, propose an A/B test:
 **Hypothesis:** <Model X> can handle <what the component compensates for> natively.
 
 **Test design:**
-- Run 5 iterations WITH the component (control)
-- Run 5 iterations WITHOUT the component (treatment)
-- Compare: success rate, code quality scores, revert rate
+- Use the same representative tasks, model, tools, environment, and criteria in both arms
+- Run repeated trials WITH the component (control) and WITHOUT it (treatment)
+- Keep judges blind to the arm when feasible; retain failed/interrupted attempts
+- Compare behavioral completion, missed defects, interventions, time, total cost, and reverts
 
 **Risk if wrong:** <what happens if the component IS still needed>
 
@@ -113,9 +115,15 @@ For each "possibly stale" or "likely redundant" component, propose an A/B test:
 - Time per iteration
 ```
 
+Use the existing `evals/` split/retention policy and `scripts/run-evals.py` for
+controlled native comparisons. Five trials can be an exploratory starting point,
+not a reliability estimate. A single-rule ablation needs separate frozen plugin
+revisions and identical cases. Paid runs require an explicit cost ceiling;
+this audit proposes experiments and does not authorize their execution.
+
 ## Phase 4: Check for Missing Components
 
-Based on the article's findings, check if any of these are missing:
+Check which capabilities the workload actually needs and what evidence supports them:
 
 - [ ] Separated evaluation from generation (evaluator agent)
 - [ ] Inline acceptance criteria in plan tasks
@@ -170,6 +178,6 @@ Full audit of all harness components.
 Focused audit of the evaluation system only.
 
 ```
-/agentic-coding-workflow:harness-audit --model opus-4-6
+/agentic-coding-workflow:harness-audit --model <team-selected-model-id>
 ```
-Audit tuned for Opus 4.6 capabilities — may flag more components as stale.
+Audit against the selected model's recorded behavior; missing runs remain unmeasured.

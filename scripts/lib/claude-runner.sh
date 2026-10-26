@@ -5,6 +5,38 @@
 _CLAUDE_RUNNER_LOADED=1
 _WORKFLOW_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+# Omit --model when native configuration owns selection. Arrays preserve IDs.
+workflow_model_args() {
+  local selected
+  selected=$(python3 "${_WORKFLOW_ROOT}/scripts/workflow_models.py" "$1") || return
+  WORKFLOW_MODEL_ARGS=()
+  [ -z "$selected" ] || WORKFLOW_MODEL_ARGS=(--model "$selected")
+}
+
+# tmux servers do not reliably inherit the launching shell's environment.
+write_workflow_model_environment() {
+  local key
+  for key in WORKFLOW_MODEL WORKFLOW_BUILD_MODEL WORKFLOW_EVALUATOR_MODEL WORKFLOW_MERGE_MODEL ANTHROPIC_MODEL; do
+    if [[ -v "$key" ]]; then
+      printf 'export %s=%q\n' "$key" "${!key}"
+    else
+      printf 'unset %s\n' "$key"
+    fi
+  done
+}
+
+# The argv form is used when a tmux boundary has no generated launcher file.
+workflow_model_environment_args() {
+  local key
+  WORKFLOW_ENV_ARGS=(env)
+  for key in WORKFLOW_MODEL WORKFLOW_BUILD_MODEL WORKFLOW_EVALUATOR_MODEL WORKFLOW_MERGE_MODEL ANTHROPIC_MODEL; do
+    [[ -v "$key" ]] || WORKFLOW_ENV_ARGS+=(-u "$key")
+  done
+  for key in WORKFLOW_MODEL WORKFLOW_BUILD_MODEL WORKFLOW_EVALUATOR_MODEL WORKFLOW_MERGE_MODEL ANTHROPIC_MODEL; do
+    [[ ! -v "$key" ]] || WORKFLOW_ENV_ARGS+=("$key=${!key}")
+  done
+}
+
 candidate_state() {
   (cd "$1" && python3 "${_WORKFLOW_ROOT}/hooks/verification-state.py" snapshot)
 }

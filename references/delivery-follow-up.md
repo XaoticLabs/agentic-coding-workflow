@@ -81,6 +81,10 @@ when externally enforced limits are needed. Required human review still applies.
 
 ## Lifecycle automation
 
+Use [lifecycle observations](lifecycle-observation.md) for deployment, health,
+logs, flags, and requested delayed checks. Keep the target and expected build
+explicit. PR readiness and deployed health each need their own observed evidence.
+
 Use the same ticket identity in the branch name, PR description, and resolver.
 `implement --start-ticket` requests `in_progress`; `ship --link-ticket` requests
 an idempotent PR link; `ship --ticket-status in_review` requests a ready-for-peers

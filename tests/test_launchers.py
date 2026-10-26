@@ -24,6 +24,8 @@ def launch_environment(tmp_path: Path) -> tuple[Path, Path, dict[str, str]]:
     scripts.mkdir(parents=True)
     for name in ("launch.sh", "options.sh"):
         shutil.copy2(ROOT / "skills/ralph/scripts" / name, scripts / name)
+    (plugin / "scripts/lib").mkdir(parents=True)
+    shutil.copy2(ROOT / "scripts/lib/claude-runner.sh", plugin / "scripts/lib/claude-runner.sh")
     (scripts / "generate-agents-md.sh").write_text("exit 0\n")
     for name in ("loop.sh", "orchestrate-parallel.sh"):
         (scripts / name).write_text('exec python3 "$TEST_RECORDER" "$0" "$@"\n')

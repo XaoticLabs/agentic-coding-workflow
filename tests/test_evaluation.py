@@ -53,7 +53,8 @@ if mode == 'malformed':
     print('{invalid')
 elif mode != 'missing':
     print(json.dumps({'subtype': 'success', 'is_error': mode == 'api_error',
-                      'structured_output': json.loads(os.environ['TEST_EVAL_PAYLOAD'])}))
+                      'structured_output': json.loads(os.environ['TEST_EVAL_PAYLOAD']),
+                      'modelUsage': {'fixture-model-id': {'inputTokens': 10}}}))
 sys.exit(int(os.environ.get('TEST_EVAL_EXIT', '0')))
 """
     )
@@ -123,6 +124,21 @@ def test_valid_evaluation_binds_evidence_and_uses_read_only_permissions(project:
         project / ".claude/evaluation/cli.json.stderr.log"
     ).read_text().strip() == "evaluator diagnostic"
     assert "Full run report" in (project / ".claude/evaluation/summary.md").read_text()
+
+
+def test_evaluator_honors_role_selection_and_records_observed_model(project: Path):
+    result, verdict = evaluate(
+        project,
+        variables={
+            "WORKFLOW_MODEL": "best",
+            "WORKFLOW_EVALUATOR_MODEL": "selected-judge-id",
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    arguments = json.loads((project / ".claude/argv.json").read_text())
+    assert arguments[arguments.index("--model") + 1] == "selected-judge-id"
+    assert verdict["model_selection"]["requested"] == "selected-judge-id"
+    assert verdict["observed_models"] == ["fixture-model-id"]
 
 
 @pytest.mark.parametrize(

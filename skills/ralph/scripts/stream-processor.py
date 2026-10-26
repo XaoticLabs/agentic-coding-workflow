@@ -109,6 +109,8 @@ def main():
             # Handle system events (retries, etc.)
             if data.get("type") == "system":
                 subtype = data.get("subtype", "")
+                if subtype == "init":
+                    write_trace(trace_fd, "model", model=data.get("model"), source="cli_init")
                 if subtype == "api_retry":
                     display(
                         f"  {datetime.now().strftime('%H:%M:%S')}  ⟳ API retry "
@@ -129,6 +131,8 @@ def main():
 
             if top_type == "assistant":
                 msg = data.get("message", {})
+                if msg.get("model"):
+                    write_trace(trace_fd, "model", model=msg["model"], source="assistant")
                 for block in msg.get("content", []):
                     bt = block.get("type", "")
                     if bt == "tool_use":
@@ -162,6 +166,8 @@ def main():
                 continue
 
             if top_type == "result":
+                for model in data.get("modelUsage", {}):
+                    write_trace(trace_fd, "model", model=model, source="cli_result")
                 usage = data.get("usage", {})
                 if usage:
                     input_tokens = usage.get("input_tokens", input_tokens)

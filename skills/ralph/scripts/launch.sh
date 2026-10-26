@@ -4,6 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/options.sh"
+source "${SCRIPT_DIR}/../../../scripts/lib/claude-runner.sh"
 SPEC_DIR="${1:?Usage: launch.sh <spec-dir> [options...]}"
 shift
 ralph_parse_options "$@"
@@ -63,6 +64,7 @@ mkdir -p "$(dirname "$LAUNCHER")"
   printf 'export RALPH_EVAL_PER_ITER=%q\n' "${RALPH_EVAL_PER_ITER:-false}"
   printf 'export RALPH_EVAL_END_OF_RUN=%q\n' "${RALPH_EVAL_END_OF_RUN:-true}"
   printf 'export RALPH_PARALLEL_EVAL=%q\n' "${RALPH_PARALLEL_EVAL:-end}"
+  write_workflow_model_environment
   printf 'cd %q\n' "$PROJECT_DIR"
   printf 'exec '
   printf '%q ' "${INVOCATION[@]}"

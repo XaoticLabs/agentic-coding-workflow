@@ -172,7 +172,8 @@ print(template.replace('{{CONTEXT}}', context))
 " <<< "$CONTEXT")
 
     # Launch Claude to resolve
-    if echo "$PROMPT" | claude -p --dangerously-skip-permissions --model sonnet >&2 2>&1; then
+    workflow_model_args merge
+    if echo "$PROMPT" | claude -p --dangerously-skip-permissions "${WORKFLOW_MODEL_ARGS[@]}" >&2 2>&1; then
       echo "${BRANCH}: conflicts resolved by Claude" >&2
     else
       echo "${BRANCH}: conflict resolution FAILED" >&2

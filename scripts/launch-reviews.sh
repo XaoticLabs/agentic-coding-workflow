@@ -9,6 +9,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REVIEW_SCRIPT="${SCRIPT_DIR}/review-in-worktree.sh"
 source "${SCRIPT_DIR}/lib/worktree-safety.sh"
+source "${SCRIPT_DIR}/lib/claude-runner.sh"
+workflow_model_environment_args
 
 LANGUAGE="$1"
 REVIEW_MODE="${REVIEW_MODE:-defects}"
@@ -100,7 +102,7 @@ for i in "${!BRANCHES[@]}"; do
   WORKTREE_PATH="${WORKTREE_PATHS[$i]}"
   PR_NUM="${PR_NUMBERS[$i]}"
 
-  printf -v CMD '%q ' env "WORKTREE_OWNER_TOKEN=${WORKTREE_OWNER_TOKEN}" bash "$REVIEW_SCRIPT" "$REPO_ROOT" "$WORKTREE_PATH" "$BRANCH" "$LANGUAGE" "$PR_NUM" "$REVIEW_MODE"
+  printf -v CMD '%q ' "${WORKFLOW_ENV_ARGS[@]}" "WORKTREE_OWNER_TOKEN=${WORKTREE_OWNER_TOKEN}" bash "$REVIEW_SCRIPT" "$REPO_ROOT" "$WORKTREE_PATH" "$BRANCH" "$LANGUAGE" "$PR_NUM" "$REVIEW_MODE"
 
   if [ "$FIRST" = true ]; then
     if [ -n "${TMUX:-}" ]; then

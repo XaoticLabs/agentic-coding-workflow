@@ -60,10 +60,12 @@ claude plugin eval . --tag holdout --allow-tools Write Edit --no-publish
 
 Do not use an unfiltered suite command during tuning: it includes holdout.
 
-This suite drafts files but does not need shell execution. Read-only tools must
-also appear in each case's `allowed_tools`; native evals require separate
+Drafting cases do not need shell execution. Runtime-proof cases require Bash and
+their reviewed scaffold. Read-only tools must also appear in each case's `allowed_tools`; native evals require separate
 `--allow-tools` grants for writes and shell commands. For shell-based fixtures,
 use a `case.yaml` with `context.scaffold_script` and explicitly pass `--scaffold`.
+The shared controlled entry point is `${CLAUDE_PLUGIN_ROOT}/scripts/run-evals.py`;
+pass `--shell` for those runtime cases and an explicit cost ceiling for every run.
 
 Native evaluation normally runs each case three times with the plugin and three
 times without it. Compare outcome graders across both arms; plugin-specific

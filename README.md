@@ -62,6 +62,19 @@ Use the least elaborate workflow that resolves material uncertainty and produces
 
 Choose by uncertainty, impact, reversibility, and scope. Inspection may reveal a need for more planning, or show that existing context is sufficient. Clarification ends when the outcome, scope, material decisions, and verification approach are clear. Every path includes verification and reports its evidence and limitations.
 
+Executor processes preserve model selection through a shared
+[model policy](references/model-policy.md), instead of forcing Sonnet for builds,
+evaluation, or merge resolution. Set `WORKFLOW_MODEL=best` to select the native
+best available alias where supported, or supply the team's explicit model ID.
+Role overrides remain available; observed model IDs are retained when provided.
+
+For runtime work, follow [behavioral evidence](references/verification-evidence.md).
+Use [private execution environments](references/execution-environments.md) for
+repeatable setup and services, [batch experiments](references/experiments.md)
+for comparable alternatives, and [lifecycle observations](references/lifecycle-observation.md)
+for health/log/deployment/flag checks and requested scheduled follow-up.
+These are explicit tools; installing the plugin starts no infrastructure or schedules.
+
 Make substantial changes independently understandable and testable. PRs explain
 the problem and resulting behavior, important decisions, actual verification
 and checked source, remaining reviewer decisions, and recovery when relevant.
@@ -100,7 +113,7 @@ are already authorized.
 | Command | What it does |
 |---------|--------------|
 | `/agentic-coding-workflow:prime` | Loads project and optional Jira/Linear ticket context through CLI/API tools. Add `--deep` for thorough codebase analysis. |
-| `/agentic-coding-workflow:plan` | Writes a concise plan from a ticket, description, or context document; asks about material uncertainty. Add `--interview` for deeper exploration. |
+| `/agentic-coding-workflow:plan` | Writes a concise plan; `--interview` explores material decisions and `--compare` plans repeatable alternatives. |
 | `/agentic-coding-workflow:write-spec` | Transforms a plan into an implementation spec with atomic, actionable tasks. |
 | `/agentic-coding-workflow:implement` | Implements a ticket, spec task, or description with proportional planning/verification. Optional `--plan`, `--worktree`, `--approve-tests`, `--start-ticket`, and independent `--review` modes. |
 | `/agentic-coding-workflow:test` | Detects project test framework, runs the suite (or a subset), and reports structured results. |
@@ -121,7 +134,7 @@ are already authorized.
 
 | Command | What it does |
 |---------|--------------|
-| `/agentic-coding-workflow:debug-bug` | Bug hunter — finds and fixes bugs with structured investigation. |
+| `/agentic-coding-workflow:debug-bug` | Finds/fixes bugs with runtime evidence; `--experiment` batches executable probes and comparisons. |
 | `/agentic-coding-workflow:troubleshoot` | Infrastructure diagnostics + kubectl access. Covers local Docker, staging, and prod k8s. |
 | `/agentic-coding-workflow:analyze` | Data analyst — takes query results, CSVs, or datasets and produces insights, summaries, and visualizations. |
 | `/agentic-coding-workflow:query` | Translates natural language questions into SQL, runs them, and presents results. |

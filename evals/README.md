@@ -18,6 +18,7 @@ does not establish that they represent unseen real-world tasks.
 | Tuning | `skill-forge-small-skill`, `skill-forge-near-miss` | Self-contained skill creation and ordinary prose near-miss |
 | Tuning | `native-goal-workflow`, `spawn-native-goal`, `spawn-native-worktree`, `resume-feature-session` | Workflow selection, native isolation, goals, and session continuity |
 | Tuning | `ticket-cli-api-routing`, `delivery-follow-up` | CLI/API ticket identity, explicit fallback, and bounded PR feedback handling |
+| Tuning | `runtime-proof-regression`, `unavailable-runtime-proof` | Actual failing/fixed execution and honest missing-runtime handling |
 | Holdout | `skill-forge-repair-skill` | Repair evidence handling and missing-fact behavior while preserving invocation policy |
 | Holdout | `skill-forge-explicit-deploy` | Draft a manually invoked deployment workflow without executing it |
 
@@ -39,11 +40,43 @@ claude plugin eval . --tag tuning --allow-tools Write Edit --no-publish
 claude plugin eval . --tag holdout --allow-tools Write Edit --no-publish
 ```
 
-These cases need file drafting and read tools, not shell execution. Neither
-command invokes deployment infrastructure. See
+The original cases need drafting/read tools. The two runtime cases additionally
+need reviewed scaffolds and Bash. Neither command invokes deployment infrastructure. See
 [Skill Forge's eval reference](../skills/skill-forge/references/plugin-evals.md)
 for native tools, graders, baseline interpretation, and cost limits, and the
 [native documentation](https://code.claude.com/docs/en/plugin-evals) for CLI details.
+
+## Controlled runs
+
+Use `scripts/run-evals.py` to require a split, execution/judge selectors, cost
+ceiling, concurrency one, both baseline arms, timeout, and local-only reports.
+For a coding case, explicitly grant shell tools:
+
+```bash
+python3 scripts/run-evals.py --split tuning --case runtime-proof-regression \
+  --model YOUR_EXECUTION_MODEL_ID --judge-model YOUR_JUDGE_MODEL_ID \
+  --max-cost-usd 5 --runs 3 --shell
+```
+
+`--dry-run` writes the exact invocation with `NOT_RUN`; optional
+`--not-run-reason` records an unavailable prerequisite or deliberate deferral.
+Native auth is checked before paid calls. Final holdout also requires clean
+source and `--frozen-revision` equal to the full HEAD SHA. Freeze success criteria
+and graders independently before invoking it. Native cost limits stop new runs;
+in-flight calls can overrun the estimate, so leave headroom under an allowance.
+
+The runtime scaffolds use no third-party dependencies. Their graders combine
+actual tool activity with a narrowly scoped trace assessment; an agent's PASS
+file alone is insufficient. Deterministic tests prove the fixture detects its
+known bug and accepts the fix. Until calibrated model runs exist, grader accuracy
+and plugin uplift remain unmeasured. Five trials are an exploratory signal,
+not proof of a general reliability percentage.
+
+For knowledge ablations, compare the same task, model, tools, source, and
+environment with one rule/skill changed, retaining all attempts. Keep alternative
+plugin revisions in separate checkouts and use the same native runner, rather
+than introducing another evaluation engine. Judge outcomes blind to the arm
+when feasible; inspect failures and human correction effort as well as score.
 
 ## Retaining benchmark evidence
 

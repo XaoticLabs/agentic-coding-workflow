@@ -181,6 +181,11 @@ split tightly coupled code/tests just to meet a size target.
 
 ### Phase 3: Select and Prepare Verification
 
+Use `${CLAUDE_PLUGIN_ROOT}/references/verification-evidence.md` to select checks
+that distinguish working behavior from the reported failure. For repeatable
+setup/services, use the project's environment or the explicit runner in
+`references/execution-environments.md`. Verification never installs implicitly.
+
 Resolve test and lint commands using **Project Context: Test and Lint Command Detection** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`, including `.claude/project-commands.json` overrides and explicit disables. Honor project-required checks.
 
 **Standard mode:** Identify existing tests that demonstrate the outcome. Add behavioral or regression tests when they provide useful coverage, using the project's framework and conventions. For a bug fix, confirm a regression test fails for the reported behavior before the fix when practical. Ordinary TDD may write tests first without freezing them. No test-approval prompt or separate test commit is required. Follow **Test and Verification Integrity** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`: explain and independently review test corrections or changes that could weaken coverage; never weaken assertions to hide an implementation defect.

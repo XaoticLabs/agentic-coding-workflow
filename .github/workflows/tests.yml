@@ -1,6 +1,14 @@
 name: Verify workflow contracts
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      container_smoke:
+        description: Run the real isolated-environment smoke test
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -17,3 +25,29 @@ jobs:
       - run: python -m pip install pytest
       - run: python -m pytest -q
       - run: bash scripts/validate-hooks.sh
+
+  container-smoke:
+    if: github.event_name == 'workflow_dispatch' && inputs.container_smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build the smoke environment
+        run: docker build --tag workflow-smoke --file tests/fixtures/environment/Containerfile tests/fixtures/environment
+      - name: Prove setup, service isolation, failures, and cleanup
+        run: |
+          WORKFLOW_SMOKE_IMAGE=$(docker image inspect --format '{{.Id}}' workflow-smoke)
+          python tests/smoke_environment.py --engine docker --image "$WORKFLOW_SMOKE_IMAGE" --output-dir .claude/proofs/ci
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: environment-smoke-evidence
+          include-hidden-files: true
+          path: |
+            .claude/proofs/ci/summary.json
+            .claude/proofs/ci/*/run.json
+            .claude/proofs/ci/*/container.log*
+            .claude/proofs/ci/*/artifacts/

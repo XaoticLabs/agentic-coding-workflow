@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import cast
 
 ACTIONS = ("build", "test", "lint", "format", "run")
+EXTRA_ACTIONS = ("install", "health", "logs", "deploy_status", "flag_status")
 
 
 class CommandArguments(argparse.Namespace):
@@ -31,7 +32,7 @@ def load_commands(path: Path) -> dict[str, str | None]:
         raise ValueError("expected an object mapping actions to shell commands")
     commands: dict[str, str | None] = {}
     for action, command in cast(dict[str, object], decoded).items():
-        if action not in ACTIONS:
+        if action not in (*ACTIONS, *EXTRA_ACTIONS):
             raise ValueError(f"unknown action: {action}")
         if command is not None and not isinstance(command, str):
             raise ValueError(f"{action} must be a string or null")
@@ -97,7 +98,7 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="operation", required=True)
     reader = subparsers.add_parser("get")
     _ = reader.add_argument("project_dir", type=Path)
-    _ = reader.add_argument("action", choices=ACTIONS)
+    _ = reader.add_argument("action", choices=(*ACTIONS, *EXTRA_ACTIONS))
     _ = reader.add_argument(
         "--required",
         action="store_true",

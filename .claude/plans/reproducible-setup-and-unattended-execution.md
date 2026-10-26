@@ -18,6 +18,14 @@ and review launchers no longer guess/install dependencies. Go/Python/Node/mixed
 verification requires selected checks. Reproducible setup recipes, service
 lifecycle management, and trusted containment below remain future work.
 
+Progress note, 2026-10-26: the explicit project-owned private environment runner
+now exports current source, uses pinned images and bounded resources, runs selected
+installation before service readiness and verification, preserves logs/candidates,
+and cleans up owned containers. A real concurrent Podman smoke test passed.
+Trusted external policy/credential brokering, endpoint egress enforcement, and
+acceptance records outside agent control remain future work below. The new runner
+does not automatically contain existing host workflows.
+
 ## Current foundations and gaps
 
 - [Project commands](../../scripts/project-commands.py) centralize `build`,

@@ -709,8 +709,9 @@ ${BRIEFING}
   # Planning, harvest, and evaluator calls must not inherit build-only hooks.
   BUILD_RALPH_MODE=0
   [ "$MODE" != build ] || BUILD_RALPH_MODE=1
+  workflow_model_args build
   if RALPH_MODE="$BUILD_RALPH_MODE" run_claude_pipeline "$PROMPT" "$LOG_FILE" "$TRACE_FILE" "$TIME_BUDGET" "$STREAM_PROCESSOR" \
-    -p --dangerously-skip-permissions --verbose --model sonnet --output-format stream-json; then
+    -p --dangerously-skip-permissions --verbose "${WORKFLOW_MODEL_ARGS[@]}" --output-format stream-json; then
     echo "Iteration ${ITERATION} completed successfully."
   else
     echo "Iteration ${ITERATION}: ${PIPELINE_RESULT}. Diagnostics: ${LOG_FILE}.*-stderr.log" >&2

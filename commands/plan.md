@@ -30,6 +30,12 @@ configuration can also select the provider.
 
 ## Instructions
 
+Optional `--compare` selects a comparison-oriented plan: define meaningful
+alternatives, observable criteria, and a repeatable experiment or interactive
+preview for assessment together. Use `${CLAUDE_PLUGIN_ROOT}/references/experiments.md`.
+Remove the flag before interpreting input. Planning defines the experiment;
+it does not execute changes or paid runs.
+
 Follow **Proportional Workflow** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`. Invoking this command authorizes writing the plan once its material decisions are clear; no separate document-generation confirmation is required by default.
 
 ### Phase 1: Load Relevant Context (Read-Only)

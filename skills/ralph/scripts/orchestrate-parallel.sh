@@ -307,8 +307,9 @@ export RALPH_WORKER_ID="worker-${i}"
 export CLAUDE_PROJECT_DIR="${WORKTREE_PATH}"
 export WORKTREE_OWNER_TOKEN="${WORKTREE_OWNER_TOKEN}"
 export WORKTREE_REPO_ROOT="${REPO_ROOT}"
-exec "${BASH_PATH}" "${SCRIPT_DIR}/loop.sh" "${WORKER_SPEC_DIR}" build ${MAX_ITERATIONS} ${FLAGS}
 LAUNCHER_EOF
+    write_workflow_model_environment >> "$LAUNCHER"
+    printf 'exec %q %q %q build %q %s\n' "$BASH_PATH" "${SCRIPT_DIR}/loop.sh" "$WORKER_SPEC_DIR" "$MAX_ITERATIONS" "$FLAGS" >> "$LAUNCHER"
     chmod +x "$LAUNCHER"
 
     if [ "$idx" -eq 0 ]; then

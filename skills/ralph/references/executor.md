@@ -119,7 +119,9 @@ merge decision → guarded cleanup. Evaluation always reviews the worktree branc
 Reports, logs, the journal, and a copy of the worktree's `.claude/` artifacts are saved
 under the main project's run directory before removal.
 
-This is the recommended mode for current models (Opus 4.6), per the Anthropic harness design findings: tasks within the model's comfort zone don't need per-iteration evaluation.
+This is the default quality-evaluation mode. Measure its effect on representative
+tasks with the selected model before changing evaluation frequency. External
+harness experience does not establish that our own checks are redundant.
 
 ### Verification Integrity (mandatory)
 

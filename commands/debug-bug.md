@@ -27,6 +27,11 @@ $ARGUMENTS — One of:
 
 ## Instructions
 
+Optional `--experiment` selects a batch investigation: build executable probes
+for plausible causes, run their comparison, and present evidence together. Use
+`${CLAUDE_PLUGIN_ROOT}/references/experiments.md`; no fixed count is required.
+Remove the mode flag before interpreting the bug description or ticket input.
+
 ### Step 1: Parse Input
 
 First, determine what type of input was provided:
@@ -45,6 +50,11 @@ First, determine what type of input was provided:
   - If `--env prod`, confirm with the user before running any infrastructure commands
 
 ### Step 2: Gather Environment Context (if `--env` specified)
+
+Read the project's actual targets and read-only observation commands first.
+Use `${CLAUDE_PLUGIN_ROOT}/references/lifecycle-observation.md` when configured.
+Resolve cluster/context names from project guidance; the examples below are
+placeholders. Retain observed build/health/log evidence for the selected target.
 
 Before diving into code, pull infrastructure context from the target environment:
 
@@ -116,7 +126,9 @@ Deep dive into the relevant code:
 
 ### Step 6: Hypothesize
 
-Form 2-3 theories about the root cause, ranked by likelihood:
+Form plausible theories about the root cause, ranked by evidence and likelihood.
+Let uncertainty determine the count. For batch investigation, give each theory
+an executable probe:
 
 ```
 Hypothesis 1 (Most Likely): [Description]
@@ -135,9 +147,14 @@ Hypothesis 3 (Least Likely): [Description]
 
 For each hypothesis, starting with the most likely:
 - Trace through the code path step by step
-- Add temporary logging or use debugger mentally
+- Run a reproduction, targeted test, debugger, instrumentation, or profiler
 - Confirm or eliminate each hypothesis
 - Stop when you find the definitive root cause
+
+Follow `${CLAUDE_PLUGIN_ROOT}/references/verification-evidence.md`. Code reasoning
+supports hypotheses; imagined execution is not runtime verification. Retain
+actual outcomes and baseline/fixed results when practical. Explicitly report
+claims that remain unverified when runtime access is missing.
 
 ### Step 8: Fix
 

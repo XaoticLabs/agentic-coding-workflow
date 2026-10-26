@@ -15,6 +15,7 @@ if [ "${1:-}" = --help ] || [ "${1:-}" = -h ]; then usage; exit 0; fi
 ROLE=""
 if [[ "$1" != -* ]]; then ROLE="$1"; shift; fi
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "${PLUGIN_ROOT}/scripts/lib/claude-runner.sh"
 WORKTREE_NAME=""
 SESSION_NAME=""
 RESUME=""
@@ -67,7 +68,14 @@ if [ -n "$GOAL" ]; then
 fi
 # Ordinary sessions must not inherit a caller's Ralph worker contract. Keep
 # the override in argv so it also survives an existing tmux server's env.
-CLAUDE_ARGS=(env RALPH_MODE=0 claude --plugin-dir "$PLUGIN_ROOT")
+workflow_model_environment_args
+WORKFLOW_MODEL_ARGS=()
+if [ -z "$RESUME" ]; then
+  MODEL_ROLE=build
+  [ "$ROLE" != evaluator ] || MODEL_ROLE=evaluator
+  workflow_model_args "$MODEL_ROLE"
+fi
+CLAUDE_ARGS=("${WORKFLOW_ENV_ARGS[@]}" RALPH_MODE=0 claude --plugin-dir "$PLUGIN_ROOT" "${WORKFLOW_MODEL_ARGS[@]}")
 if [ -n "$RESUME" ]; then
   CLAUDE_ARGS+=(--resume "$RESUME")
 else

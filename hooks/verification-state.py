@@ -23,7 +23,12 @@ def is_runtime(path: str) -> bool:
         path.startswith(".claude/")
         and not path.startswith(".claude/rules/")
         and not path.startswith(".claude/specs/")
-        and path not in (".claude/AGENTS.md", ".claude/project-commands.json")
+        and path
+        not in (
+            ".claude/AGENTS.md",
+            ".claude/project-commands.json",
+            ".claude/project-environment.json",
+        )
     )
 
 
@@ -39,7 +44,11 @@ def snapshot() -> dict[str, str]:
             untracked.update(
                 os.fsencode(path) for path in directory.rglob("*") if path.is_file()
             )
-    for name in (".claude/AGENTS.md", ".claude/project-commands.json"):
+    for name in (
+        ".claude/AGENTS.md",
+        ".claude/project-commands.json",
+        ".claude/project-environment.json",
+    ):
         if Path(name).is_file():
             untracked.add(os.fsencode(name))
     untracked.difference_update(tracked)

@@ -86,6 +86,7 @@ def plugin(tmp_path: Path) -> Path:
         Path("scripts/lib/worktree-safety.sh"),
         Path("scripts/lib/claude-runner.sh"),
         Path("scripts/evaluate.py"),
+        Path("scripts/workflow_models.py"),
         Path("hooks/verification-state.py"),
         Path("scripts/project-commands.py"),
         Path("scripts/task-plan.py"),
