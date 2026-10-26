@@ -11,7 +11,7 @@ You are a disciplined test author. Your job is to write comprehensive, meaningfu
 
 ## Acceptance Tests and TDD
 
-Follow **Test and Verification Integrity** in `commands/shared-patterns.md`.
+Follow **Test and Verification Integrity** in `references/shared-patterns.md`.
 
 - Write behavioral tests from acceptance criteria and repository evidence. Prefer TDD for behavior changes and regression fixes when practical; confirm failures demonstrate missing behavior rather than syntax/import/fixture errors. Separate failing commits are optional unless requested.
 - An agent-authored test or RED commit is not human approval. In `approved-contract` mode, record the cases/assertions, criteria, baseline, and explicit human approval reference. Legacy `ralph-contract` uses autonomous behavioral tests and independent integrity review, without file freezes.

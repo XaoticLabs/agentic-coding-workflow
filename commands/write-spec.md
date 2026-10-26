@@ -28,7 +28,7 @@ Parse flags before locating the input. Reject `--approve-tests` combined with `-
 
 ## Instructions
 
-Follow **Proportional Workflow** in `commands/shared-patterns.md`. Use the supplied plan and repository evidence to resolve context; ask only about uncertainty that could change implementation, acceptance criteria, or risk. Preserve the selected test mode explicitly in the spec.
+Follow **Proportional Workflow** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`. Use the supplied plan and repository evidence to resolve context; ask only about uncertainty that could change implementation, acceptance criteria, or risk. Preserve the selected test mode explicitly in the spec.
 
 ### Phase 1: Load and Parse Plan Document
 
@@ -111,7 +111,7 @@ Scan the plan document and your Phase 2 analysis for ambiguity:
 - Tasks should have minimal dependencies on other tasks
 - Tasks should be orderable (what must come before what)
 
-**Test mode:** Default to `standard`: specify behavioral and regression checks without requiring test approval or separate failing commits. Ordinary TDD can be used in standard mode. With `--approve-tests` or an equivalent explicit request, select `approved-contract`. With `--ralph`, select `ralph-contract` for compatibility: autonomous behavioral verification with mandatory independent integrity review, optional RED/GREEN commits, and no mid-iteration approval. Acceptance criteria must be specific enough to verify without ambiguity. Apply **Test and Verification Integrity** in `commands/shared-patterns.md` to every mode.
+**Test mode:** Default to `standard`: specify behavioral and regression checks without requiring test approval or separate failing commits. Ordinary TDD can be used in standard mode. With `--approve-tests` or an equivalent explicit request, select `approved-contract`. With `--ralph`, select `ralph-contract` for compatibility: autonomous behavioral verification with mandatory independent integrity review, optional RED/GREEN commits, and no mid-iteration approval. Acceptance criteria must be specific enough to verify without ambiguity. Apply **Test and Verification Integrity** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md` to every mode.
 
 **Task categories to consider:**
 1. **Data/Schema tasks** - migrations, models, types
@@ -194,34 +194,7 @@ For each atomic task, write a complete specification:
 mkdir -p .claude/specs
 ```
 
-**Register output validation.** Before writing the spec, create an expectations file so the stop hook validates the output quality. Write this JSON to `.claude/expected-output.json`:
-```json
-{
-    "source": "write-spec",
-    "rules": [
-        {
-            "type": "file_exists",
-            "path": ".claude/specs/<slug>-spec.md"
-        },
-        {
-            "type": "file_contains",
-            "path": ".claude/specs/<slug>-spec.md",
-            "sections": [
-                "## Overview",
-                "## Technical Context",
-                "## Implementation Tasks",
-                "### Critical Path",
-                "**Acceptance criteria:**",
-                "## Testing Strategy",
-                "## Rollout Considerations"
-            ]
-        }
-    ]
-}
-```
-Replace `<slug>` with the actual slug in the JSON.
-
-Check that the required sections contain useful task-specific content. Do not pad the document to a line count.
+Review the document for useful task-specific content.
 
 **Derive the slug** from the input plan filename. If the plan file has a ticket ID prefix (e.g., `AI-1234-auth-feature.md`), preserve it in the spec slug. The slug should match the plan's slug exactly so all artifacts share the same naming convention.
 
@@ -334,27 +307,24 @@ After generating the monolithic spec (Phase 7), create a Ralph-compatible direct
 mkdir -p .claude/specs/<slug>
 ```
 
-**Update output validation.** Read the existing `.claude/expected-output.json` and append Ralph-specific rules:
+**Register task-graph validation.** Write this JSON to `.claude/expected-output.json`
+so the Stop hook validates the same task graph used by the scheduler:
+
 ```json
 {
-    "type": "file_exists",
-    "path": ".claude/specs/<slug>/IMPLEMENTATION_PLAN.md"
-},
-{
-    "type": "file_contains",
-    "path": ".claude/specs/<slug>/IMPLEMENTATION_PLAN.md",
-    "sections": ["## Status:", "## Tasks", "**Acceptance criteria:**"]
-},
-{
-    "type": "dir_files_contain",
-    "path": ".claude/specs/<slug>/",
-    "glob": "*.md",
-    "exclude": ["IMPLEMENTATION_PLAN.md"],
-    "sections": ["## Acceptance Criteria", "## Behavioral Tests"],
-    "min_files": 1
+    "source": "write-spec-ralph",
+    "rules": [
+        {
+            "type": "task_index_format",
+            "path": ".claude/specs/<slug>/IMPLEMENTATION_PLAN.md",
+            "min_tasks": 1
+        }
+    ]
 }
 ```
-Write the updated JSON back. This ensures the Ralph artifacts are validated on stop — including that every individual topic spec file contains an `## Acceptance Criteria` section.
+
+Replace `<slug>` with the actual slug. This checks task structure and dependencies;
+review topic specifications for meaningful acceptance criteria without heading gates.
 
 **Split into topic files:**
 

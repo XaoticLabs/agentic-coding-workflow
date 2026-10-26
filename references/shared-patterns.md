@@ -1,6 +1,8 @@
-# Shared Command Patterns
+# Shared Workflow Patterns
 
-Reference for common patterns used across commands. Commands should reference this file instead of duplicating these blocks inline.
+Reference for common patterns used across commands and skills. Link the relevant
+section from a workflow instead of duplicating it. This file lives outside
+`commands/` so Claude Code does not expose it as an incidental command.
 
 ## Proportional Workflow
 

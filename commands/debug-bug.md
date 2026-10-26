@@ -87,7 +87,7 @@ If the bug description is ambiguous or lacks reproduction steps, use AskUserQues
 
 ### Step 4: Reproduce (Locate Code)
 
-Start with targeted searches and direct reads of a few relevant files. Delegate an independent investigation to a researcher subagent when its intermediate output would overwhelm the main task. Parallelize separate hypotheses or subsystems only when their interfaces and scope are clear.
+Start with targeted searches and direct reads of a few relevant files. Delegate an independent investigation to the built-in Explore subagent when its intermediate output would overwhelm the main task. Parallelize separate hypotheses or subsystems only when their interfaces and scope are clear.
 
 Look for:
 - Entry points related to the bug (controllers, handlers, UI components)

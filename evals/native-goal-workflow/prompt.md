@@ -1,6 +1,6 @@
 ---
 name: native-goal-workflow
-tags: [goals, sessions]
+tags: [tuning, goals, sessions]
 allowed_tools: [Read, Glob, Grep, Skill]
 max_turns: 6
 timeout_seconds: 120

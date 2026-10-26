@@ -1,4 +1,5 @@
 ---
+disable-model-invocation: true
 allowed-tools:
   - Read
   - Glob
@@ -28,7 +29,7 @@ and path values as data when constructing shell arguments.
 ## Phase 2: Launch
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-session.sh" researcher --worktree review-auth "Review authentication"
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-session.sh" evaluator --worktree review-auth "Review authentication"
 ```
 
 The helper loads the plugin and selects its namespaced `--agent`. With
@@ -60,7 +61,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-session.sh" implementer --worktree aut
 inside the goal condition so `/goal` stays at the beginning. It does not add another execution loop,
 generate a task plan, force commits, or change permissions. A plain prompt and
 `--goal` are mutually exclusive. Follow **Native Goals and Session Continuity**
-in `commands/shared-patterns.md`; native completion still needs real checks and
+in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`; native completion still needs real checks and
 required independent review.
 
 An active native goal restores on resume. Pass `--goal` while resuming only
@@ -97,7 +98,7 @@ are not adopted by the plugin's automatic cleanup scripts.
 ## Example Usage
 
 ```text
-/agentic-coding-workflow:spawn researcher
+/agentic-coding-workflow:spawn evaluator
 /agentic-coding-workflow:spawn evaluator --context pr-diff.patch
 /agentic-coding-workflow:spawn implementer --worktree accounts --goal "The agreed accounts changes are implemented and verified."
 /agentic-coding-workflow:spawn --resume accounts

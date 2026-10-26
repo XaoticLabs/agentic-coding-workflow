@@ -20,11 +20,24 @@ allowed-tools:
   - Agent
   - AskUserQuestion
 user-invocable: true
+disable-model-invocation: true
 ---
 
 # Reunify Parallel Branches
 
 Merges parallel worktree branches back onto the parent feature branch, verifies the combined implementation, and optionally cleans up worktrees.
+
+## Input
+
+`$ARGUMENTS` accepts explicit branch names separated by spaces, or no branches
+to discover workers under `.claude/worktrees/`. Preserve these existing options:
+
+- `--skip-tests`: skip test gates between merges; still run the final suite.
+- `--skip-verify`: skip the final spec/plan compliance review; report it as skipped.
+
+Parse options before discovery. Reject unknown options. When branches are
+supplied, select those branches rather than every discovered worker. Reuse an
+already authorized selection; resolve any dirty or active worktree before merging.
 
 ## Phase 1: Discover Worker Branches
 
@@ -47,7 +60,9 @@ Display results as a table. For each branch, show:
 
 **If any branch has dirty files or an active Claude session:** Warn the user. Use AskUserQuestion to confirm they want to proceed or wait.
 
-**Confirm selection:** Use AskUserQuestion to let the user confirm which branches to reunify (default: all discovered). They may want to exclude some.
+**Confirm selection:** For automatic discovery, use AskUserQuestion to confirm
+which branches to reunify (default: all discovered), unless that selection is
+already authorized. Explicit branch arguments select those branches.
 
 ## Phase 2: Analyze File Overlap and Merge Order
 
@@ -81,6 +96,7 @@ For each branch in the recommended order:
 
 1. **Merge:** `git merge --no-edit <branch>`
 2. **If clean merge:**
+   - With `--skip-tests`, defer this intermediate gate to the final suite and report the skip.
    - Detect and run the project's test suite:
      - `mix.exs` present -> `mix test`
      - `pyproject.toml` present -> `pytest` or `python -m pytest`
@@ -110,6 +126,11 @@ Report progress after each merge: "Merged 2/4 branches. Next: <branch-name>"
 ## Phase 5: Final Verification
 
 After all branches are merged, verify the full feature is implemented.
+
+Run the full configured test suite and report its outcome even when
+`--skip-tests` deferred intermediate gates. With `--skip-verify`, report the
+compliance review as skipped and proceed to cleanup without claiming spec
+compliance. Otherwise continue with the spec/plan review below.
 
 **Find the spec/plan:**
 - Check `.claude/specs/` for files matching the current branch name/slug

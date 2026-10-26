@@ -5,12 +5,19 @@ paths:
 
 # Command Development Rules
 
+Existing command files remain supported by Claude Code. Prefer skills for new
+workflows; migrate existing commands gradually when maintaining them. Keep one
+entrypoint for a command and skill that share a name, preserving its public
+invocation and arguments. Shared documentation belongs in `references/`, outside
+the command discovery directory. See the [skills reference](https://code.claude.com/docs/en/skills).
+
 ## Frontmatter
 - Every command MUST have YAML frontmatter with `allowed-tools` granting prompt-free approval only for tools it needs
 - These are approval grants, not a complete whitelist: omitted tools remain subject to normal permissions. Use CLI `--tools` to restrict available tools and `--disallowedTools` for explicit denies; see the [CLI reference](https://code.claude.com/docs/en/cli-reference).
 - Only grant approvals the command actually uses — don't copy-paste the full list from another command
 - Include `EnterPlanMode`/`ExitPlanMode` if the command has a planning phase
 - Include `AskUserQuestion` if the command needs user interaction
+- Use `disable-model-invocation: true` when consequential side effects or launch timing require explicit invocation. `user-invocable: false` permits model invocation and is not a disabling control.
 
 ## Input Handling
 - Use `$ARGUMENTS` as the input variable

@@ -1,6 +1,6 @@
 ---
 name: spawn-native-goal
-tags: [launchers, goals]
+tags: [tuning, launchers, goals]
 allowed_tools: [Read, Glob, Grep, Skill]
 max_turns: 6
 timeout_seconds: 120

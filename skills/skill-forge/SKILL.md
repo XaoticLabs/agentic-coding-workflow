@@ -41,6 +41,15 @@ it applies. Preserve supported frontmatter and existing invocation policy unless
 the user asks to change them. `allowed-tools` grants prompt-free approval; it
 does not restrict the complete tool set.
 
+For Claude Code, use `disable-model-invocation: true` for workflows whose side
+effects or timing require explicit invocation, such as publishing, launching
+workers, or merging branches. Keep `user-invocable: true` so the user can run
+them. `user-invocable: false` hides a skill from the user; the model can still
+invoke it. Neither field grants authorization for the underlying actions.
+Existing command files remain supported. Prefer skills for new workflows;
+consolidate duplicate command/skill names into one skill while preserving the
+public invocation and arguments. See the [Claude Code skills reference](https://code.claude.com/docs/en/skills).
+
 Include the instructions needed to make the actual task work. Avoid generic
 advice, word-count targets, required numbers of headings, and exhaustive trigger
 synonyms. Add scripts or references when their operational benefit warrants
@@ -79,7 +88,8 @@ existing work. A passing structural check does not prove the workflow correct.
 For behavioral evaluation, use native `claude plugin eval` instead of maintaining
 a parallel subagent runner or a separate `evals.json` format. When adding or
 running cases, read `references/plugin-evals.md` for case layout, tool grants,
-baseline comparisons, and commands.
+baseline comparisons, tuning/holdout separation, and commands. Use the native
+runner's HTML and JSON reports for manual comparison and iteration.
 
 Choose realistic requests that discriminate useful behavior. Cover successful
 use, likely near-misses, and material constraints. Use deterministic graders for
@@ -92,8 +102,16 @@ failing transcripts before revising the skill. Measure correctness first, then
 cost, elapsed time, and unnecessary actions. A zero difference can mean the
 native capability already handles the task; investigate before adding rules.
 
+Tune descriptions and instructions only against tuning cases. Freeze the
+candidate, graders, and success criteria before running a separate final
+holdout. Do not choose descriptions by holdout score or repeatedly adjust to
+its failures. Once holdout results inform an edit, those cases become tuning
+evidence; reserve fresh cases before making another generalization claim.
+
 Run model evaluations only within the authorized scope and limits. A request to
 draft a skill does not require launching paid runs or additional agents. Keep
-reusable cases and useful results; do not automatically delete evaluation
-evidence. Report whether behavior was evaluated, what actually ran, and what
-remains unverified.
+representative cases, fixtures, graders, and benchmark summaries under version
+control. Keep raw transcripts and generated reports locally until useful
+evidence has been retained in a sanitized summary; remove only disposable run
+workspaces afterward. Report standards validation separately from behavioral
+effectiveness, including what actually ran and what remains unverified.

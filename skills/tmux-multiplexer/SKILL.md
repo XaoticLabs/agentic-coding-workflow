@@ -9,6 +9,7 @@ description: |
 allowed-tools: Bash, Read, Write
 effort: low
 user-invocable: true
+disable-model-invocation: true
 ---
 
 # tmux Multiplexer for Multi-Agent Coordination

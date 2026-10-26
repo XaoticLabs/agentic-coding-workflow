@@ -25,7 +25,7 @@ $ARGUMENTS - Either:
 
 ### Phase 1: Detect Test Runner
 
-Resolve commands using the shared pattern in `commands/shared-patterns.md` → **Project Context: Test and Lint Command Detection**:
+Resolve commands using the shared pattern in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md` → **Project Context: Test and Lint Command Detection**:
 
 ```bash
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)

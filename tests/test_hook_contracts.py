@@ -79,31 +79,39 @@ def invoke_event(
     return results
 
 
-@pytest.mark.parametrize("missing_section", [False, True])
-def test_output_validation_ignores_legacy_length_quotas_but_checks_sections(
-    project: Path, missing_section: bool
+@pytest.mark.parametrize("invalid_graph", [False, True])
+def test_output_validation_ignores_document_rules_but_checks_task_graphs(
+    project: Path, invalid_graph: bool
 ) -> None:
-    output = project / ".claude/plans/brief.md"
+    output = project / ".claude/plan.md"
     output.parent.mkdir(parents=True)
-    output.write_text("## Objective\nShip the fix.\n")
+    # A legacy task index needs no document headings. The same parser is used
+    # by the scheduler, and a missing dependency still makes the graph invalid.
+    output.write_text(
+        "- [ ] **Task 1: Ship the fix**"
+        + (" — Priority: HIGH, Deps: Task 2" if invalid_graph else "")
+        + "\n"
+    )
     expectations = project / ".claude/expected-output.json"
     expectations.write_text(json.dumps({
-        "source": "plan",
+        "source": "ralph-plan",
         "rules": [
-            {"type": "file_exists", "path": ".claude/plans/brief.md"},
-            {"type": "file_contains", "path": ".claude/plans/brief.md",
-             "sections": ["## Missing" if missing_section else "## Objective"]},
-            {"type": "file_min_lines", "path": ".claude/plans/brief.md",
-             "min_lines": 100},
+            {"type": "file_exists", "path": "missing-document.md"},
+            {"type": "file_contains", "path": ".claude/plan.md",
+             "sections": ["## Missing"]},
+            {"type": "dir_files_contain", "path": "missing-specs",
+             "sections": ["## Acceptance Criteria"]},
+            {"type": "file_min_lines", "path": ".claude/plan.md", "min_lines": 100},
+            {"type": "task_index_format", "path": ".claude/plan.md"},
         ],
     }))
 
     result = invoke(project, "validate-output.py", {})
 
     assert result.returncode == 0, result.stderr
-    if missing_section:
+    if invalid_graph:
         assert json.loads(result.stdout)["decision"] == "block"
-        assert "## Missing" in result.stdout
+        assert "unknown dependency" in result.stdout
         assert expectations.exists()
     else:
         assert result.stdout == ""
@@ -138,7 +146,7 @@ def test_global_hooks_allow_project_python_tools_and_publishing_without_a_marker
     assert all(result.stdout == "" for result in results)
 
 
-def test_global_edit_hooks_do_not_infer_pydantic_apis(project: Path) -> None:
+def test_global_edit_hooks_do_not_run_post_tool_checks(project: Path) -> None:
     (project / "pyproject.toml").touch()
     results = invoke_event(
         project,
@@ -151,8 +159,7 @@ def test_global_edit_hooks_do_not_infer_pydantic_apis(project: Path) -> None:
             },
         },
     )
-    assert results
-    assert all(result.returncode == 0 and result.stdout == "" for result in results)
+    assert results == []
 
 
 @pytest.mark.parametrize("mode", ["0", "1"])
@@ -181,7 +188,7 @@ def test_ralph_plan_update_gate_is_active_only_for_builds(
         assert result.stdout == ""
 
 
-def test_ralph_quality_judge_does_not_reenter_build_hook(project: Path) -> None:
+def test_ralph_plan_update_passes_without_launching_a_quality_judge(project: Path) -> None:
     (project / "IMPLEMENTATION_PLAN.md").write_text("- [ ] Task\n")
     (project / "code.txt").write_text("before\n")
     git(project, "add", ".")
@@ -196,7 +203,7 @@ def test_ralph_quality_judge_does_not_reenter_build_hook(project: Path) -> None:
 import os
 from pathlib import Path
 Path(os.environ["TEST_JUDGE_MODE"]).write_text(os.environ.get("RALPH_MODE", ""))
-print("PASS")
+print("FAIL: this judge must not run")
 """,
     )
     mode_file = project.parent / "judge-mode"
@@ -211,7 +218,7 @@ print("PASS")
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
-    assert mode_file.read_text() == "0"
+    assert not mode_file.exists()
 
 
 def tool_environment(
@@ -305,23 +312,23 @@ def test_stop_verifies_the_native_worktree_instead_of_the_launch_checkout(
     assert not (project / ".claude/verification").exists()
 
 
-def test_output_and_audit_follow_the_active_native_checkout(
+def test_task_graph_validation_follows_the_active_native_checkout(
     project: Path, native_worktree: Path
 ) -> None:
-    (native_worktree / ".claude/expected-output.json").write_text(json.dumps({
-        "source": "native test", "rules": [{"type": "file_exists", "path": "report.txt"}],
+    expectations = native_worktree / ".claude/expected-output.json"
+    expectations.write_text(json.dumps({
+        "source": "native test",
+        "rules": [{"type": "task_index_format", "path": "plan.md"}],
     }))
-    (project / "report.txt").write_text("The old checkout's report is not evidence.")
+    (project / "plan.md").write_text("- [ ] **Task 1: Old checkout**\n")
     payload = {"cwd": str(native_worktree / "nested"), "session_id": "native"}
     result = invoke(project, "validate-output.py", payload)
     assert json.loads(result.stdout)["decision"] == "block"
-    (native_worktree / "report.txt").write_text("Actual report")
+    assert expectations.exists()
+    (native_worktree / "plan.md").write_text("- [ ] **Task 1: Actual checkout**\n")
     result = invoke(project, "validate-output.py", payload)
     assert result.returncode == 0 and result.stdout == "", result.stderr
-    result = invoke(project, "audit-logger.py", {**payload, "tool_name": "Read"})
-    assert result.returncode == 0 and result.stdout == "", result.stderr
-    assert (native_worktree / ".claude/logs/tool-calls.jsonl").is_file()
-    assert not (project / ".claude/logs/tool-calls.jsonl").exists()
+    assert not expectations.exists()
 
 
 @pytest.mark.parametrize("hook", ["lint-on-stop.sh", "validate-output.py"])
@@ -340,14 +347,14 @@ def test_native_cwd_handling_preserves_a_project_inside_a_monorepo(
     (component / ".claude").mkdir(parents=True)
     (component / "src").mkdir()
     (component / ".claude/expected-output.json").write_text(json.dumps({
-        "source": "backend", "rules": [{"type": "file_exists", "path": "report.txt"}],
+        "source": "backend", "rules": [{"type": "task_index_format", "path": "plan.md"}],
     }))
     result = invoke(
         project, "validate-output.py", {"cwd": str(component / "src")},
         CLAUDE_PROJECT_DIR=str(component),
     )
     assert json.loads(result.stdout)["decision"] == "block"
-    (component / "report.txt").write_text("Backend report")
+    (component / "plan.md").write_text("- [ ] **Task 1: Backend task**\n")
     result = invoke(
         project, "validate-output.py", {"cwd": str(component / "src")},
         CLAUDE_PROJECT_DIR=str(component),
@@ -520,27 +527,6 @@ def test_failed_corrections_have_bounded_retries_and_explicit_blocked_result(
         ).stdout
         == ""
     )
-
-
-def test_failed_tool_audit_records_current_failure_payload(project: Path) -> None:
-    result = invoke(
-        project,
-        "audit-logger.py",
-        {
-            "hook_event_name": "PostToolUseFailure",
-            "session_id": "test",
-            "tool_name": "Bash",
-            "tool_input": {"command": "false"},
-            "error": "Exit code 1\nfailed",
-            "is_interrupt": False,
-        },
-    )
-    assert result.returncode == 0
-    assert result.stdout == ""
-    entry = json.loads((project / ".claude/logs/tool-calls.jsonl").read_text())
-    assert entry["event"] == "PostToolUseFailure"
-    assert entry["error"] == "Exit code 1\nfailed"
-    assert entry["is_interrupt"] is False
 
 
 @pytest.mark.parametrize(

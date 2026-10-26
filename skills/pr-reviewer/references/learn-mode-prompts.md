@@ -1,6 +1,40 @@
 # Learn Mode — Phase Prompts & Teaching Templates
 
-Loaded only in `--learn` mode. Provides per-phase quiz prompts, scoring rules, and teaching templates for missed findings.
+Loaded only in `--learn` mode. Provides code questions, per-phase review prompts,
+scoring rules, and teaching templates for local changes and branch reviews.
+
+## Code Questions and Answer Verification
+
+Before asking a question, privately record:
+
+- The code reference and reachable input, caller, or failure path
+- The expected answer and key elements that demonstrate understanding
+- Credible alternatives and their trade-offs for design questions
+- Plausible incorrect answers and the code or test that distinguishes them
+
+Ask one question at a time and show enough code for context. Cover relevant
+edge cases, design decisions, failure/recovery paths, downstream effects, and
+security boundaries. Skip theoretical risks prevented by actual guards and
+questions answered by the function signature alone. Do not fill a quota.
+
+Read the code to check claims such as "the caller prevents that" or "the tests
+cover it." Verify external semantics when needed. Accept evidence-backed
+alternatives to the expected answer and correct your own rubric when warranted.
+
+| Result | Meaning |
+|--------|---------|
+| PASS | Factual claims verified and the key reasoning is complete |
+| PARTIAL | Correct claims with an important missing element; explain what is missing and allow one follow-up |
+| FAIL | A disproved claim, incorrect core reasoning, or a material gap remaining after the follow-up |
+
+When evidence is unavailable, record the question as unscored with the limitation
+rather than guessing PASS or FAIL. Articulate confidence and "I'll fix that"
+do not establish a correct answer. Do not aim for a particular failure rate.
+Always disclose real defects found, regardless of quiz performance.
+
+`--strict` marks the exercise complete only if all selected questions pass.
+Unscored or unresolved questions leave it incomplete. The assessment is for
+learning; committing and publishing still follow their own authorization policy.
 
 ## Scoring Rules
 
@@ -10,6 +44,8 @@ Loaded only in `--learn` mode. Provides per-phase quiz prompts, scoring rules, a
 - **Bonus** findings (user found something AI missed) are recorded and praised but don't affect the denominator
 - Taste phase is not scored
 - Use the framework's local-evidence confidence definitions. External URLs and pattern matches alone do not verify findings. Record unavailable checks as verification limitations, continue the walk-through, and do not score missing infrastructure as a code defect.
+- Count each finding once. With no scored findings, show the issue score as N/A;
+  keep code-comprehension question results separate from issue-detection scores.
 
 ## Phase Order for Walk-Through
 
@@ -203,7 +239,7 @@ Present at end of review:
 ```markdown
 ## Review Training Scorecard
 
-**PR:** {branch_name}
+**Scope:** {local changes, path/glob, or branch_name}
 **Date:** {YYYY-MM-DD}
 **Overall:** {caught}/{total} ({percentage}%)
 
@@ -221,6 +257,13 @@ Present at end of review:
 ### Weakest: {phase name}
 ### Bonus Finds: {count} (issues you caught that AI missed)
 
+### Code Questions
+| Phase | Topic / Code Reference | Result | Gap to Revisit |
+|-------|------------------------|--------|----------------|
+| {phase} | {topic and file:line} | {PASS / PARTIAL / FAIL / UNSCORED} | {gap or --} |
+
+**Strict mode:** {on/off}; **Exercise:** {complete / incomplete, when strict}
+
 ### Key Takeaways
 1. {Pattern from biggest miss — "When you see X, check for Y"}
 2. {Second pattern if applicable}
@@ -237,6 +280,8 @@ Append one line per session to `.claude/reviews/learning-log.jsonl`:
 {
   "timestamp": "ISO-8601",
   "branch": "branch-name",
+  "scope": "local changes, path/glob, or branch-name",
+  "strict": false,
   "pr_number": null,
   "language": "elixir|python",
   "total_found": 0,
@@ -255,8 +300,14 @@ Append one line per session to `.claude/reviews/learning-log.jsonl`:
   ],
   "bonuses": [
     {"phase": "phase-name", "description": "what user found that AI missed"}
+  ],
+  "questions": [
+    {"phase": "phase-name", "topic": "question topic", "code_reference": "file:line", "result": "PASS|PARTIAL|FAIL|UNSCORED", "notes": "evidence or remaining gap"}
   ]
 }
 ```
 
-Set `source` to a relevant external reference URL when used, otherwise `null`. Keep repository evidence in `evidence`; a URL alone is not proof of a local defect. Existing log entries with a URL in `source` remain readable.
+Set `source` to a relevant external reference URL when used, otherwise `null`.
+Keep repository evidence in `evidence`; a URL alone is not proof of a local
+defect. Set `score_pct` to `null` when `total_issues` is zero. Existing entries
+with a URL in `source`, or without scope, strict, and questions, remain readable.

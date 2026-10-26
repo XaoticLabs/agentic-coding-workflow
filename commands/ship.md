@@ -1,4 +1,5 @@
 ---
+disable-model-invocation: true
 allowed-tools:
   - Bash
   - Read
@@ -57,7 +58,7 @@ git status --porcelain
 
 **If zero commits ahead of base:** Stop with "No commits to ship. Nothing to do."
 
-Read the project's verification requirements and configured commands using **Project Context: Test and Lint Command Detection** in `commands/shared-patterns.md`. Reuse verification evidence only for the current commit and relevant working inputs; otherwise run the required configured checks. Resolve failing required checks before publishing. Report unavailable or unconfigured required checks explicitly and follow project policy for proceeding; do not replace them with a preferred toolchain or claim they passed.
+Read the project's verification requirements and configured commands using **Project Context: Test and Lint Command Detection** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`. Reuse verification evidence only for the current commit and relevant working inputs; otherwise run the required configured checks. Resolve failing required checks before publishing. Report unavailable or unconfigured required checks explicitly and follow project policy for proceeding; do not replace them with a preferred toolchain or claim they passed.
 
 ### Phase 2: Find Context for PR Description
 
@@ -157,7 +158,7 @@ Before any push or PR creation, prepare and show the concrete proposal:
 - PR repository, base and head branches, exact title, complete description, and draft status
 - Verification results and any unresolved limitations
 
-Apply **External Actions and Approval** in `commands/shared-patterns.md`. Honor any project requirement to review this proposal. Ask for approval only when the action is outside existing authorization or the workflow explicitly requires review of the final content. An instruction to implement code alone does not authorize publishing. An instruction to ship can authorize ordinary pushes and PR creation within that scope; do not repeatedly ask for the same approval.
+Apply **External Actions and Approval** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`. Honor any project requirement to review this proposal. Ask for approval only when the action is outside existing authorization or the workflow explicitly requires review of the final content. An instruction to implement code alone does not authorize publishing. An instruction to ship can authorize ordinary pushes and PR creation within that scope; do not repeatedly ask for the same approval.
 
 If approval is needed, finish the proposal first, ask using AskUserQuestion, and wait. Apply requested changes and present the revised proposal before proceeding. Preserve the approved content for execution. A Markdown comment, local description file, or agent-authored log is never proof of human approval.
 

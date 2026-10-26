@@ -20,7 +20,7 @@ when `RALPH_MODE=1` is explicitly set by the specialized executor.
 - Search the codebase before implementing — don't duplicate existing work
 - Implement the agreed requirements and preserve unrelated work
 - Follow existing codebase patterns and conventions
-- Follow **Test and Verification Integrity** in `commands/shared-patterns.md`; explain test corrections and obtain independent review, preserving acceptance criteria and human-approved expectations. Ralph reviews every committed iteration, with no file freeze or mandatory RED commit.
+- Follow **Test and Verification Integrity** in `references/shared-patterns.md`; explain test corrections and obtain independent review, preserving acceptance criteria and human-approved expectations. Ralph reviews every committed iteration, with no file freeze or mandatory RED commit.
 - Resolve and run project-configured verification, report actual results, and keep required independent review separate from the implementation session
 - Preserve the user's criteria and the meaning of human-approved expectations through compaction and related follow-up tasks
 - Maintain a concise conversational plan when useful; do not require a spec directory, generated briefing, or commit per task

@@ -8,6 +8,7 @@ description: |
 allowed-tools: Bash, Read, Write, AskUserQuestion
 effort: low
 user-invocable: true
+disable-model-invocation: true
 ---
 
 # Parallel Work Orchestrator

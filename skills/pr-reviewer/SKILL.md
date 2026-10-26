@@ -100,7 +100,7 @@ mix credo        # if configured
 mix dialyzer     # if configured
 ```
 
-**Python:** Resolve the project's existing checks from `.claude/project-commands.json`, CI, and task/tool configuration. Use its chosen environment, formatter, linter, type checker, test runner, and file scope. Do not infer uv, Ruff, basedpyright, or pytest merely from Python files. Report missing required checks as verification limitations. The uv/Ruff/basedpyright profile is optional; see **Project Context: Test and Lint Command Detection** in `commands/shared-patterns.md`.
+**Python:** Resolve the project's existing checks from `.claude/project-commands.json`, CI, and task/tool configuration. Use its chosen environment, formatter, linter, type checker, test runner, and file scope. Do not infer uv, Ruff, basedpyright, or pytest merely from Python files. Report missing required checks as verification limitations. The uv/Ruff/basedpyright profile is optional; see **Project Context: Test and Lint Command Detection** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`.
 
 Also check CI status if PR number is available: `gh pr checks <number>`
 

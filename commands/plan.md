@@ -27,7 +27,7 @@ Optional flag: `--interview` — explore the problem, challenge consequential as
 
 ## Instructions
 
-Follow **Proportional Workflow** in `commands/shared-patterns.md`. Invoking this command authorizes writing the plan once its material decisions are clear; no separate document-generation confirmation is required by default.
+Follow **Proportional Workflow** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`. Invoking this command authorizes writing the plan once its material decisions are clear; no separate document-generation confirmation is required by default.
 
 ### Phase 1: Load Relevant Context (Read-Only)
 
@@ -73,32 +73,6 @@ Briefly state the intended approach and write the plan. Ask for additional confi
 ```bash
 mkdir -p <target-project-path>/.claude/plans
 ```
-
-**Register output validation.** Before writing the plan, create an expectations file so the stop hook validates the output quality. Write this JSON to `<target-project-path>/.claude/expected-output.json`:
-```json
-{
-    "source": "plan",
-    "rules": [
-        {
-            "type": "file_exists",
-            "path": ".claude/plans/<slug>.md"
-        },
-        {
-            "type": "file_contains",
-            "path": ".claude/plans/<slug>.md",
-            "sections": [
-                "## Problem Statement",
-                "## Goals",
-                "## Non-Goals",
-                "## Proposed Solution",
-                "## Implementation Approach",
-                "## Verification"
-            ]
-        }
-    ]
-}
-```
-Replace `<slug>` with the actual slug in the JSON.
 
 **Generate a slug** from the feature name (lowercase, hyphens, no special chars). **If the input was a ticket ID** (e.g., `AI-1234`), prefix the slug with the ticket ID: `AI-1234-feature-name`. This ticket-prefixed slug becomes the canonical name for all downstream artifacts (specs, worktrees, branches). If the input was a description string with no ticket, use just the feature name slug.
 

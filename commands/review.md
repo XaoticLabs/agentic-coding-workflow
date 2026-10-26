@@ -26,7 +26,7 @@ $ARGUMENTS — Determines the review mode:
 
 | Input | Mode | What happens |
 |-------|------|-------------|
-| `--learn [branch] [--focus phases]` | Review & Learn | Interactive PERFECT training on a PR |
+| `--learn [branch\|path\|glob] [--focus phases] [--strict]` | Review & Learn | Code-grounded review and questions on local changes or a branch |
 | `--stats` | Review Stats | Show learning progress from log |
 | `--plan [path\|slug]` | Plan review | Staff engineer critique of a plan document |
 | `--prep [branch]` | PR prep | Clean up commits, generate PR description |
@@ -38,6 +38,7 @@ Optional flags:
 - `elixir` or `python` prefix — force language detection
 - `--env staging|prod` — for troubleshooting context
 - `--focus phase1,phase2` — (learn mode only) drill specific PERFECT phases
+- `--strict` — (learn mode only) require every selected question to pass for a complete exercise
 
 ## Mode Detection
 
@@ -55,19 +56,35 @@ Parse `$ARGUMENTS` to determine which mode to run:
 
 ## Mode: Review & Learn
 
-Interactive training mode where each PR review becomes a learning rep. You review first, AI reveals findings, you learn from gaps.
+The single learning workflow for reviewing changes and explaining their edge
+cases, design decisions, failure modes, and impact. You review and answer first;
+the AI checks your reasoning against the code, then teaches from the gaps.
 
 ### 1. Parse Arguments
 
-- Extract branch name (after `--learn`). If empty, use current branch.
+- Extract an optional branch, file, directory, or glob after `--learn`.
+- With no target, use staged and unstaged changes plus relevant untracked files.
+  If there are none, use the current feature branch's diff against its base.
+- A path or glob filters that same change set. A branch selects that branch's
+  diff against its PR base or the repository's default branch. Resolve ambiguity
+  if a target names both a path and a branch.
 - Extract `--focus` phases if provided (comma-separated: `evidence,reliability,edge-cases`). If not provided, run all 6 scored phases.
+- Extract `--strict` if provided. This changes the exercise assessment, not
+  permission to commit or publish.
 - Detect language (same as PR Code Review).
 
 ### 2. Gather Context
 
-- Read PR description or commit history
-- Run `git diff origin/main...HEAD` for full diff
-- Read all changed files
+- Read the relevant task, PR description, or commit history.
+- For local changes, inspect `git diff --cached`, `git diff`, and relevant
+  files from `git ls-files --others --exclude-standard` in the active checkout.
+- For an explicit branch, use `git diff <base>...<branch>` and read file contents
+  at that branch with `git show <branch>:<path>` or an isolated review worktree.
+  Do not silently review HEAD instead of the requested branch.
+- Read changed code, callers, tests, and comparable implementations within the
+  selected scope. Preserve local edits; no stash or checkout is needed to quiz them.
+- If there is no reviewable change, ask for a branch or code scope, or report
+  that there is nothing to review. Do not invent issues to create an exercise.
 
 ### 3. Silent Pre-Scan
 
@@ -79,6 +96,12 @@ Read `references/perfect-framework.md` for phase and confidence definitions. Loa
 
 Store findings internally, organized by phase.
 
+Before presenting each question, prepare a private expected answer, code
+reference, key elements, plausible incorrect answers, and how to verify claims.
+Ask about reachable edge cases, credible design alternatives, failure/recovery
+paths, and actual callers. Distinguish defects from defensible design choices.
+Choose questions in proportion to the change; there are no question quotas.
+
 ### 4. Phase-by-Phase Walk-Through
 
 Read `references/learn-mode-prompts.md` for phase-specific prompts and teaching templates.
@@ -87,11 +110,17 @@ For each phase (in order: Evidence, Reliability, Form, Clarity, Edge Cases, Purp
 
 **Step A — Present & Ask:**
 - Show the relevant portion of the diff/code for this phase (see learn-mode-prompts.md for what to show per phase)
-- Use `AskUserQuestion` with the phase-specific framing prompt
-- Wait for the user's findings
+- Use `AskUserQuestion` with a phase-specific prompt or a concrete question,
+  one at a time. Wait for the answer before showing the expected reasoning.
 
 **Step B — Compare:**
 - Match user findings against AI findings for this phase
+- Verify factual claims against code, callers, and tests before scoring. If the
+  user supplies evidence that disproves an AI finding, correct the finding and
+  its denominator rather than penalizing the user.
+- Assess each question as **PASS**, **PARTIAL**, or **FAIL** using the shared
+  learning reference. Give an incomplete answer one follow-up before teaching
+  the missing reasoning. Confidence or a promise to fix something is not proof.
 - Categorize each:
   - **Caught**: User identified the same issue (even if worded differently)
   - **Missed**: AI found it, user didn't
@@ -100,7 +129,8 @@ For each phase (in order: Evidence, Reliability, Form, Clarity, Edge Cases, Purp
 **Step C — Teach:**
 - For each **Caught** finding: brief confirmation with repository evidence and a reference link only when it clarifies relevant semantics
 - For each **Missed** finding: use the teaching template from learn-mode-prompts.md (What, Where, Trigger, Execution path, Why it matters, Repository evidence / reproduction, Uncertainty, How to spot it, optional Reference)
-- For each **Bonus** finding: acknowledge and record
+- For each **Bonus** finding: verify, acknowledge, and record
+- Report real issues regardless of how well the user answers the questions.
 
 **Step D — Phase Score:**
 - Report: "You found {n} of {m} issues in {Phase}. {brief note}"
@@ -112,6 +142,10 @@ After all phases, present the full scorecard (template in learn-mode-prompts.md)
 - Strongest and weakest phases
 - Bonus finds count
 - Key takeaways (patterns from the 1-2 biggest misses)
+- Question results with code references, and any gaps to revisit. In `--strict`
+  mode, the exercise is complete only when every selected question is PASS;
+  otherwise identify the remaining topics and offer a retry. Learning scores
+  do not replace verification, code review, or publishing authorization.
 
 ### 6. Persist Learning Log
 
@@ -119,7 +153,10 @@ After all phases, present the full scorecard (template in learn-mode-prompts.md)
 mkdir -p "$(git rev-parse --show-toplevel)/.claude/reviews"
 ```
 
-Append one JSON line to `.claude/reviews/learning-log.jsonl` following the schema in learn-mode-prompts.md. Include timestamp, branch, language, phase scores, missed patterns with repository evidence and uncertainty, optional reference URLs, and bonus finds.
+Append one JSON line to `.claude/reviews/learning-log.jsonl` following the schema
+in learn-mode-prompts.md. Include timestamp, branch and selected scope, language,
+phase scores, question results, strict mode, missed patterns with repository
+evidence and uncertainty, optional reference URLs, and bonus finds.
 
 ### 7. Next Steps
 
@@ -152,6 +189,10 @@ Read the JSONL file. For each line, parse the JSON object. Aggregate:
 - **Per-phase averages**: evidence, reliability, form, clarity, edge_cases, purpose
 - **Last 5 sessions**: scores for trend analysis
 - **Most common misses**: group by phase, count frequency of similar patterns
+
+Older entries without scope, questions, or strict mode remain readable. Exclude
+sessions with no scored findings from issue-score averages; report question
+results separately rather than treating a defect-free change as a failed quiz.
 
 ### 3. Present Stats
 
@@ -371,6 +412,8 @@ Show before/after commit count, backup branch, PR description path, and next ste
 /agentic-coding-workflow:review feature/auth-refactor                    # PR code review
 /agentic-coding-workflow:review elixir feature/payments feature/billing  # Multi-branch Elixir review
 /agentic-coding-workflow:review --learn feature/auth-refactor            # Interactive training on a PR
+/agentic-coding-workflow:review --learn                                  # Learn from local changes
+/agentic-coding-workflow:review --learn lib/accounts/ --strict            # Focused code questions
 /agentic-coding-workflow:review --learn --focus edge-cases,reliability   # Drill specific phases
 /agentic-coding-workflow:review --stats                                  # Show learning progress
 /agentic-coding-workflow:review --spec batch-analysis                    # Review against spec

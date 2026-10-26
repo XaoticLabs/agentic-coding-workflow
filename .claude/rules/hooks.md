@@ -12,7 +12,7 @@ paths:
 - Set appropriate `timeout` values (default is fine for most; use 5s for fast checks)
 - Leave tool approvals to native permission handling; do not add an automatic approval router.
 - Keep review worktree cleanup in its owning launcher/process. Do not register a global session-end sweep or force-remove review checkouts.
-- Validate artifact content and structure without minimum document-length requirements.
+- Validate task graphs with the scheduler's shared parser. Do not add document-heading or length gates.
 
 ## Script Hooks (type: "command")
 - Read JSON from stdin to get hook context (tool_name, tool_input, session_id, etc.)
@@ -21,7 +21,7 @@ paths:
 - For PostToolUse/PostToolUseFailure feedback, use `{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"..."}}` with the matching event name. PostToolUse only runs for successful calls; register PostToolUseFailure to observe failures and interruptions.
 - StopFailure replaces Stop after API errors. Output and exit code cannot resume, pause, or retry the turn. Log `error`, optional `error_details`, and optional `last_assistant_message` (which is the API error text for this event).
 - At Stop, use `last_assistant_message` for notifications. The transcript may not yet contain the final response; never infer pending approvals from stale transcript tool calls.
-- Optional notifications and audit hooks fail open on invalid input. Policy gates must return an intentional block when they cannot verify a requirement; use `onFailure: "block"` for eligible events so crashes and timeouts cannot bypass enforcement.
+- Optional notifications and failure logging fail open on invalid input. Policy gates must return an intentional block when they cannot verify a requirement; use `onFailure: "block"` for eligible events so crashes and timeouts cannot bypass enforcement.
 
 ## Prompt Hooks (type: "prompt")
 - Preferred for judgment calls that need Claude's reasoning

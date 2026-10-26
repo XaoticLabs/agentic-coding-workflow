@@ -51,7 +51,7 @@ Ralph owns isolation, execution limits, progress preservation, and its test and 
 4. **Search codebase first:** Before implementing, search for existing code matching the task's spec. If already done, mark complete and exit.
 5. **Read the task's spec file** (referenced in the plan's `Spec:` field)
 6. **Implement** following the spec — use existing patterns, don't add extras
-7. **Run tests** (resolve commands using `commands/shared-patterns.md`, which reads `.claude/project-commands.json` before auto-detection). Tests must pass.
+7. **Run tests** (resolve commands using `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`, which reads `.claude/project-commands.json` before auto-detection). Tests must pass.
 8. **Run lint** (use the same structured command configuration). Lint must pass.
 9. **Commit** with a descriptive message:
    ```
@@ -78,11 +78,11 @@ Ralph owns isolation, execution limits, progress preservation, and its test and 
 
 ### Phase 0: Inspect and Choose the Workflow
 
-Follow **Proportional Workflow** in `commands/shared-patterns.md`. Read relevant project guidance, inspect the worktree status, search for existing behavior, and identify the intended outcome and verification approach. Preserve unrelated local changes.
+Follow **Proportional Workflow** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`. Read relevant project guidance, inspect the worktree status, search for existing behavior, and identify the intended outcome and verification approach. Preserve unrelated local changes.
 
 - **Small, clear change:** Proceed through the applicable implementation and verification phases without a separate plan document or approval round.
 - **Substantial or ambiguous change:** Resolve material uncertainty, maintain a concise conversational plan, then implement. Save a plan or generate a spec only when requested or useful for handoff. Ask questions only when their answers could change implementation, acceptance criteria, or risk.
-- **Ordinary unattended execution:** Follow **Native Goals and Session Continuity** in `commands/shared-patterns.md`. Use native `/goal` for continuation in the current isolated feature session. Run the same implementation and verification phases; do not require Ralph's task plan, generated briefings, commits, or a fresh session per task.
+- **Ordinary unattended execution:** Follow **Native Goals and Session Continuity** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`. Use native `/goal` for continuation in the current isolated feature session. Run the same implementation and verification phases; do not require Ralph's task plan, generated briefings, commits, or a fresh session per task.
 - **Enforced limits or coordinated recovery:** Select Ralph when required for external iteration/time bounds, dependency waves, rollback, or durable executor records. Honor an explicit Ralph request and its gates. Do not turn an interactive request into unattended execution without authorization.
 
 Reassess after inspection. If a material scope or behavior decision emerges, explain it and resolve that decision before dependent work. Reuse decisions and authorization already supplied.
@@ -128,7 +128,7 @@ Also read the corresponding plan in `.claude/plans/` if available, for example `
 
 ### Phase 2: Pre-Implementation Analysis
 
-**Choose the checkout:** Use the current checkout by default when project policy permits. For `--worktree`, concurrent work that needs isolation, or project-required isolation, reuse an appropriate existing worktree or create one using **Worktree Creation** in `commands/shared-patterns.md`.
+**Choose the checkout:** Use the current checkout by default when project policy permits. For `--worktree`, concurrent work that needs isolation, or project-required isolation, reuse an appropriate existing worktree or create one using **Worktree Creation** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`.
 
 Derive a valid, unused branch name from the spec slug or ad-hoc description, preserving a ticket prefix. Use a supplied name when present; a routine derived name needs no confirmation. Report the branch and path. Copy relevant untracked or ignored plan/spec files and project command configuration into a new worktree when needed. Do not overwrite existing files or assume a new worktree includes uncommitted inputs; resolve any dependency on local changes before switching. Perform remaining phases in the selected checkout.
 
@@ -147,9 +147,9 @@ For substantial work, maintain a concise checklist of implementation steps and a
 
 ### Phase 3: Select and Prepare Verification
 
-Resolve test and lint commands using **Project Context: Test and Lint Command Detection** in `commands/shared-patterns.md`, including `.claude/project-commands.json` overrides and explicit disables. Honor project-required checks.
+Resolve test and lint commands using **Project Context: Test and Lint Command Detection** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`, including `.claude/project-commands.json` overrides and explicit disables. Honor project-required checks.
 
-**Standard mode:** Identify existing tests that demonstrate the outcome. Add behavioral or regression tests when they provide useful coverage, using the project's framework and conventions. For a bug fix, confirm a regression test fails for the reported behavior before the fix when practical. Ordinary TDD may write tests first without freezing them. No test-approval prompt or separate test commit is required. Follow **Test and Verification Integrity** in `commands/shared-patterns.md`: explain and independently review test corrections or changes that could weaken coverage; never weaken assertions to hide an implementation defect.
+**Standard mode:** Identify existing tests that demonstrate the outcome. Add behavioral or regression tests when they provide useful coverage, using the project's framework and conventions. For a bug fix, confirm a regression test fails for the reported behavior before the fix when practical. Ordinary TDD may write tests first without freezing them. No test-approval prompt or separate test commit is required. Follow **Test and Verification Integrity** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`: explain and independently review test corrections or changes that could weaken coverage; never weaken assertions to hide an implementation defect.
 
 For changes without testable behavior, use direct inspection or appropriate targeted validation. Do not invent tests for a reversible documentation or mechanical change simply to complete a phase.
 

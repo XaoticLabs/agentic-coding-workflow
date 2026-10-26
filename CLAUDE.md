@@ -5,8 +5,9 @@ This is a Claude Code plugin that provides commands, skills, and hooks for a str
 ## Architecture
 
 ```
-commands/       → Slash commands (YAML frontmatter + markdown instructions)
+commands/       → Existing slash commands (retained for compatibility)
 skills/         → Reusable skills (SKILL.md + scripts/ + references/)
+references/     → Shared plugin workflow references (not commands)
 hooks/          → Pre/Post execution hooks (hooks.json + scripts)
 agents/         → Reusable agent role definitions
 scripts/        → Standalone utility scripts
@@ -32,11 +33,11 @@ Keep tightly coupled investigation, implementation, and testing together when th
 
 Give delegated work a clear scope, inputs, output format, and verification criteria. Review its result and integrate it before treating the task as complete.
 
-**Agent definitions are shared context** — the same `agents/researcher.md` works as a subagent prompt (`Agent` tool) or a full instance context (`claude --plugin-dir /path/to/agentic-coding-workflow --agent agentic-coding-workflow:researcher` or `/agentic-coding-workflow:spawn researcher`).
+**Agent definitions are shared context** — the same `agents/evaluator.md` works as a subagent prompt (`Agent` tool) or a full instance context (`claude --plugin-dir /path/to/agentic-coding-workflow --agent agentic-coding-workflow:evaluator` or `/agentic-coding-workflow:spawn evaluator`).
 
 ## Workflow
 
-Use the least elaborate workflow that resolves material uncertainty and produces verifiable results. Choose by uncertainty, impact, reversibility, and scope; reassess after inspection. The shared policy is in `commands/shared-patterns.md` under **Proportional Workflow**.
+Use the least elaborate workflow that resolves material uncertainty and produces verifiable results. Choose by uncertainty, impact, reversibility, and scope; reassess after inspection. The shared policy is in `references/shared-patterns.md` under **Proportional Workflow**.
 
 Keep changes focused and review maintainability in context: clear responsibilities, readable flow, appropriate validation, and ease of safe change. Code size, addition-to-deletion ratios, and helper call counts do not establish quality. Retain useful decomposition, including single-use helpers. Adopt numeric size thresholds only when our own evaluations demonstrate a benefit for a particular workload, with recorded methods, results, tradeoffs, and reassessment conditions.
 
@@ -55,7 +56,7 @@ criteria, user decisions, remaining work, and verification requirements. Recheck
 current source state after resume. Fresh sessions remain appropriate for
 unrelated work, required isolation, demonstrated context degradation, and
 independent reviewers. Follow **Native Goals and Session Continuity** in
-`commands/shared-patterns.md`.
+`references/shared-patterns.md`.
 
 Save generated artifacts in `.claude/plans/` and `.claude/specs/` when needed.
 Use native `/goal` for ordinary unattended continuation; it judges surfaced
@@ -64,7 +65,7 @@ review. Select `/agentic-coding-workflow:ralph` for enforced iteration/time boun
 dependency waves, rollback, or durable executor records. For manual parallel
 work, use `/agentic-coding-workflow:parallel` and `/agentic-coding-workflow:reunify`.
 Review and ship when requested; honor project approval policy and existing
-authorization using **External Actions and Approval** in `commands/shared-patterns.md`.
+authorization using **External Actions and Approval** in `references/shared-patterns.md`.
 Local files and approval grants do not authenticate human review.
 
 Always inspect recent `git log` before committing and follow the repository's historical commit pattern. Current history uses concise, lowercase `type: description` subjects (for example, `fix: ...`), normally without a body.
@@ -74,12 +75,13 @@ Always inspect recent `git log` before committing and follow the repository's hi
 - Plugin components go in the appropriate top-level directory, not nested arbitrarily
 - Keep `hooks.json` as the single source of truth for hook registration
 - New scripts must be `chmod +x` and use appropriate shebangs
-- Reference materials are scoped to their skill — don't create global reference dumps
-- **Runtime artifacts go in `.claude/`** — plans, specs, prime-context, logs, and generated workflow output. Native plugin evals write ignored results to `evals/results/`; keep their reusable case definitions under `evals/`.
+- Keep skill-specific references with their skill. Shared plugin policies belong in `references/` with links from the workflows that use them.
+- **Runtime artifacts go in `.claude/`** — plans, specs, prime-context, logs, and generated workflow output. Native plugin evals write ignored raw results to `evals/results/`; keep representative cases, fixtures, graders, and sanitized benchmark summaries under `evals/` in version control. Use the split and retention policy in `evals/README.md`.
 
 ## What NOT to Do
 
-- Don't duplicate logic between a command and a skill — commands invoke skills, not the other way around
+- Prefer skills for new workflows; existing command files remain supported. Consolidate duplicate command/skill names gradually into a single skill, preserving public invocation and arguments. `ralph` and `reunify` now have only skill entrypoints.
+- Use `disable-model-invocation: true` for explicit workflows with consequential side effects. `user-invocable: false` is model-only discovery, not a disabled skill. Invocation controls do not grant authorization for publishing or other underlying actions.
 - Don't put project-specific context (like database schemas or deployment details) in plugin files — that belongs in the consuming project's own CLAUDE.md
 - Command `allowed-tools` frontmatter grants prompt-free approval; it does not restrict the available tool set. Use CLI `--tools` / `--disallowedTools` when restriction is required.
 - Respect consuming projects' configured tooling. Language-specific tool preferences belong in optional profiles and project configuration, not global hooks. Keep mechanical rules in formatter, linter, and type-checker configuration; use agent instructions for contextual judgment.
@@ -88,7 +90,8 @@ Always inspect recent `git log` before committing and follow the repository's hi
 ## Testing & Validation
 
 - Use `skills/skill-forge/scripts/validate-skill.py` for structural diagnostics, `claude plugin validate .` for native schema checks, and native `claude plugin eval .` plus deterministic tests for behavioral evidence. Structural diagnostics are not quality scores.
-- Optional audit and notification hooks fail open. Policy gates intentionally block unmet or unverifiable requirements; test failure and timeout behavior as well as successful checks.
+- During optimization, filter native evals with `--tag tuning`. Freeze the candidate and success criteria before using `--tag holdout` for a final comparison. Holdout feedback used for another edit becomes tuning evidence and requires fresh final cases. Record results or `NOT_RUN` limitations in `evals/benchmarks/`.
+- Optional failure logging and notification hooks fail open. Policy gates intentionally block unmet or unverifiable requirements; test failure and timeout behavior as well as successful checks.
 - **Local plugin development**: Validate with `claude plugin validate .`, then start a development session with `claude --plugin-dir "$PWD"`. From another project, pass the absolute path to this checkout. Reload components with `/reload-plugins` after edits, or restart the development session. Keep installed plugin caches managed by Claude Code. See the [plugin reference](https://code.claude.com/docs/en/plugins-reference) and [local plugin testing guide](https://code.claude.com/docs/en/plugins/create#load-a-plugin-for-one-session).
 
 ## Learning & Output Styles

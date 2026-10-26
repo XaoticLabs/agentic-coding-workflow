@@ -7,13 +7,13 @@ paths:
 
 ## Agent Definitions
 - Each agent is a single markdown file in `agents/<role-name>.md`
-- One role per file — don't combine researcher + reviewer into one agent
+- One role per file — don't combine implementation + evaluation into one agent
 - Every definition must include: Role, Instructions, Constraints, Output Format, and "Best Used As" sections
 - The "Best Used As" section documents when to use as subagent vs primary instance
 
 ## Naming
 - Use lowercase, hyphenated names: `code-reviewer.md`, `test-writer.md`
-- Names should describe the role, not the task: `researcher` not `search-codebase`
+- Names should describe the role, not the task: `implementer` not `fix-auth-bug`
 
 ## Dual-Use Design
 - Agent definitions work for BOTH subagents (via `Agent` tool prompt) and primary instances (via `claude --plugin-dir /path/to/plugin --agent agentic-coding-workflow:<role>`); use `--append-system-prompt-file` for a standalone role file (only the Markdown instructions, without agent frontmatter metadata)

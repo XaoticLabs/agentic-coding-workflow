@@ -1,5 +1,5 @@
 {
-  "description": "Core agentic coding workflow hooks - security, testing, and audit",
+  "description": "Core agentic coding workflow hooks - security, verification, and notifications",
   "hooks": {
     "PreToolUse": [
       {
@@ -9,30 +9,6 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/dangerous_command_blocker.py",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "description": "Logs all tool calls to .claude/logs/tool-calls.jsonl for audit and debugging",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/audit-logger.py",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "PostToolUseFailure": [
-      {
-        "description": "Records failed and interrupted tool calls using the failure event payload",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/audit-logger.py",
             "timeout": 5
           }
         ]
@@ -52,7 +28,7 @@
     ],
     "Stop": [
       {
-        "description": "Validates command output artifacts exist and contain required sections, blocks stop if incomplete",
+        "description": "Validates registered task graphs, runs project checks, enforces Ralph plan updates, and notifies on completion",
         "hooks": [
           {
             "type": "command",
@@ -63,10 +39,6 @@
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/lint-on-stop.sh",
             "timeout": 600
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/rule-capture-on-stop.sh"
           },
           {
             "type": "command",

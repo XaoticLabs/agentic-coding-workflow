@@ -208,7 +208,7 @@ fi
 # Clean up any previous stop sentinel
 rm -f "$STOP_SENTINEL"
 
-# ── Register output validation for plan mode ──────────────────────────
+# ── Register task-graph validation for plan mode ──────────────────────────
 # The validate-output.py stop hook checks expected-output.json to catch
 # malformed indexes and dependency graphs at plan-creation time. All consumers
 # use scripts/task-plan.py, which supports structured JSON and legacy indexes.
@@ -218,15 +218,6 @@ if [ "$MODE" = "plan" ]; then
     "source": "ralph-plan",
     "rules": [
         {
-            "type": "file_exists",
-            "path": "${SPEC_DIR}/IMPLEMENTATION_PLAN.md"
-        },
-        {
-            "type": "file_contains",
-            "path": "${SPEC_DIR}/IMPLEMENTATION_PLAN.md",
-            "sections": ["## Task Index", "## Tasks", "## Status: IN_PROGRESS"]
-        },
-        {
             "type": "task_index_format",
             "path": "${SPEC_DIR}/IMPLEMENTATION_PLAN.md",
             "min_tasks": 1
@@ -234,7 +225,7 @@ if [ "$MODE" = "plan" ]; then
     ]
 }
 VALIDATE_EOF
-  echo "Registered plan output validation (expected-output.json)"
+  echo "Registered task-graph validation (expected-output.json)"
 fi
 
 # Validate the same structured graph used by the scheduler before any worker runs.

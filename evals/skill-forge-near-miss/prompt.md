@@ -1,6 +1,6 @@
 ---
 name: skill-forge-near-miss
-tags: [skills]
+tags: [tuning, skills]
 allowed_tools: [Read, Glob, Grep, Skill]
 max_turns: 4
 timeout_seconds: 90

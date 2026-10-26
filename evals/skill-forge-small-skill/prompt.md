@@ -1,6 +1,6 @@
 ---
 name: skill-forge-small-skill
-tags: [skills]
+tags: [tuning, skills]
 allowed_tools: [Read, Glob, Grep, Skill, Write, Edit]
 max_turns: 12
 timeout_seconds: 180

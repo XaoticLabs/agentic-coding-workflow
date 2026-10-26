@@ -168,7 +168,7 @@ Use AskUserQuestion to clarify: "I found several things related to '[concept]' �
 
 ## Important Constraints
 
-- **Explain, don't judge** — this is educational, not a code review. Save opinions for `/agentic-coding-workflow:grill-me` or `/agentic-coding-workflow:review --spec`
+- **Explain, don't judge** — this is educational, not a code review. Use `/agentic-coding-workflow:review --learn` for interactive code questions or `/agentic-coding-workflow:review --spec` for implementation review.
 - **Use the codebase's own terminology** — match naming conventions and domain language
 - **Assume intelligence, not knowledge** — the reader is smart but may be new to this specific codebase/pattern
 - **Concrete over abstract** — use actual values, real examples from the code, specific line references

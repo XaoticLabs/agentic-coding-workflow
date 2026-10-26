@@ -92,7 +92,7 @@ For behavior changes and regression fixes, prefer writing a failing test before 
 
 ### Step 4b: Preserve Test and Verification Integrity
 
-Follow **Test and Verification Integrity** in `commands/shared-patterns.md`:
+Follow **Test and Verification Integrity** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`:
 
 - Preserve the user's acceptance criteria. Neither a test you wrote nor a RED commit is human approval.
 - Human-approved acceptance cases protect their behavioral expectations, not entire files. Add cases in existing files; fixture/helper corrections are allowed when they preserve existing expectations and runnable coverage.

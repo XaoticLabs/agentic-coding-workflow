@@ -277,7 +277,7 @@ def test_spawn_delegates_native_isolation_and_preserves_arguments(
     flags = ["--worktree", "review-auth"] if isolated else []
     result = subprocess.run(
         [
-            "bash", str(ROOT / "scripts/spawn-session.sh"), "researcher",
+            "bash", str(ROOT / "scripts/spawn-session.sh"), "evaluator",
             *flags, "--context", context.name, "--", prompt,
         ],
         cwd=tmp_path,
@@ -293,7 +293,7 @@ def test_spawn_delegates_native_isolation_and_preserves_arguments(
     )
     assert result.returncode == 0, result.stderr
     expected = [
-        "--plugin-dir", str(ROOT), "--agent", "agentic-coding-workflow:researcher",
+        "--plugin-dir", str(ROOT), "--agent", "agentic-coding-workflow:evaluator",
         *(["--name", "review-auth"] if isolated else []),
         *(["--worktree", "review-auth", "--tmux"] if isolated else []),
         f"Read the context file at {context} before starting.\n\n{prompt}",
@@ -304,8 +304,8 @@ def test_spawn_delegates_native_isolation_and_preserves_arguments(
 
 @pytest.mark.parametrize(
     "arguments",
-    [[], ["../researcher"], ["missing-role"], ["researcher", "--worktree"],
-     ["researcher", "--context", "missing.txt"], ["researcher", "--unknown"],
+    [[], ["../evaluator"], ["missing-role"], ["evaluator", "--worktree"],
+     ["evaluator", "--context", "missing.txt"], ["evaluator", "--unknown"],
      ["implementer", "--goal", ""], ["implementer", "--goal", "   "],
      ["implementer", "--goal", "done", "another prompt"],
      ["implementer", "--goal", "x" * 4001],

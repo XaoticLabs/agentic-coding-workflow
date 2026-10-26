@@ -1,6 +1,6 @@
 ---
 name: resume-feature-session
-tags: [launchers, sessions]
+tags: [tuning, launchers, sessions]
 allowed_tools: [Read, Glob, Grep, Skill]
 max_turns: 6
 timeout_seconds: 120

@@ -1,295 +1,216 @@
 ---
 name: ralph
-description: |
-  Specialized Ralph executor for explicit Ralph requests, enforced iteration/time
-  limits, dependency-ordered workers, rollback, and durable run records. Uses
-  isolated single-task iterations, external verification, and independent integrity
-  review. Ordinary unattended feature work uses native /goal in a continuing
-  session; it does not require this executor.
-allowed-tools: Bash, Read, Write, Glob, Grep
+description: Launch and manage the specialized Ralph executor with enforced iteration/time limits, isolated workers, verification, and durable recovery records.
+disable-model-invocation: true
+user-invocable: true
+allowed-tools:
+  - Read
+  - Glob
+  - Grep
+  - Write
+  - Bash
+  - AskUserQuestion
 effort: medium
-user-invocable: false
 ---
 
-# Ralph Loop Orchestrator
+# Ralph — Autonomous Coding Loop
+
+Launches the specialized Ralph executor for agreed external iteration/time
+limits, dependency waves, rollback, and durable run records. Its isolated
+workers pick tasks, implement, verify, commit, and update the plan.
+
+For ordinary unattended work, prefer native `/goal` in a continuing feature
+session using **Native Goals and Session Continuity** in
+`${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`. An explicit `/ralph` request selects this
+executor and retains all of its gates; do not silently redirect it.
 
-Manages autonomous Claude coding loops. Not user-invocable directly — invoked by the `/agentic-coding-workflow:ralph` command.
+For executor architecture, evaluation settings, and recovery details, read
+[references/executor.md](references/executor.md) when needed.
 
-Select this executor for its scheduling, enforced boundaries, or recovery
-contract. Native `/goal` is the default continuation mechanism for ordinary
-unattended work. A fresh context per Ralph task is an explicit executor isolation
-boundary; related tasks outside Ralph stay in their feature session.
+## Input
 
-## Scripts
+$ARGUMENTS - One of:
+- `<spec-slug>` — start autonomous build loop for the named spec
+- `<spec-slug> --parallel N` — run N parallel worktrees
+- `<spec-slug> --plan` — planning mode only (gap analysis, generate plan)
+- `<spec-slug> --once` — one observed autonomous iteration for prompt tuning
+- `<spec-slug> --clean-room` — greenfield mode, skip codebase search
+- `<spec-slug> --harvest` — extract patterns and conventions after a completed run
+- `<spec-slug> --checkpoint-every=N` — pause between iterations for human steering (requires a terminal)
+- `<spec-slug> --eval-gates-merge` — require a fresh end-of-run ACCEPT verdict before merge
+- `<spec-slug> --time-budget=N` — max seconds per iteration (default: 600, 0 = no limit)
+- `<spec-slug> --eval-per-iter` — enable full quality evaluation per iteration (default: end-of-run quality review, with mandatory integrity review each iteration)
+- `<spec-slug> --no-eval` — disable optional quality evaluation; independent integrity review remains required
+- `<spec-slug> --status` — show completion dashboard
+- `<spec-slug> --stop` — create stop sentinel to halt the loop gracefully
 
-| Script | Purpose |
-|--------|---------|
-| `scripts/loop.sh` | Outer bash loop driving iterations (with steering checkpoints and eval-gates-merge) |
-| `scripts/notify.sh` | Cross-platform desktop notifications for loop events |
-| `scripts/check-overrides-staleness.sh` | Pre-flight check for stale override rules |
-| `scripts/validate-alignment.sh` | Pre-flight check for plan-spec criteria alignment |
-| `scripts/generate-agents-md.sh` | Initializes `.claude/project-commands.json` (preserving overrides) and generates `.claude/AGENTS.md` |
-| `scripts/generate-briefing.sh` | Per-iteration context briefing with revert details and trends |
-| `scripts/generate-summary.sh` | Completion summary with metrics and PR description |
-| `scripts/generate-metrics.sh` | Trend analysis from journal: failure rates, hot files, patterns |
-| `scripts/partition-tasks.sh` | Partitions tasks with file-affinity assignment for parallel mode |
-| `scripts/orchestrate-parallel.sh` | Full parallel lifecycle: launch, poll, merge, reconcile, cleanup |
-| `scripts/merge-workers.sh` | Sequential merge of worker branches with conflict resolution |
+## Instructions
 
-## Prompt Templates
+### Phase 1: Parse Arguments
 
-| Template | Mode | Purpose |
-|----------|------|---------|
-| `references/PROMPT_build.md` | build | Per-iteration build prompt — pick task, implement, test, commit |
-| `references/PROMPT_plan.md` | plan | Planning-only prompt — gap analysis, generate implementation plan |
-| `references/PROMPT_evaluate.md` | evaluate | Independent code evaluation — grade against spec and plan acceptance criteria, return verdict |
-| `references/PROMPT_harvest.md` | harvest | Post-run pattern extraction — analyze diffs, extract conventions |
-| `references/PROMPT_resolve.md` | resolve | Merge conflict resolution — resolve markers, test, commit |
-| `references/PROMPT_reconcile.md` | reconcile | Post-merge verification — run tests, fix integration issues |
-
-## Evaluation & Meta References
-
-| File | Purpose |
-|------|---------|
-| `references/evaluation-calibration.md` | Scored examples and LLM code smell catalog for evaluator calibration |
-| `references/PROMPT_CHANGELOG.md` | Tracks prompt revisions, intended vs observed behavioral effects, and steering insights |
-
-## Worktree Isolation
+Extract from `$ARGUMENTS`:
+- **spec-slug** (required): matches a directory at `.claude/specs/<slug>/`
+- **--parallel N**: optional, number of parallel workers (2-6)
+- **--plan**: optional, planning-only mode
+- **--eval-per-iter**: optional, enable full quality evaluation per iteration (for edge-of-capability tasks)
+- **--no-eval**: optional, disable optional quality evaluation, preserving mandatory integrity review
+- **--once**: optional, one autonomous iteration in the foreground, then stop
+- **--clean-room**: optional, skip codebase search for greenfield work
+- **--harvest**: optional, extract patterns after completed run
+- **--status**: optional, show dashboard and exit
+- **--stop**: optional, create stop sentinel and exit
+- **--max N**: optional, max iterations (default 50)
+- **--time-budget=N**: optional, max seconds per iteration (default 600, 0 = unlimited)
+- **--checkpoint-every=N**: optional, pause between iterations every N iterations when a terminal is available
+- **--eval-gates-merge**: optional, require a fresh end-of-run ACCEPT verdict before merge
 
-All standalone build/reconcile runs create a worktree at `.claude/worktrees/<slug>-<run-id>` on branch `ralph-<slug>/<run-id>`. Run IDs include a timestamp, PID, and random suffix so preserved runs can coexist. This provides:
-
-- **Branch isolation** — Ralph never commits directly to main
-- **ORC integration** — ORC auto-discovers the worktree for stop/merge controls
-- **Safe rollback** — if Ralph goes sideways, just delete the branch
-- **Consistent model** — single-track and parallel mode both use worktrees
-
-Plan and harvest modes run in-place (read-only/analytical, no commits). Parallel workers get their own worktrees from `orchestrate-parallel.sh`.
-
-## Workflow
-
-### Observed Autonomous Iteration (--once)
-
-1. Generate project guide: `scripts/generate-agents-md.sh`
-2. Run single iteration: `scripts/loop.sh <spec-dir> build 1 --once`
-3. Observe the autonomous `claude -p` run and review its output and commits afterward. There is no interactive approval inside the iteration.
-4. Graduate to AFK mode once prompts are tuned
+Keep all option tokens after the slug in a Bash array named `RALPH_ARGS`. Pass them unchanged to `scripts/launch.sh`; its shared parser validates values and combinations. Do not construct flag strings, environment prefixes, or separate per-mode invocations. Both `--option=value` and `--option value` forms are supported for numeric options.
 
-All command launches use `scripts/launch.sh <spec-dir> [options...]`. It shares `scripts/options.sh` with the loop and orchestrator so foreground, tmux, and parallel paths receive the same options.
+### Phase 2: Handle Quick Actions
 
-### Single-Track Mode (AFK)
-
-1. Generate project guide: `scripts/generate-agents-md.sh`
-2. Run loop: `scripts/loop.sh <spec-dir> build [max-iter] [flags...]`
-3. Each iteration gets a fresh Claude instance with the build prompt
-4. Loop exits when plan is complete, stop sentinel is touched, or safety triggers fire
-
-### Planning Mode
-
-1. Run loop: `scripts/loop.sh <spec-dir> plan 1`
-2. Single iteration: reads specs, analyzes codebase, generates `IMPLEMENTATION_PLAN.md`
+**If `--stop`:**
+```bash
+touch .claude/ralph/stop
+```
+Report that the loop will stop after the current iteration and exit.
 
-### Harvest Mode
-
-1. **Auto-runs on completion** — harvest runs automatically when the plan reaches COMPLETE or a circuit breaker fires. Disable with `AUTO_HARVEST=false`.
-2. Can also be run manually: `scripts/loop.sh <spec-dir> harvest 1`
-3. Analyzes git history, learnings, and diffs to extract reusable patterns
-4. Updates AGENTS.md with discovered conventions
-5. Writes/updates RALPH_OVERRIDES.md with dated rules (stale rules >30 days are pruned on next harvest)
+**If `--status`:**
+First check if `.claude/ralph/status.md` exists — if so, display it (this is the live dashboard updated each iteration with progress, timing, success rate, and recent iterations).
 
-### Parallel Mode (fully automatic lifecycle)
+Check orchestrator process status:
+- If `.claude/ralph/<slug>/orchestrator.pid` exists, read the PID and check if it's alive: `kill -0 <pid> 2>/dev/null`
+- Report: "Orchestrator: RUNNING (PID: <pid>)" or "Orchestrator: NOT RUNNING"
+- Check for worker tmux window/session: `tmux has-session -t ralph-<slug> 2>/dev/null || tmux list-windows -F '#{window_name}' | grep -q ralph-<slug>` and report active/inactive
+- Check `.claude/ralph/<slug>/runs/` for recent run directories
 
-1. Generate project guide: `scripts/generate-agents-md.sh`
-2. Launch orchestrator: `scripts/orchestrate-parallel.sh <spec-dir> <slug> <N> <max-iter>`
-3. Orchestrator handles the full lifecycle automatically:
-   - **Partition**: `partition-tasks.sh` assigns tasks by file affinity (each file owned by one worker)
-   - **Work**: N workers run `loop.sh` in separate worktrees/branches via tmux
-   - **Poll**: Orchestrator checks for worker completion markers every 30s
-   - **Merge**: `merge-workers.sh` merges branches sequentially (conflicts resolved by Claude via `PROMPT_resolve.md`)
-   - **Reconcile**: `loop.sh reconcile` runs post-merge verification (max 3 iterations, uses `PROMPT_reconcile.md`)
-   - **Cleanup**: Worktrees, branches, and temp files removed
-4. Monitor with `/agentic-coding-workflow:ralph <slug> --status` (shows current phase: working/merging/reconciling/done)
-5. Stop with `/agentic-coding-workflow:ralph <slug> --stop`
-
-## Evaluator
+Also read `.claude/specs/<slug>/IMPLEMENTATION_PLAN.md` and display:
+- Overall status (IN_PROGRESS / COMPLETE)
+- Task completion count (e.g., "7/12 tasks complete")
+- Table of all tasks with status
+- Any learnings recorded
+- Show persistent journal tail: `tail -10 .claude/ralph/<slug>/journal.tsv`
 
-The evaluator is a separate Claude session that reviews implementation quality independently from the generator. Its value depends on where the task sits relative to what the model can do reliably solo — it's not a fixed yes/no decision.
+**If the plan status is COMPLETE**, suggest next steps:
+- `/agentic-coding-workflow:review --spec` to review the changes
+- `/agentic-coding-workflow:ship` to fill the PR template and create a PR
 
-### End-of-Run Evaluation (default)
+Exit after displaying.
 
-Full quality evaluation runs **once at the end of the run** by default, in addition to mandatory integrity review of each committed build iteration:
-- Reviews the entire diff from run start to HEAD
-- Grades against full spec and plan acceptance criteria
-- Produces an advisory quality report (does NOT trigger reverts)
-- Human reviews the report before merging
-- Disable with `RALPH_EVAL_END_OF_RUN=false`
+### Phase 3: Validate Spec Directory
 
-Single-track completion runs harvest and summary generation while the worktree exists,
-then final test/lint verification → end-of-run evaluation → artifact preservation →
-merge decision → guarded cleanup. Evaluation always reviews the worktree branch.
-Reports, logs, the journal, and a copy of the worktree's `.claude/` artifacts are saved
-under the main project's run directory before removal.
-
-This is the recommended mode for current models (Opus 4.6), per the Anthropic harness design findings: tasks within the model's comfort zone don't need per-iteration evaluation.
-
-### Verification Integrity (mandatory)
-
-Every committed build iteration gets a separate read-only review before KEEP, including
-workers, `--once`, iterations without a RED commit, and runs with quality evaluation disabled.
-The controller captures original specs/plan and verification policy before the builder runs,
-keeps the original test/lint commands, and supplies the final diff plus intermediate commit
-patches. Nonzero check exits remain failures; `RALPH_GATE_IGNORE` cannot turn them into passes.
-Rejected iterations restore ignored acceptance/configuration inputs as well as tracked code.
-
-Follow **Test and Verification Integrity** in `commands/shared-patterns.md`. Protect criteria
-and human-approved behavioral expectations, not whole files. Add cases in existing files;
-justify and independently review mistaken agent tests or changes that could weaken coverage.
-A human-approved expectation needs human approval to change; unattended agents leave it
-pending and stop with a proposed correction. Agent-authored RED tests are not human approval,
-and separate failing commits are optional unless requested. REVISE rolls back with guidance;
-missing/malformed review, errors, or timeout preserve work and stop without acceptance.
-
-These are controller and review safeguards, not an OS security boundary against an agent
-with the controller's filesystem/process privileges. Keep the controller and authoritative
-CI/acceptance checks outside the builder's write permissions when enforcing against a hostile agent.
+```bash
+SPEC_DIR=".claude/specs/${SLUG}"
+```
 
-### Per-Iteration Quality Evaluation (opt-in)
-
-For tasks at the edge of what the model handles reliably, enable per-iteration evaluation:
-- Set `RALPH_EVAL_PER_ITER=true`
-- Expands the mandatory integrity review to a full quality review after mechanical gates
-- REVISE verdict triggers a revert with guidance saved for next iteration
-- When per-iteration quality review is enabled, it covers every committed iteration by default. `RALPH_EVAL_DIFF_THRESHOLD` can filter by file count only after our own evaluations justify it for the workload; integrity review always runs
-
-Use this when:
-- The task is at the edge of model capability
-- Previous runs had high revert rates on similar tasks
-- The spec is complex with many interacting requirements
-
-### UI Evaluation (opt-in)
-
-- Set `RALPH_EVALUATE_UI=true` to enable Playwright-based UI testing
-- Evaluator starts dev server, navigates pages, tests user flows
-- Only useful for web projects with UI components
-
-## Flags
-
-| Flag | Purpose |
-|------|---------|
-| `--once` | One autonomous iteration, foreground; review afterward |
-| `--clean-room` | Skip codebase search — greenfield mode |
-| `--checkpoint-every=N` | Pause for human steering every N iterations |
-| `--eval-gates-merge` | Require a fresh end-of-run ACCEPT verdict before offering a merge |
-| `--time-budget=N` | Max seconds per iteration (default 600) |
-
-## Human Steering
-
-### Steering Checkpoints (`--checkpoint-every=N`)
-
-Pauses the loop every N iterations for human input when stdin is a terminal. Without a terminal, it logs the checkpoint and continues. At each checkpoint you can:
-- **Continue** (Enter) — resume autonomous execution
-- **Stop** (s) — graceful stop at the checkpoint
-- **Inject** (i) — opens `inject.md` in your editor for mid-loop steering
-
-This addresses the Knuth/Stappers insight: models need periodic human course-correction,
-not just a single `--once` check at the start. Desktop notification fires at each checkpoint.
-
-### Strategic Context
-
-Add a `## Strategic Context` section to `IMPLEMENTATION_PLAN.md` with human-written intent,
-constraints, and architectural decisions. Unlike `## Learnings` (machine-written tactical notes),
-this section carries the "why" across context boundaries and is fed into every iteration's briefing.
-
-### Eval Gates Merge (`--eval-gates-merge`)
-
-When set, the merge prompt requires a successful end-of-run evaluator pass with an ACCEPT
-verdict for the verified HEAD. REVISE, missing or malformed verdicts, evaluator errors or
-timeouts, disabled evaluation, and `--once` all leave the gate closed. Per-iteration verdicts
-cannot satisfy it. Changes after verification, including while the confirmation prompt is open,
-block the merge. The confirmed merge fast-forwards to the verified commit SHA and checks
-that the target has not advanced during confirmation. A diverged target requires integration
-and fresh verification before merging. The worktree and branch
-are preserved for review. A manual `git merge <branch>` bypasses this prompt gate.
-
-### Worktree Preservation
-
-Startup refuses existing paths or branch names instead of replacing them. Automatic cleanup
-requires matching run ownership, no active lease/process or tmux pane, unchanged branch
-identity, a clean checkout including untracked files, and HEAD reachable from the target.
-Cleanup copies and checks `.claude/` artifacts before removing a worktree. Failed checks,
-failed merges, and unknown ownership preserve both checkout and branch. Branch deletion
-uses `git branch -d`; cleanup never falls back to filesystem deletion.
-
-### Evaluation Results
-
-All evaluation modes use `${CLAUDE_PLUGIN_ROOT}/scripts/evaluate.py`: `ACCEPT`, `REVISE`, `ERROR`, or `NOT_RUN`.
-The evaluator has Read, Glob, and Grep under native restricted permissions; it cannot run
-shell commands, write source or verdict files, or call MCP tools. The controller supplies
-diff/log evidence, validates structured CLI output against the score and evidence contract,
-and writes reports bound to the candidate SHA and source fingerprint. Errors preserve work
-and return failure. Per-iteration and wave reports retain separate artifact paths.
-
-The six score dimensions are spec fidelity, correctness, integration quality, code quality,
-test coverage, and maintainability. Maintainability review considers responsibilities, boundaries,
-coupling, required validation, and ease of safe change in context. Size and addition-to-deletion
-ratios do not establish quality; useful single-use helpers and greenfield additions are legitimate.
-The structured score key is `maintainability`, replacing `compression`; old verdict artifacts
-remain historical evidence and cannot satisfy the current schema without fresh evaluation.
-
-UI evaluation consumes screenshots and interaction logs captured before final verification.
-Set `RALPH_EVAL_UI_EVIDENCE` to a nonempty directory inside the project when
-`RALPH_EVALUATE_UI=true`. Missing or changed evidence is ERROR; evaluators do not launch
-servers or browsers. Native restricted mode requires Claude Code v2.1.248 or later.
-
-## Pre-Flight Checks
-
-Before the loop starts, two advisory checks run automatically:
-
-1. **Override staleness** — flags rules in `RALPH_OVERRIDES.md` older than 30 days without
-   recent journal confirmation. Stale rules silently bias every iteration.
-2. **Plan-spec alignment** — validates that acceptance criteria in `IMPLEMENTATION_PLAN.md`
-   match the corresponding spec files. Divergence means the evaluator grades against stale criteria.
-
-## Desktop Notifications
-
-The loop sends desktop notifications (macOS/Linux) for critical events:
-- Struggle detection (stuck on same task)
-- Circuit breaker (soft and hard)
-- Evaluator REVISE verdict
-- Steering checkpoints
-- Loop completion
-
-Disable with `RALPH_NOTIFY=false`. Disable sound with `RALPH_NOTIFY_SOUND=0`.
-
-## Stop Mechanisms
-
-- **Sentinel file:** `touch .claude/ralph-stop` — loop exits after current iteration
-- **Plan complete:** When all tasks marked `[x]` and status is COMPLETE
-- **Max iterations:** Configurable safety limit (default 50)
-- **Struggle detection:** Auto-stops after 3 failed attempts on the same task
-- **Circuit breaker (tiered):** Soft warning at <30% commit ratio; hard stop if also 3+ consecutive reverts on different tasks
-- **Optional scope limit:** `RALPH_MAX_DIFF_FILES` is disabled by default (unset or `0`). Set a positive file limit only when our own evaluations show it helps the particular workload; record the workload, method, results, tradeoffs, and reassessment conditions in `RALPH_OVERRIDES.md`. The controller captures configured limits before the build; iteration edits cannot relax them
-
-## Mid-Loop Steering
-
-Write instructions to `.claude/ralph-inject.md` — consumed by the next iteration and deleted. Lets you course-correct without stopping the loop.
-
-## Artifacts
-
-All Ralph artifacts live under `.claude/`:
-- `specs/<slug>/IMPLEMENTATION_PLAN.md` — shared state between iterations
-- `AGENTS.md` — project operational guide
-- `ralph-logs/` — per-iteration output logs + `ralph-iterations.log` summary
-- `ralph-status.md` — live progress dashboard (updated each iteration)
-- `ralph-progress.md` — ephemeral session scratchpad (cleaned up on completion)
-- `ralph-inject.md` — mid-loop steering file (consumed and deleted)
-- `ralph-logs/ralph-harvest-<slug>.md` — pattern extraction report (from harvest mode)
-- `ralph-stop` — stop sentinel (touch to stop)
-- `ralph-eval-verdict.json` — latest evaluator verdict (JSON, machine-readable)
-- `ralph-eval-summary.md` — latest evaluator summary (human-readable)
-- `ralph-logs/ralph-summary-<slug>.md` — completion summary with metrics and PR description (auto-generated)
-- `ralph-logs/revert-*-reason.txt` — actual error output from gate failures (including evaluator REVISE reasons)
-- `ralph-logs/eval-*-*.log` — evaluator iteration logs
-- `ralph-logs/injections.log` — audit trail of mid-loop steering injections
-- `ralph-parallel-meta.json` — parallel run metadata (slug, workers, target branch)
-- `ralph-worker-done-*` — per-worker completion markers (in each worktree)
-- `harness-audit-<date>.md` — harness audit reports (from /harness-audit command)
+Verify the spec directory exists. If not:
+- Check if a monolithic spec exists at `.claude/specs/${SLUG}-spec.md`
+- If monolithic exists but no directory, suggest: "Run `/agentic-coding-workflow:write-spec ${SLUG} --ralph` to generate Ralph-compatible specs"
+- If nothing exists, list available specs and exit
+
+For build requests, ensure `IMPLEMENTATION_PLAN.md` exists before confirming scope. If it is missing, generate it through `bash "${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/launch.sh" "$SPEC_DIR" --plan` and inspect the resulting tasks first. Do not create a plan containing only execution boundaries: the build launcher would treat it as an existing task plan.
+
+### Phase 4: Confirm Launch
+
+For `--plan` or `--harvest`, proceed directly to Phase 5.
+
+Follow **Proportional Workflow** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`. Before a build, establish the scope, completion checks, allowed operations, worker count, iteration limit, per-iteration timeout, checkpoints, evaluation settings, and stop conditions. Present these concrete settings using AskUserQuestion for approval unless the same scope and settings are already authorized. Resolve missing material decisions before launch; do not repeat an approval already given.
+
+Record the agreed scope, allowed operations, completion checks, limits, and stop conditions under `## Execution Boundaries` in `IMPLEMENTATION_PLAN.md` before launching. These boundaries accompany the specs into worker worktrees. Use a finite iteration/time limit by default, and obtain explicit authorization for unlimited settings. The timeout is per iteration; do not describe it as a total-run budget. Ralph retains its isolated worktrees, behavioral tests, preserved acceptance criteria, mandatory independent verification-integrity review, verification gates, and durable run evidence.
+
+Explain that Ralph runs Claude autonomously with `--dangerously-skip-permissions`, and stops via `/agentic-coding-workflow:ralph <slug> --stop`. If a material decision exceeds the agreed scope, preserve progress and report the blocker for user input rather than expanding the work. Build authorization does not itself authorize publishing.
+
+`--once` runs one autonomous `claude -p` iteration in the foreground. You can observe its progress and inspect its output logs and commits afterward. It cannot ask for test approval during the iteration. For steering between iterations, use `--checkpoint-every=N` in a terminal; without a terminal, checkpoints are logged and execution continues.
+
+### Phase 5: Launch Through the Shared Implementation
+
+Use the same launcher for planning, harvest, foreground, tmux, and parallel execution:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/launch.sh" "$SPEC_DIR" "${RALPH_ARGS[@]}"
+```
+
+The launcher initializes `.claude/project-commands.json`, preserving overrides, and refreshes `.claude/AGENTS.md`. If no plan exists, it runs one planning iteration before building. `--plan` and `--harvest` run one iteration and exit; `--once` builds once in the foreground. Other builds launch a tmux window or session. `--parallel N` selects the full parallel orchestrator and forwards the same timeout, checkpoint, and evaluation options to its workers and reconciliation loops. Parallel mode is exclusive with `--once`, `--plan`, and `--harvest`. `--no-eval` disables optional per-iteration and final quality evaluation while retaining mandatory independent integrity review of committed builds and cannot be combined with `--eval-per-iter` or `--eval-gates-merge`.
+
+For example, these are shell invocations of that same entry point:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/launch.sh" "$SPEC_DIR" --once --time-budget=300
+bash "${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/launch.sh" "$SPEC_DIR" --checkpoint-every=5 --eval-gates-merge
+bash "${CLAUDE_PLUGIN_ROOT}/skills/ralph/scripts/launch.sh" "$SPEC_DIR" --parallel 3 --time-budget=300 --eval-gates-merge
+```
+
+### Phase 6: Report
+
+For foreground runs, summarize completed and incomplete outcomes, verification results, unresolved blockers, and preserved work with paths to the evidence. For tmux runs, report that execution has started, the session/window (`ralph-<slug>` or `ralph-<slug>-orch`), and how to attach or switch to it; do not imply outcomes have already been verified.
+
+Include these paths and commands:
+
+- Status: `/agentic-coding-workflow:ralph <slug> --status`
+- Stop: `/agentic-coding-workflow:ralph <slug> --stop`
+- Steering: write instructions to `.claude/ralph/inject.md`
+- Runs: `.claude/ralph/<slug>/runs/` (in the worktree during standalone builds)
+- Dashboard: `.claude/ralph/status.md`
+
+Standalone builds preserve their worktree until merge/cleanup decisions finish. Parallel execution handles partitioning, waves, merging, reconciliation, verification, evaluation, and guarded cleanup. Report any preserved work or failed gate from the script output.
+
+## Error Handling
+
+- If tmux is not available, fall back to running loop.sh in the foreground (warn user)
+- If Claude CLI is not available, exit with a clear error
+- If spec directory is empty, suggest running `/agentic-coding-workflow:write-spec`
+- If loop.sh exits with errors on multiple consecutive iterations, suggest checking logs
+
+## Example Usage
+
+```
+/agentic-coding-workflow:ralph auth-feature --once
+```
+One observed autonomous iteration — validate your spec and plan before going AFK.
+
+```
+/agentic-coding-workflow:ralph auth-feature
+```
+Launches autonomous loop for `.claude/specs/auth-feature/`.
+
+```
+/agentic-coding-workflow:ralph auth-feature --plan
+```
+Runs planning mode only — generates/refreshes IMPLEMENTATION_PLAN.md.
+
+```
+/agentic-coding-workflow:ralph auth-feature --clean-room
+```
+Greenfield mode — implements from spec only, skips codebase search.
+
+```
+/agentic-coding-workflow:ralph auth-feature --parallel 3
+```
+Launches 3 parallel workers with file affinity. Automatically merges and reconciles when all workers finish.
+
+```
+/agentic-coding-workflow:ralph auth-feature --status
+```
+Shows completion dashboard (live progress, timing, success rate).
+
+```
+/agentic-coding-workflow:ralph auth-feature --stop
+```
+Creates stop sentinel — loop exits after current iteration.
+
+```
+/agentic-coding-workflow:ralph auth-feature --eval-per-iter
+```
+Full quality evaluation per iteration for edge-of-capability tasks. Independent integrity review always runs for committed builds.
+
+```
+/agentic-coding-workflow:ralph auth-feature --harvest
+```
+After completion — extracts reusable patterns and updates AGENTS.md.
+
+### Mid-loop steering
+
+While Ralph is running, write instructions to steer the next iteration:
+```bash
+echo "Use the existing UserRepository instead of raw SQL queries" > .claude/ralph-inject.md
+```
+The file is consumed and deleted after the next iteration reads it.

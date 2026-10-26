@@ -1,127 +1,19 @@
 #!/usr/bin/env python3
 
-"""
-Stop Hook: Output Validator
+"""Validate registered task graphs on Stop using the scheduler's parser.
 
-Validates that commands/skills produced the expected output before allowing
-Claude to stop. Commands write their expectations to .claude/expected-output.json
-at the start of execution. This hook reads that file on Stop, validates each
-rule, and blocks if requirements aren't met.
-
-Expected format of .claude/expected-output.json:
-{
-    "source": "plan",
-    "rules": [
-        {
-            "type": "file_exists",
-            "path": ".claude/plans/my-plan.md"
-        },
-        {
-            "type": "file_contains",
-            "path": ".claude/plans/my-plan.md",
-            "sections": ["## Objective", "## Tasks", "## Success Criteria"]
-        },
-        {
-            "type": "dir_files_contain",
-            "path": ".claude/specs/my-feature/",
-            "glob": "*.md",
-            "exclude": ["IMPLEMENTATION_PLAN.md"],
-            "sections": ["## Acceptance Criteria"],
-            "min_files": 1
-        }
-    ]
-}
+Ralph plan generation and write-spec --ralph register task_index_format rules
+in .claude/expected-output.json. Document headings and other artifact rules
+are ignored, including expectations left by older plugin versions.
 """
 
-import glob as glob_mod
+import importlib.util
 import json
 import os
 import sys
-import importlib.util
 from pathlib import Path
 
 from project_directory import project_directory
-
-
-def validate_file_exists(rule: dict, project_dir: str) -> tuple[bool, str]:
-    """Check that a file exists."""
-    path = os.path.join(project_dir, rule["path"])
-    if os.path.isfile(path):
-        return True, ""
-    return False, f"Expected output file does not exist: {rule['path']}"
-
-
-def validate_file_contains(rule: dict, project_dir: str) -> tuple[bool, str]:
-    """Check that a file contains required sections/strings."""
-    path = os.path.join(project_dir, rule["path"])
-    if not os.path.isfile(path):
-        return False, f"Cannot validate contents — file does not exist: {rule['path']}"
-
-    try:
-        content = Path(path).read_text()
-    except Exception as e:
-        return False, f"Cannot read {rule['path']}: {e}"
-
-    missing = []
-    for section in rule.get("sections", []):
-        if section not in content:
-            missing.append(section)
-
-    if missing:
-        return False, (
-            f"File {rule['path']} is missing required sections: {', '.join(missing)}"
-        )
-    return True, ""
-
-
-def validate_dir_files_contain(rule: dict, project_dir: str) -> tuple[bool, str]:
-    """Check that all matching files in a directory contain required sections.
-
-    Useful for validating dynamically-named files like topic specs (01-auth.md,
-    02-api.md, etc.) that should all have the same required structure.
-    """
-    dir_path = os.path.join(project_dir, rule["path"])
-    if not os.path.isdir(dir_path):
-        return False, f"Expected output directory does not exist: {rule['path']}"
-
-    pattern = rule.get("glob", "*.md")
-    exclude = set(rule.get("exclude", []))
-    required_sections = rule.get("sections", [])
-    min_files = rule.get("min_files", 1)
-
-    # Find matching files
-    matched_files = []
-    for filepath in sorted(glob_mod.glob(os.path.join(dir_path, pattern))):
-        filename = os.path.basename(filepath)
-        if filename not in exclude:
-            matched_files.append(filepath)
-
-    if len(matched_files) < min_files:
-        return False, (
-            f"Directory {rule['path']} has {len(matched_files)} matching files, "
-            f"expected at least {min_files}"
-        )
-
-    # Check each file for required sections
-    failures = []
-    for filepath in matched_files:
-        filename = os.path.basename(filepath)
-        try:
-            content = Path(filepath).read_text()
-        except Exception:
-            failures.append(f"{filename}: could not read file")
-            continue
-
-        missing = [s for s in required_sections if s not in content]
-        if missing:
-            failures.append(f"{filename}: missing {', '.join(missing)}")
-
-    if failures:
-        file_list = "; ".join(failures)
-        return False, (
-            f"Topic spec files in {rule['path']} are missing required sections: {file_list}"
-        )
-    return True, ""
 
 
 def validate_task_index_format(rule: dict, project_dir: str) -> tuple[bool, str]:
@@ -147,14 +39,6 @@ def validate_task_index_format(rule: dict, project_dir: str) -> tuple[bool, str]
     return True, ""
 
 
-VALIDATORS = {
-    "file_exists": validate_file_exists,
-    "file_contains": validate_file_contains,
-    "dir_files_contain": validate_dir_files_contain,
-    "task_index_format": validate_task_index_format,
-}
-
-
 def main():
     try:
         input_data = json.load(sys.stdin)
@@ -173,7 +57,7 @@ def main():
     except (OSError, ValueError, TypeError):
         print(json.dumps({
             "decision": "block",
-            "reason": "The active checkout is unavailable; output has not been verified.",
+            "reason": "The active checkout is unavailable; the task graph has not been verified.",
         }))
         return
     expectations_file = os.path.join(project_dir, ".claude", "expected-output.json")
@@ -197,11 +81,9 @@ def main():
     # Validate each rule
     failures = []
     for rule in rules:
-        rule_type = rule.get("type", "")
-        validator = VALIDATORS.get(rule_type)
-        if not validator:
+        if rule.get("type") != "task_index_format":
             continue
-        passed, reason = validator(rule, project_dir)
+        passed, reason = validate_task_index_format(rule, project_dir)
         if not passed:
             failures.append(reason)
 
@@ -209,7 +91,7 @@ def main():
         # Block — tell Claude exactly what to fix
         failure_list = "\n".join(f"  • {f}" for f in failures)
         reason = (
-            f"Output validation failed for '{source}'.\n\n"
+            f"Task graph validation failed for '{source}'.\n\n"
             f"The following requirements were not met:\n{failure_list}\n\n"
             f"Fix these issues before stopping. The expectations are defined in "
             f".claude/expected-output.json."

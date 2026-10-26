@@ -54,7 +54,7 @@ logs/
 *.temp
 .cache/
 
-# Native plugin evaluation reports (case definitions remain tracked)
+# Raw native eval reports (cases, fixtures, graders, and benchmarks remain tracked)
 evals/results/
 
 # Claude runtime artifacts — ignore everything except checked-in rules

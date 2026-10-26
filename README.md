@@ -91,7 +91,7 @@ are already authorized.
 | `/agentic-coding-workflow:write-spec` | Transforms a plan into an implementation spec with atomic, actionable tasks. |
 | `/agentic-coding-workflow:implement` | Implements a spec task or ad-hoc description with planning and verification proportional to the task. Optional `--plan`, `--worktree`, and `--approve-tests` modes. |
 | `/agentic-coding-workflow:test` | Detects project test framework, runs the suite (or a subset), and reports structured results. |
-| `/agentic-coding-workflow:review` | Unified code review — PR review, spec compliance (`--spec`), plan critique (`--plan`), WIP squash (`--prep`), or interactive PERFECT training (`--learn`). Track progress with `--stats`. Auto-detects Elixir/Python, supports parallel multi-branch reviews. |
+| `/agentic-coding-workflow:review` | Unified code review — PR review, spec compliance (`--spec`), plan critique (`--plan`), WIP squash (`--prep`), or interactive review and code questions on local changes or branches (`--learn`, with optional path filters and `--strict`). Track progress with `--stats`. Auto-detects Elixir/Python, supports parallel multi-branch reviews. |
 | `/agentic-coding-workflow:ship` | Pushes the current branch, creates a PR with a generated description, and reports the URL. |
 
 ### Autonomous & Parallel
@@ -120,8 +120,6 @@ are already authorized.
 |---------|--------------|
 | `/agentic-coding-workflow:explain` | Educational breakdown of code, changes, or systems — the "why" behind the code, not just what it does. |
 | `/agentic-coding-workflow:visualize` | Generates architecture diagrams — ASCII for terminal, Mermaid for docs, HTML for rich visuals. |
-| `/agentic-coding-workflow:grill-me` | Reviews your staged changes, generates tough questions about edge cases and design decisions. You have to demonstrate understanding before proceeding to PR. |
-| `/agentic-coding-workflow:elegant-redo` | Scraps a failed implementation and redoes it with hindsight from what went wrong. |
 | `/agentic-coding-workflow:harness-audit` | Inventories all harness components, documents their assumptions, and suggests simplification experiments as models improve. |
 | `/agentic-coding-workflow:update-rules` | Updates CLAUDE.md or `.claude/rules/` after corrections or pattern discoveries. |
 
@@ -136,8 +134,25 @@ are already authorized.
 | `tmux-multiplexer` | Controls tmux for spinning up multi-agent workflows and parallel tasks |
 | `neovim-controller` | Talks to a running Neovim instance via RPC — open files, run LSP commands, navigate symbols |
 | `pr-reviewer` | The brains behind `/agentic-coding-workflow:review` — uses the PERFECT framework (Purpose, Edge Cases, Reliability, Form, Evidence, Clarity, Taste) with repository-grounded findings and explicit verification limits. Knows Elixir and Python patterns, auto-detects language |
-| `ralph` | Orchestrates autonomous Ralph loop iterations with separated evaluator, tiered evaluation modes, pre-flight checks (override staleness, plan-spec alignment), and desktop notifications |
+| `/agentic-coding-workflow:ralph` | Launches the specialized executor with enforced limits, verification, recovery records, and desktop notifications |
 | `data-analytics` | Database querying and data analysis support — MCP server config, connection setup, SQL help |
+
+### Invocation and gradual migration
+
+Claude Code still supports existing command files and prefers skills for new
+work. This plugin keeps its existing commands while consolidating overlapping
+workflows as they are maintained. `ralph` and `reunify` now each have one skill
+entrypoint; their slash names and arguments are unchanged. Shared workflow
+patterns live in [references/shared-patterns.md](references/shared-patterns.md),
+outside command discovery. See the [Claude Code skills documentation](https://code.claude.com/docs/en/skills).
+
+Publishing (`ship`), session/worker launches (`spawn`, `ralph`, `parallel`,
+`tmux-multiplexer`), branch/worktree changes (`reunify`, `git-worktree`), and
+infrastructure operations (`troubleshoot`) use
+`disable-model-invocation: true` for explicit invocation. Background reference
+skills use `user-invocable: false` where appropriate: that hides the user command
+while allowing the model to invoke the skill. Invocation controls do not replace
+the authorization needed for the actions a workflow performs.
 
 ### Native sessions and recovery
 
@@ -175,11 +190,9 @@ Read a few relevant files directly. Delegate investigations whose intermediate o
 
 | Agent | Role |
 |-------|------|
-| `researcher` | Read-only research and exploration |
 | `implementer` | Code implementation from specs and tasks |
 | `test-writer` | Test creation and coverage |
 | `evaluator` | Independent code evaluation (used by Ralph) |
-| `explorer` | Codebase exploration and analysis |
 
 ## Hooks
 
@@ -188,11 +201,9 @@ The default hooks require Python 3.11+, Bash, Git, and jq; their Python scripts 
 | Hook | Event | What it does |
 |------|-------|--------------|
 | `dangerous_command_blocker.py` | PreToolUse | Catches dangerous commands (`rm -rf /`, `.env` access) and blocks them |
-| `audit-logger.py` | PostToolUse / PostToolUseFailure | Logs all tool calls to `.claude/logs/tool-calls.jsonl` for audit and debugging |
 | `lint-on-stop.sh` | Stop | Runs configured Python lint/test commands or Elixir checks without fixes; records the verified revision and worktree fingerprint |
-| `rule-capture-on-stop.sh` | Stop | After implementation, prompts about capturing learned patterns as rules |
-| `ralph-on-stop.sh` | Stop | During Ralph builds, enforces plan updates and reviews committed changes |
-| `validate-output.py` | Stop | Validates command output artifacts exist and contain required sections |
+| `ralph-on-stop.sh` | Stop | During Ralph builds, enforces plan updates; review stays in the outer executor |
+| `validate-output.py` | Stop | Validates registered task graphs using the scheduler's shared parser |
 | `toast-notify.sh` | Stop | Pops up a macOS notification when Claude needs your attention |
 | `stop-failure-logger.sh` | StopFailure | Logs API failures (rate limits, auth errors) and sends toast notifications |
 
@@ -204,12 +215,14 @@ unmerged, locked, active, or unowned worktrees are retained with their paths rep
 There is no global session-end sweep. Uncatchable termination leaves worktrees for
 explicit recovery through the worktree workflow, retaining its safety checks.
 
-Output validation checks required artifacts, sections, and task graphs. It imposes
-no minimum document length; legacy line-count expectations are ignored.
+Task-graph validation checks structured and legacy task indexes with the same
+parser used by the scheduler. Ordinary plans and specs have no output-registration
+step. Ralph planning and `write-spec --ralph` register graph checks only; legacy
+artifact, heading, and line-count expectations are ignored.
 
 Python tooling is project-specific. The global toolchain blocker and regex style hook have been removed. `/agentic-coding-workflow:setup-python-rules` adapts judgment guidance to the existing stack. The optional [uv/Ruff/basedpyright profile](profiles/python/uv-ruff-basedpyright/README.md) supplies actual tool configuration and check commands only when explicitly selected. Tool configuration owns formatting, lint, typing, and file exclusions.
 
-`/ship` prepares the destination, branch/commit, PR title, complete body, base/head, and draft status before any required review. It chooses a title from the final change and reuses existing authorization for unchanged actions. The agent-writable approval marker and ship hook have been removed: the workflow is an instruction-level policy, not authenticated approval enforcement. Organizations requiring enforcement need a trusted external permission service or publishing executor with approval storage inaccessible to the agent, bound to the exact outgoing action and content. See [External Actions and Approval](commands/shared-patterns.md#external-actions-and-approval).
+`/ship` prepares the destination, branch/commit, PR title, complete body, base/head, and draft status before any required review. It chooses a title from the final change and reuses existing authorization for unchanged actions. The agent-writable approval marker and ship hook have been removed: the workflow is an instruction-level policy, not authenticated approval enforcement. Organizations requiring enforcement need a trusted external permission service or publishing executor with approval storage inaccessible to the agent, bound to the exact outgoing action and content. See [External Actions and Approval](references/shared-patterns.md#external-actions-and-approval).
 
 ## CLAUDE.md & Rules System
 
@@ -221,7 +234,7 @@ This plugin ships with a `CLAUDE.md` and `.claude/rules/` directory that teach C
 
 Claude Code only reads `paths` from rule frontmatter; other fields are ignored. Rules without `paths` load unconditionally. See the [rule frontmatter reference](https://code.claude.com/docs/en/memory#rule-frontmatter-reference).
 
-The `/agentic-coding-workflow:update-rules` command helps you build these up over time. The `rule-capture-on-stop` hook gently reminds you to capture patterns after implementation tasks.
+The `/agentic-coding-workflow:update-rules` command helps you capture useful corrections and patterns when requested.
 
 **Scope precedence:** Managed policy > CLI args > Local settings > Project settings > User settings
 
@@ -249,7 +262,7 @@ All evaluator modes use the same `ACCEPT` / `REVISE` / `ERROR` / `NOT_RUN` contr
 
 Final verification precedes evaluation and cleanup. Single-run merges recheck the candidate and target after confirmation and fast-forward to the verified SHA; a diverged target requires integration and fresh verification. Parallel runs also invalidate verification after any candidate change. `--eval-gates-merge` requires a current ACCEPT; optional advisory evaluation can report REVISE, while ERROR remains a failed run. UI evaluation reads evidence captured before final verification from `RALPH_EVAL_UI_EVIDENCE`, a nonempty directory inside the project, rather than starting a server or browser with evaluator permissions.
 
-Hook feedback follows the [Claude Code hook protocol](https://code.claude.com/docs/en/hooks). Failed tool calls are audited through PostToolUseFailure. StopFailure logs API errors, including the rendered error message, to `.claude/logs/stop-failures.jsonl`; it provides observability and notifications, with no automatic retry or worker lifecycle transition.
+Hook feedback follows the [Claude Code hook protocol](https://code.claude.com/docs/en/hooks). StopFailure logs API errors, including the rendered error message, to `.claude/logs/stop-failures.jsonl`; it provides observability and notifications, with no automatic retry or worker lifecycle transition.
 
 Ralph plans use a fenced JSON `{"tasks": [...]}` index under `## Task Index`. Each task has `id`, `name`, `status` (`pending`/`done`), `priority`, `deps` (integer IDs), and `files` (path strings), with optional `spec` and `completed_in`. The shared `scripts/task-plan.py` parser validates the entire dependency graph before scheduling. Unknown IDs, duplicates, self-dependencies, and cycles are errors. Existing checkbox plans remain supported; all comma-separated dependencies are preserved. Completed dependencies are already satisfied. The planner, progress displays, stop validator, and scheduler use the same task model.
 
@@ -342,17 +355,31 @@ bash scripts/validate-hooks.sh
 claude plugin validate .
 ```
 
-Reusable native eval cases under `evals/` cover skill creation, a triggering
-near-miss, native isolated and goal sessions, feature-session resume, and
-workflow selection. With Claude Code
-v2.1.269 or later and model access, run them from this trusted checkout:
+Reusable native eval cases under `evals/` cover skill creation and repair,
+triggering near-misses, explicit invocation policy, native isolated and goal
+sessions, feature-session resume, and workflow selection. Cases, graders, and
+sanitized [benchmark summaries](evals/benchmarks/) stay in version control.
+With Claude Code v2.1.269 or later and model access, run tuning cases from this
+trusted checkout:
 
 ```bash
-claude plugin eval . --allow-tools Write Edit --no-publish
+claude plugin eval . --tag tuning --allow-tools Write Edit --no-publish
 ```
+
+Freeze the candidate and success criteria, then run the final holdout separately:
+
+```bash
+claude plugin eval . --tag holdout --allow-tools Write Edit --no-publish
+```
+
+Choose descriptions and instructions using tuning results only. A holdout used
+to guide further edits becomes tuning evidence; reserve fresh final cases
+before claiming independent effectiveness. Unfiltered suite runs include holdout.
 
 The default comparison runs cases with and without the plugin. Inspect outcome
 differences, failures, cost, and duration; invocation checks diagnose triggering
 rather than prove an outcome improved. Runs use model calls and their results
-remain under ignored `evals/results/`. Native evals complement the deterministic
-repository tests. See [plugin eval documentation](https://code.claude.com/docs/en/plugin-evals).
+remain under ignored `evals/results/`. Preserve useful evidence in a tracked
+summary before cleaning disposable workspaces. Native evals complement standards
+validation and deterministic repository tests. See the [case and reporting policy](evals/README.md)
+and [plugin eval documentation](https://code.claude.com/docs/en/plugin-evals).

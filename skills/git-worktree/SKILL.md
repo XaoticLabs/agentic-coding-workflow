@@ -11,6 +11,7 @@ description: |
 allowed-tools: Bash, Read, AskUserQuestion, EnterWorktree, ExitWorktree
 effort: low
 user-invocable: true
+disable-model-invocation: true
 ---
 
 # Git Worktree Manager

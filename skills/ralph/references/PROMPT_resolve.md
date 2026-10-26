@@ -42,7 +42,7 @@ git commit -m "fix: resolve merge conflicts from parallel workers"
 
 ## Rules
 
-- **Preserve verification integrity.** Follow **Test and Verification Integrity** in `commands/shared-patterns.md`. Preserve acceptance criteria and human-approved expectations; justify and independently review any correction or possible coverage reduction. Never resolve integration failures by disabling checks or weakening tests. If a human-approved expectation needs changing, preserve the proposed correction and evidence and stop for human review with the task pending.
+- **Preserve verification integrity.** Follow **Test and Verification Integrity** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`. Preserve acceptance criteria and human-approved expectations; justify and independently review any correction or possible coverage reduction. Never resolve integration failures by disabling checks or weakening tests. If a human-approved expectation needs changing, preserve the proposed correction and evidence and stop for human review with the task pending.
 
 - **No questions.** Resolve autonomously.
 - **Keep both sides.** The default resolution is additive — both workers' contributions stay.
