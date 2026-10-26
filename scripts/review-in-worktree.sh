@@ -6,7 +6,7 @@
 # This script is intentionally dumb: worktree lifecycle + launch Claude.
 # All review logic lives in the pr-reviewer skill (loaded via --append-system-prompt).
 #
-# Usage: review-in-worktree.sh <repo_root> <worktree_path> <branch> <language> [pr_number]
+# Usage: review-in-worktree.sh <repo_root> <worktree_path> <branch> <language> [pr_number] [defects|suggestions]
 
 set -euo pipefail
 
@@ -20,6 +20,8 @@ WORKTREE_PATH="$2"
 BRANCH="$3"
 LANGUAGE="$4"
 PR_NUMBER="${5:-}"
+REVIEW_MODE="${6:-defects}"
+case "$REVIEW_MODE" in defects|suggestions) ;; *) echo "Error: invalid review mode" >&2; exit 2 ;; esac
 
 cleanup() {
   local exit_code=$?
@@ -49,25 +51,12 @@ trap 'exit 129' HUP
 
 cd "$WORKTREE_PATH"
 
-# Bootstrap dependencies — worktrees don't include gitignored dirs (deps/, _build/, node_modules/, .venv/)
-echo "--- Bootstrapping dependencies in worktree ---"
-if [ -f "mix.exs" ]; then
-  echo "Elixir project detected — running mix deps.get && mix compile..."
-  mix deps.get 2>&1 && mix compile 2>&1 || echo "Warning: mix bootstrap failed — tests may not run"
-elif [ -f "pyproject.toml" ] || [ -f "setup.py" ]; then
-  echo "Python project detected — installing dependencies..."
-  if [ -f "uv.lock" ] && command -v uv >/dev/null 2>&1; then
-    uv sync 2>&1 || echo "Warning: uv sync failed — tests may not run"
-  elif [ -f "poetry.lock" ] && command -v poetry >/dev/null 2>&1; then
-    poetry install 2>&1 || echo "Warning: poetry install failed — tests may not run"
-  elif [ -f "requirements.txt" ]; then
-    python -m venv .venv 2>&1 && .venv/bin/pip install -r requirements.txt 2>&1 || echo "Warning: pip install failed — tests may not run"
-  fi
-elif [ -f "package.json" ]; then
-  echo "Node project detected — installing dependencies..."
-  npm ci 2>&1 || npm install 2>&1 || echo "Warning: npm install failed — tests may not run"
+# Inspect configuration without installing dependencies or changing lockfiles.
+# A missing environment limits verification, but does not prevent code inspection.
+echo "Inspecting project check configuration (no dependency installation)..."
+if ! python3 "${PLUGIN_ROOT}/scripts/project-commands.py" readiness "$PWD"; then
+  echo "Verification setup is incomplete; continue inspection and report limitations."
 fi
-echo "--- Bootstrap complete ---"
 
 # Load the pr-reviewer skill as system prompt context
 SKILL_CONTENT=$(cat "${PLUGIN_ROOT}/skills/pr-reviewer/SKILL.md" 2>/dev/null || echo "")
@@ -85,5 +74,5 @@ fi
 claude \
   --allowedTools "Read" "Glob" "Grep" "Bash(git diff *)" "Bash(git log *)" "Bash(git show *)" "Bash(git status *)" "Bash(mix test *)" "Bash(mix format *)" "Bash(mix credo *)" "Bash(mix dialyzer *)" "Bash(uv run pytest *)" "Bash(uv run ruff *)" "Bash(uv run basedpyright *)" "Bash(npm test *)" "Bash(gh pr view *)" \
   --disallowedTools "Edit" "Write" "NotebookEdit" \
-  --append-system-prompt "You are already in an isolated worktree for this review. Skip the 'Worktree Setup' section — it is already done. ${SKILL_CONTENT}" \
+  --append-system-prompt "You are already in an isolated worktree for this review. Skip the 'Worktree Setup' section — it is already done. Plugin root: ${PLUGIN_ROOT}. Resolve reviewer-relative references under ${PLUGIN_ROOT}/skills/pr-reviewer. Read ${PLUGIN_ROOT}/references/review-policy.md. Review mode: ${REVIEW_MODE}; include optional design/taste suggestions only in suggestions mode. ${SKILL_CONTENT}" \
   "Review ${LANGUAGE} branch ${BRANCH}${PR_CONTEXT}. Do NOT edit any files — this is a read-only review."

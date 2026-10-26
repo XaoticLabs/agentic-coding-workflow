@@ -35,7 +35,8 @@ $ARGUMENTS — Determines the review mode:
 | _(empty)_ | Auto-detect | Check for specs first, fall back to current branch review |
 
 Optional flags:
-- `elixir` or `python` prefix — force language detection
+- `go`, `python`, `typescript` (`ts`), `javascript` (`js`), or `elixir` prefix — select language guidance while retaining mixed-change coverage
+- `--suggestions` — include a separate nonblocking design/taste section; default reports prioritize actionable defects
 - `--env staging|prod` — for troubleshooting context
 - `--focus phase1,phase2` — (learn mode only) drill specific PERFECT phases
 - `--strict` — (learn mode only) require every selected question to pass for a complete exercise
@@ -43,6 +44,10 @@ Optional flags:
 ## Mode Detection
 
 Parse `$ARGUMENTS` to determine which mode to run:
+
+Remove `--suggestions` before interpreting targets and carry it as review
+context. Apply `${CLAUDE_PLUGIN_ROOT}/references/review-policy.md` to code/spec
+reviews and author/reviewer loops. Preserve learn mode's teaching format.
 
 1. If starts with `--learn` → **Review & Learn** mode
 2. If starts with `--stats` → **Review Stats** mode
@@ -235,15 +240,20 @@ Route to the `pr-reviewer` skill in an isolated worktree.
 
 ### 1. Parse Branches & Language
 
-- If first word is `elixir` or `python`, use it as language and remove from branch list
-- Otherwise auto-detect: `mix.exs` → elixir, `pyproject.toml`/`setup.py` → python
+- If the first word is a supported language prefix, use it as guidance and remove it from the branch list; normalize `ts`/`js`
+- Otherwise inspect changed extensions and component manifests using the reviewer skill's detection table; use `auto` for a separate launcher when the target has not yet been inspected
+- Inspect all affected languages/contracts in mixed changes, even with a prefix
 - Branches separated by spaces, "and", commas
 
 ### 2. Choose Review Placement
 
 Review a small, focused change in the current session. Use an independent reviewer when the expected benefit justifies the model calls, latency, and handoff cost. A subagent needs the review tools, permissions, turn budget, and an isolated worktree at the target branch. Parallelize independent branch reviews with clear scope and separate worktrees. Use separate primary sessions when independent visibility, user interaction, or a separate lifecycle is needed.
 
-For separate primary sessions, use the launch script below. It handles fetching, worktree creation, PR number lookup, dependency bootstrapping, tmux session creation (for multi-branch), and launching independent Claude review sessions.
+For separate primary sessions, use the launch script below. It handles fetching,
+worktree creation, PR number lookup, read-only command readiness inspection,
+tmux session creation (for multi-branch), and independent Claude review sessions.
+It does not install dependencies or change lockfiles. Use the project's setup
+contract when setup is authorized; otherwise report incomplete verification.
 
 Find the launch script:
 ```bash
@@ -255,18 +265,29 @@ fi
 
 Run it with the detected language and branch list:
 ```bash
-bash "$LAUNCH_SCRIPT" "$LANGUAGE" branch1 [branch2] [branch3]
+env REVIEW_MODE="$REVIEW_MODE" bash "$LAUNCH_SCRIPT" "$LANGUAGE" branch1 [branch2] [branch3]
 ```
 
 The script will:
 - **Single branch:** Run the review directly in the current terminal
 - **Multiple branches:** Create a tmux session with one pane per branch, each running an independent Claude review session
 
+Set `REVIEW_MODE=defects` by default or `suggestions` for `--suggestions`.
+Continuing reviews must carry the previous report and round count; use the
+current-session/subagent path when that history needs to be supplied. Starting
+a separate reviewer does not reset the repair budget.
+
 After launching, report the tmux session name if applicable. Your job is done — the review sessions are independent.
 
 ### 3. Current Session or Subagent Review
 
-For current-session or subagent review, follow the `pr-reviewer` skill's worktree setup and guarded cleanup instructions. Review the requested branch, gather PR context, and prepare dependencies needed for verification. Pass the branch, criteria, and output format to a delegated reviewer; inspect its findings and evidence before reporting. This path also serves as the fallback if the launcher is unavailable.
+For current-session or subagent review, follow the `pr-reviewer` skill's worktree
+setup and guarded cleanup instructions. Review the requested branch, gather PR
+context, and inspect the existing environment. Follow project setup only when
+authorized; missing dependencies remain explicit verification limitations.
+Pass the branch, criteria, prior findings/round count when available, and output
+format to a delegated reviewer; inspect its evidence before reporting. This
+path also serves as the fallback if the launcher is unavailable.
 
 ---
 
@@ -323,7 +344,8 @@ Record commands, outcomes, and verification scope. If checks fail or cannot run,
 ## Issues Found
 (Use pr-reviewer skill severity levels and format)
 
-## Strengths / Recommendations / Test Results
+## Verification and Remaining Decisions
+(actual results, checked source, limitations, open reviewer decisions)
 ```
 
 **Assessment criteria:**
@@ -398,7 +420,10 @@ Then soft reset and re-commit in logical groups.
 
 ### 4. Generate PR Description
 
-Write to `.claude/pr-description.md` with Summary, Changes, Test plan, Notes sections.
+Preserve the project's PR template and write `.claude/pr-description.md` using
+the **PR evidence** facts in `${CLAUDE_PLUGIN_ROOT}/references/review-policy.md`.
+Without a template, use Summary, Verification, Reviewer decisions, and Recovery
+when applicable, matching `/ship`. Separate actual results from future checks.
 
 ### 6. Report
 
@@ -410,6 +435,8 @@ Show before/after commit count, backup branch, PR description path, and next ste
 
 ```
 /agentic-coding-workflow:review feature/auth-refactor                    # PR code review
+/agentic-coding-workflow:review go feature/timeouts                     # Go review
+/agentic-coding-workflow:review typescript feature/api --suggestions    # Include optional suggestions
 /agentic-coding-workflow:review elixir feature/payments feature/billing  # Multi-branch Elixir review
 /agentic-coding-workflow:review --learn feature/auth-refactor            # Interactive training on a PR
 /agentic-coding-workflow:review --learn                                  # Learn from local changes

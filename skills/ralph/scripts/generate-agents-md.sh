@@ -23,8 +23,18 @@ detect_project() {
   local format_cmd=""
   local run_cmd=""
 
+  # Share marker detection with Stop verification. Mixed roots must select
+  # aggregate commands rather than inherit one language's defaults.
+  local readiness readiness_status=0 project_languages
+  readiness=$(python3 "$COMMANDS_SCRIPT" readiness "$PROJECT_DIR") || readiness_status=$?
+  [ "$readiness_status" -le 1 ] || return "$readiness_status"
+  project_languages=$(printf '%s' "$readiness" | jq -r '.languages | join(", ")')
+
   # Elixir / Phoenix
-  if [ -f "${PROJECT_DIR}/mix.exs" ]; then
+  if [[ "$project_languages" == *,* ]]; then
+    type="mixed"
+    lang="$project_languages"
+  elif [ -f "${PROJECT_DIR}/mix.exs" ]; then
     type="elixir"
     lang="Elixir"
     build_cmd="mix compile"
@@ -36,7 +46,7 @@ detect_project() {
       run_cmd="mix phx.server"
     fi
   # Python
-  elif [ -f "${PROJECT_DIR}/pyproject.toml" ] || [ -f "${PROJECT_DIR}/setup.py" ]; then
+  elif [ -f "${PROJECT_DIR}/pyproject.toml" ] || [ -f "${PROJECT_DIR}/setup.py" ] || [ -f "${PROJECT_DIR}/setup.cfg" ] || [ -f "${PROJECT_DIR}/requirements.txt" ]; then
     type="python"
     lang="Python"
     # Python tooling must come from project-commands.json, based on the
@@ -60,28 +70,8 @@ detect_project() {
     else
       lang="JavaScript"
     fi
-    # Detect package manager
-    local pm="npm"
-    [ -f "${PROJECT_DIR}/pnpm-lock.yaml" ] && pm="pnpm"
-    [ -f "${PROJECT_DIR}/yarn.lock" ] && pm="yarn"
-    [ -f "${PROJECT_DIR}/bun.lockb" ] && pm="bun"
-
-    build_cmd="${pm} run build"
-    test_cmd="${pm} test"
-    lint_cmd="${pm} run lint"
-    format_cmd="${pm} run format"
-
-    # Check package.json for scripts that exist
-    if command -v jq >/dev/null 2>&1 && [ -f "${PROJECT_DIR}/package.json" ]; then
-      local scripts
-      scripts=$(jq -r '.scripts // {} | keys[]' "${PROJECT_DIR}/package.json" 2>/dev/null || true)
-      echo "$scripts" | grep -q "^build$" || build_cmd=""
-      echo "$scripts" | grep -q "^test$" || test_cmd=""
-      echo "$scripts" | grep -q "^lint$" || lint_cmd=""
-      echo "$scripts" | grep -q "^format$" || format_cmd=""
-      echo "$scripts" | grep -q "^dev$" && run_cmd="${pm} run dev"
-      echo "$scripts" | grep -q "^start$" && [ -z "$run_cmd" ] && run_cmd="${pm} start"
-    fi
+    # Select actual workspace/package-manager tasks from project configuration.
+    # A package.json or lockfile alone does not establish the CI commands.
 
     # Framework detection
     if [ -f "${PROJECT_DIR}/next.config.js" ] || [ -f "${PROJECT_DIR}/next.config.mjs" ] || [ -f "${PROJECT_DIR}/next.config.ts" ]; then
@@ -90,14 +80,10 @@ detect_project() {
       framework="Nuxt"
     fi
   # Go
-  elif [ -f "${PROJECT_DIR}/go.mod" ]; then
+  elif [ -f "${PROJECT_DIR}/go.mod" ] || [ -f "${PROJECT_DIR}/go.work" ]; then
     type="go"
     lang="Go"
-    build_cmd="go build ./..."
-    test_cmd="go test ./..."
-    lint_cmd="golangci-lint run"
-    format_cmd="gofmt -w ."
-    run_cmd="go run ."
+    # Keep project-selected module/workspace scope and lint policy.
   # Rust
   elif [ -f "${PROJECT_DIR}/Cargo.toml" ]; then
     type="rust"
@@ -112,10 +98,10 @@ detect_project() {
   # ── Save defaults, then read the effective project overrides ──────────
 
   local init_options=()
-  [ "$type" != python ] || init_options+=(--omit-empty)
+  case "$type" in python|node|go|mixed|unknown) init_options+=(--omit-empty) ;; esac
   python3 "$COMMANDS_SCRIPT" init "${init_options[@]}" "$PROJECT_DIR" \
     "$build_cmd" "$test_cmd" "$lint_cmd" "$format_cmd" "$run_cmd"
-  # Omitted Python actions remain unknown rather than silently disabled.
+  # Omitted actions remain unknown rather than silently disabled.
   # init validated the complete configuration above; get may now return 1.
   local action command status
   for action in build test lint format run; do
@@ -161,10 +147,10 @@ detect_project() {
 
 ## Workflow Rules
 
-1. **Always run tests** before committing: \`${test_cmd:-echo "no test command detected"}\`
-2. **Always run lint** before committing: \`${lint_cmd:-echo "no lint command detected"}\`
-3. **Format code** before committing: \`${format_cmd:-echo "no format command detected"}\`
-4. Tests and lint must pass — do not commit with failures.
+1. Select test/lint commands from existing CI/task configuration; missing commands are unconfigured, not passing.
+2. Run configured checks before accepting work: test \`${test_cmd:-N/A}\`, lint \`${lint_cmd:-N/A}\`.
+3. Formatting is separate and explicit: \`${format_cmd:-N/A}\`; verification must not apply fixes.
+4. Honor required project checks and report unavailable or explicitly disabled actions. N/A is not evidence of success.
 
 ## Git Conventions
 

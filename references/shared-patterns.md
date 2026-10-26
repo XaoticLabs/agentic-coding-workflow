@@ -28,6 +28,11 @@ Use the least elaborate workflow that resolves material uncertainty and produces
 
 ## Native Goals and Session Continuity
 
+For change boundaries, concise PR evidence, actionable findings, and bounded
+author/reviewer repair, use [Review and delivery policy](review-policy.md).
+For the operating contract and a read-only configuration report, use
+[Project readiness](project-readiness.md). Keep existing project review rules.
+
 Keep related implementation tasks in the current feature session. Use native
 automatic compaction, or `/compact` with focus instructions when needed. Carry
 acceptance criteria, user decisions, allowed operations, remaining work, and
@@ -125,15 +130,23 @@ Read overrides from `.claude/project-commands.json` before framework auto-detect
 
 ```bash
 TEST_CONFIG_STATUS=0
-TEST_CMD=$(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/project-commands.py" get "$REPO_ROOT" test) || TEST_CONFIG_STATUS=$?
+TEST_CMD=$(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/project-commands.py" get "$REPO_ROOT" test --required) || TEST_CONFIG_STATUS=$?
 LINT_CONFIG_STATUS=0
-LINT_CMD=$(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/project-commands.py" get "$REPO_ROOT" lint) || LINT_CONFIG_STATUS=$?
+LINT_CMD=$(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/project-commands.py" get "$REPO_ROOT" lint --required) || LINT_CONFIG_STATUS=$?
 if [ "$TEST_CONFIG_STATUS" -gt 1 ] || [ "$LINT_CONFIG_STATUS" -gt 1 ]; then
   exit 1
 fi
 ```
 
-The JSON object accepts `build`, `test`, `lint`, `format`, and `run` keys with shell command strings. A status of `0` means the action is configured: use its value, including `null` or an empty string to disable it. A status of `1` means the file or key is missing: use the table below for that action. Other statuses indicate errors: stop and report the configuration path rather than skipping verification. Preserve command quoting, pipes, and operators when executing the resolved strings.
+The JSON object accepts `build`, `test`, `lint`, `format`, and `run` keys with shell
+command strings. Status `0` means use the configured command, including null or
+empty explicit disables. With `--required`, missing actions in Go, Python,
+TypeScript/JavaScript, mixed projects, or an explicit command file return `2`:
+select existing CI/task commands and report incomplete verification. Status `1`
+permits legacy framework detection for projects without this configuration
+contract, such as Elixir-only roots without a command file. Other errors stop
+verification. Execute selected strings with Bash pipe failure handling and
+preserve their quoting/operators; never hide failures behind a passing pipeline.
 
 Generate initial configuration with `skills/ralph/scripts/generate-agents-md.sh`. Existing values are preserved on refresh. Move any custom commands from `.claude/AGENTS.md` into the JSON file; Markdown is no longer parsed for commands.
 
@@ -142,14 +155,21 @@ Generate initial configuration with `skills/ralph/scripts/generate-agents-md.sh`
 | Indicator | Runner | Test Command | Lint Command |
 |-----------|--------|-------------|--------------|
 | `mix.exs` | Mix (Elixir) | `mix test` | `mix format --check-formatted && mix credo` |
-| Python project | Project-selected | Use the existing CI/task-runner test command | Use the existing check-only formatter/lint/type commands |
-| `package.json` with `"test"` script | npm | `npm test` | `npm run lint` (if exists) |
+| Go, Python, TypeScript/JavaScript, or mixed project | Project-selected | Use the existing CI/task-runner test command | Use existing check-only formatting/lint/type tasks |
 | `Cargo.toml` | cargo | `cargo test` | `cargo clippy` |
-| `go.mod` | go test | `go test ./...` | `go vet ./...` |
 | `Makefile` with `test` target | make | `make test` | `make lint` (if exists) |
 | `Gemfile` with `rspec` | rspec | `bundle exec rspec` | `bundle exec rubocop` |
 
-Python has no automatic toolchain fallback: inspect CI, task runners, dependency manifests, and tool configuration, then save the actual commands to `.claude/project-commands.json`. Missing Python actions remain unconfigured; report required verification that could not run. Never interpret an unconfigured check as evidence that it passed or convert unknown commands to null disables. Ralph verification blocks on missing Python test/lint commands; explicit null/empty disables remain respected. Stop verification uses only configured `lint` and `test`; `lint` must include any required check-only formatting and typing. Keep mechanical rules and file exclusions in the tools' own configuration. `/setup-python-rules --profile uv-ruff-basedpyright` offers an optional stack for projects that choose it.
+Go, Python, and TypeScript/JavaScript have no automatic verification-toolchain
+fallback: inspect CI, task runners, manifests, and tool configuration, then save
+the actual commands. The generator leaves unknown actions missing, including in
+mixed roots, while preserving explicit overrides/disables. Stop and Ralph
+verification block on missing checks. Both Stop actions explicitly disabled
+produce `disabled`, never `passed`. Stop runs configured `lint` and `test`;
+include required check-only formatting and typing in the lint task. Keep
+mechanical rules in tools' configuration. See [Project readiness](project-readiness.md)
+for the read-only JSON report and environment contract. The optional Python
+profile remains a project choice.
 
 ## Input: Spec/Plan Loading
 

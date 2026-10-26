@@ -2,6 +2,12 @@
 
 Structured review framework based on [bastrich.tech/perfect-code-review](https://bastrich.tech/perfect-code-review/). Phases are ordered bottom-up: automated checks first, human judgment last. Failed or unavailable checks do not stop useful code inspection.
 
+Use these phases as inspection cues. The shared
+[review policy](../../../references/review-policy.md) controls default report
+scope, optional suggestions, and convergence. Phase labels alone do not set
+severity: derive it from the actual consequence. Only a demonstrated violation
+of an agreed requirement can block; optional design/taste suggestions cannot.
+
 ## The Pyramid (Review Bottom-Up)
 
 ### 1. Evidence (Automated Checks)

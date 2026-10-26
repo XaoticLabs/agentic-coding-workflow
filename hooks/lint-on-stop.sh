@@ -1,12 +1,12 @@
 #!/bin/bash
 # Stop hook: Run linting, type checking, and tests - block Claude if code issues found
-# Detects project type (Python/Elixir) and delegates to language-specific subscripts
+# Runs project-owned commands for any configured stack, with a legacy Elixir path
 #
 # Smart behavior:
 #   - Checks the entire project, including code committed before Stop
 #   - Probes infrastructure (postgres, redis, docker) before running tests
 #   - Blocks on real code errors (lint failures, type errors, test logic failures)
-#   - Does NOT block on infrastructure failures (db down, docker missing, connection limits)
+#   - Reports infrastructure/unconfigured checks as incomplete, with bounded retries
 
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 source "${SCRIPT_DIR}/lib/common.sh"
@@ -16,34 +16,25 @@ echo "$input" | jq -e 'type == "object"' >/dev/null 2>&1 || exit 0
 cd_project "$input"
 STATE_SCRIPT="${SCRIPT_DIR}/verification-state.py"
 
-# Detect project type
-if [ -f "mix.exs" ]; then
-  PROJECT_TYPE="elixir"
-elif [ -f "pyproject.toml" ] || [ -f "setup.py" ]; then
-  PROJECT_TYPE="python"
-else
+# A marker identifies a stack, never its package manager or verification policy.
+# Explicit commands also support mixed projects and roots without language markers.
+COMMANDS_SCRIPT="${SCRIPT_DIR}/../scripts/project-commands.py"
+readiness=$(python3 "$COMMANDS_SCRIPT" readiness "$PWD" 2>/dev/null)
+config_status=$?
+if [ "$config_status" -gt 1 ]; then
+  reason=$(printf '%s' "$readiness" | jq -r '(.configuration // "project commands") + ": " + (.error // "readiness unavailable")' 2>/dev/null)
+  jq -n --arg reason "${reason:-Project readiness could not be read; verification is unavailable.}" '{decision: "block", reason: $reason}'
   exit 0
 fi
-
-# Python verification is project-owned. A language marker does not select a
-# package manager, formatter, linter, type checker, or test framework.
-if [ "$PROJECT_TYPE" = python ]; then
-  COMMANDS_SCRIPT="${SCRIPT_DIR}/../scripts/project-commands.py"
-  for action in lint test; do
-    if resolved=$(python3 "$COMMANDS_SCRIPT" get "$PWD" "$action" 2>&1); then
-      :
-    else
-      config_status=$?
-      if [ "$config_status" -ne 1 ]; then
-        jq -n --arg reason "$resolved" '{decision: "block", reason: $reason}'
-        exit 0
-      fi
-      resolved=""
-    fi
-    if [ "$action" = lint ]; then PYTHON_LINT_COMMAND="$resolved"; else PYTHON_TEST_COMMAND="$resolved"; fi
-  done
-  [ -n "$PYTHON_LINT_COMMAND$PYTHON_TEST_COMMAND" ] || exit 0
-fi
+readiness_status=$(printf '%s' "$readiness" | jq -r '.status')
+case "$readiness_status" in
+  not_applicable) exit 0 ;;
+  legacy_elixir) PROJECT_TYPE="elixir" ;;
+  configured|unconfigured|disabled) PROJECT_TYPE="configured" ;;
+  *) jq -n '{decision: "block", reason: "Project readiness returned an invalid result; verification is unavailable."}'; exit 0 ;;
+esac
+PROJECT_LINT_COMMAND=$(printf '%s' "$readiness" | jq -r '.checks.lint.command // ""')
+PROJECT_TEST_COMMAND=$(printf '%s' "$readiness" | jq -r '.checks.test.command // ""')
 
 session_id=$(echo "$input" | jq -r '.session_id // "unknown"')
 verification_blocked() {
@@ -78,6 +69,12 @@ output=""
 has_code_errors=false
 has_infra_warnings=false
 infra_warnings=""
+has_missing_checks=false
+if [ "$readiness_status" = unconfigured ]; then
+  missing_checks=$(printf '%s' "$readiness" | jq -r '[.checks | to_entries[] | select(.value.status == "unconfigured") | .key] | join(", ")')
+  has_missing_checks=true
+  output+="Unconfigured checks: ${missing_checks}. Select existing CI/task commands in .claude/project-commands.json; null or an empty string explicitly disables an action. Do not invent tooling or disable an unknown check to get a pass.\n"
+fi
 # Per-language skip flags — set by probe_infrastructure, consumed by each subscript
 export SKIP_TESTS_PYTHON=false
 export SKIP_TESTS_ELIXIR=false
@@ -116,13 +113,13 @@ probe_infrastructure() {
   fi
 }
 
-# Configured Python commands own their environment and infrastructure needs.
+# Configured project commands own their environment and infrastructure needs.
 [ "$PROJECT_TYPE" != elixir ] || probe_infrastructure
 
 # ── Delegate to language-specific runner ─────────────────────────────
 
 case "$PROJECT_TYPE" in
-  python)  source "${SCRIPT_DIR}/lib/lint-python.sh" ;;
+  configured) source "${SCRIPT_DIR}/lib/lint-project.sh" ;;
   elixir)  source "${SCRIPT_DIR}/lib/lint-elixir.sh" ;;
 esac
 
@@ -134,7 +131,8 @@ if ! after_state=$(python3 "$STATE_SCRIPT" snapshot); then
   exit 0
 fi
 status=passed
-if [ "$has_infra_warnings" = true ]; then status=incomplete; fi
+if [ "$readiness_status" = disabled ]; then status=disabled; fi
+if [ "$has_infra_warnings" = true ] || [ "$has_missing_checks" = true ]; then status=incomplete; fi
 if [ "$has_code_errors" = true ]; then status=failed; fi
 if [ "$before_state" != "$after_state" ]; then
   has_code_errors=true
@@ -155,6 +153,12 @@ fi
 if [ "$has_infra_warnings" = true ]; then
   message="Tests could not run fully (${infra_warnings%%, }). Verification is incomplete; re-run when infrastructure is available."
   jq -n --arg message "$message" '{decision: "block", reason: $message, systemMessage: $message}'
+  exit 0
+fi
+
+if [ "$has_missing_checks" = true ]; then
+  message=$(printf '%b' "$output")
+  jq -n --arg message "Verification is incomplete. ${message}" '{decision: "block", reason: $message, systemMessage: $message}'
   exit 0
 fi
 

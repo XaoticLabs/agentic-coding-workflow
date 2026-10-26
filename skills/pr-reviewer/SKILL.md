@@ -1,14 +1,6 @@
 ---
 name: pr-reviewer
-description: |
-  Review pull requests for code quality, readability, maintainability, and security.
-  Uses the PERFECT framework: Purpose, Edge Cases, Reliability, Form, Evidence, Clarity, Taste.
-  Supports Elixir and Python. Auto-detects language from changed files.
-  Use when: review code, review PR, code review, check PR, review pull request,
-  review elixir, review python, PR analysis, code quality, review changes,
-  review branch, check code, analyze PR, review for bugs, review for security.
-  Keywords: review, PR, pull request, code review, code quality, PERFECT, Elixir, Python,
-  OTP, Phoenix, Ecto, GenServer, pytest, ruff, pyright, mix test, credo, dialyzer.
+description: Review code changes for actionable defects with repository evidence. Supports Go, Python, TypeScript/JavaScript, and Elixir.
 allowed-tools: Bash, Read, Grep, Glob, WebSearch, WebFetch
 effort: high
 user-invocable: false
@@ -16,31 +8,44 @@ user-invocable: false
 
 # PR Reviewer
 
-Review pull requests using the PERFECT framework with structured output, repository-grounded findings, and language-specific checks. Auto-detects language from changed files.
+Review the requested change against its intent, callers, and project rules.
+Apply `${CLAUDE_PLUGIN_ROOT}/references/review-policy.md` for findings, concise
+reports, human ownership, and review convergence. Use
+`references/perfect-framework.md` as an inspection guide; its phases do not
+require a section or findings quota in the report. In learn mode, also load
+`references/learn-mode-prompts.md` and retain the caller's teaching structure.
+Shared verification patterns live at
+`${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`.
 
-Read `references/perfect-framework.md` for the full PERFECT phase definitions, severity mapping, and confidence level requirements.
+Load `references/source-registry.md` only when external semantics matter.
+Documentation explains semantics; local evidence establishes a defect.
 
-When a finding depends on external semantics, load `references/source-registry.md` for relevant documentation by phase and language. External references explain semantics; repository evidence establishes whether a defect exists locally. Ordinary local correctness findings do not require web verification.
+## Language and Scope Detection
 
-When invoked in learn mode (from the review command's `--learn` flag), load `references/learn-mode-prompts.md` for phase-specific quiz prompts and teaching templates.
+Use the actual changed files, including relevant new files, then inspect root
+and component manifests. Review every affected language in a mixed change.
+An explicit language selects additional guidance; it does not hide changed
+components or cross-language contracts.
 
-## Language Detection
+| Changed files / project hints | Guidance, loaded only when relevant |
+| --- | --- |
+| `.go`, `go.mod`, `go.work` | `references/go/review-checklist.md` |
+| `.py`, `pyproject.toml`, `setup.py`, `setup.cfg`, requirements files | `references/python/python_review_checklist.md`; Python style guide for contextual design |
+| `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, `.cjs`, package/tsconfig files | `references/typescript/review-checklist.md` |
+| `.ex`, `.exs`, `mix.exs` | Relevant Elixir references: OTP for concurrency, Ecto/Phoenix for persistence/web behavior, testing practices for coverage |
 
-Determine the project language from changed files:
-
-```bash
-# Check changed file extensions
-git diff origin/main...HEAD --name-only 2>/dev/null | grep -E '\.(ex|exs)$' && echo "ELIXIR"
-git diff origin/main...HEAD --name-only 2>/dev/null | grep -E '\.py$' && echo "PYTHON"
-```
-
-Fallback: check for `mix.exs` (Elixir) or `pyproject.toml`/`setup.py` (Python) in the repo root.
-
-If both languages are present, review both. If the caller specifies a language, use that.
+Resolve the requested PR's base/head and exact reviewed revisions. Prefer the
+PR's actual base over repository-default guesses. Without a PR, use the
+requested comparison or detected default branch/merge base. Never silently
+replace the requested target with HEAD or assume `origin/main`. Identify local
+staged, unstaged, and untracked scope when reviewing a worktree.
 
 ## Worktree Setup
 
-Always review in an isolated worktree to keep the user's working directory clean:
+Use an isolated worktree for a requested committed branch. If the launcher
+already owns that worktree, skip setup. Review local staged/unstaged/untracked
+changes read-only in their active checkout so their actual scope is retained;
+do not stash, switch, or omit them to create a branch-only review.
 
 ```bash
 REPO_ROOT=$(git rev-parse --show-toplevel)
@@ -66,237 +71,79 @@ preserve_worktree_artifacts "$REPO_ROOT" "$WORKTREE_PATH" "${REPO_ROOT}/.claude/
 
 Carry the same `WORKTREE_OWNER_TOKEN` across setup and cleanup calls. If ownership,
 activity, cleanliness, ancestry, or preservation checks fail, report the retained path.
-The review launcher (`scripts/launch-reviews.sh`) and its review process own exit
+The review launcher (`${CLAUDE_PLUGIN_ROOT}/scripts/launch-reviews.sh`) and its review process own exit
 cleanup for the exact worktrees they create; no global SessionEnd hook sweeps reviews.
 After uncatchable termination, retain the checkout for explicit recovery with the
 same ownership and preservation checks. Never force-remove it by name.
 
-## Review Workflow — PERFECT Phases
+## Review Workflow
 
-Review bottom-up: automated checks first, human judgment last. Each phase produces findings tagged with a PERFECT phase and confidence level. Failed or unavailable checks affect verification and merge readiness, but do not stop code inspection.
+1. Read the criteria, diff, changed files, relevant callers/tests, project
+   guidance, and applicable owner review guidance (such as `REVIEW.md`). Verify
+   before/after behavior and compatibility; a diff alone is insufficient.
+2. Resolve existing verification commands using
+   `${CLAUDE_PLUGIN_ROOT}/references/project-readiness.md` and **Project Context:
+   Test and Lint Command Detection** in the shared patterns. Honor the project's
+   package manager, tool versions, and scope. Run needed required checks, or
+   reuse evidence only for identical source inputs. Record command, outcome,
+   checked source, and missing checks. Check PR CI when available.
+3. Inspect reliability, boundaries, compatibility, test coverage, purpose, and
+   consequential maintainability using PERFECT and the relevant language
+   guidance. For changed tests/configuration, apply **Test and Verification
+   Integrity** from the shared patterns. Do not weaken verification.
+4. Trace candidate findings through inputs, callers, guards, and failures.
+   Reproduce a defect when useful. Group root causes and distinguish introduced
+   problems from pre-existing ones. Assign severity from consequence and
+   confidence from evidence. A tool warning, pattern difference, or source URL
+   alone is insufficient.
+5. Apply the shared convergence policy. Perform one pass unless a repair loop
+   was authorized; carry prior findings and the round count into continuing
+   reviews. Re-review new edits and affected behavior, verify previous fixes,
+   and avoid repeating findings. After three completed rounds, unresolved
+   material findings need human reassessment; exhaustion never means PASS.
+6. Report actionable findings first. Do not fill the report with mechanical
+   style, speculative defects, praise, or phase counts. With `--suggestions` or
+   an equivalent explicit request, add a short optional section whose contents
+   do not affect blocking counts. A clean result is valid.
 
-For every finding, explain the triggering condition, affected execution path, concrete consequence, supporting repository evidence or reproduction, and any uncertainty (write "None" when established). Use exact file/line references and trace relevant callers, inputs, and guards. For convention or clarity findings, identify the affected usage or maintenance task and an applicable repository rule or concrete cost. A pattern deviation, tool warning, CWE page, or style guide alone does not establish a defect. Treat language-specific reference checklists as candidate cues subject to these evidence requirements. See the framework's confidence definitions before assigning a tag.
-
-### Phase 0: Gather Context
-
-Before starting phases, collect the raw materials:
-
-- Read the PR description (`gh pr view <number>`) or commit history (`git log origin/main..HEAD --oneline`)
-- Run `git diff origin/main...HEAD` to see all changes
-- **Read the actual changed files** — diffs alone are insufficient for line-accurate feedback
-- Note the stated purpose of the PR for the Purpose phase later
-
-### Phase 1: Evidence (Automated Checks)
-
-Record failures and verification limitations, then continue the remaining phases. Distinguish checks that ran and found a failure from checks blocked by missing dependencies, credentials, services, tools, or CI access. Run other independent checks where possible.
-
-Run all validation tools and report results:
-
-**Elixir:**
-```bash
-mix test
-mix format --check-formatted
-mix credo        # if configured
-mix dialyzer     # if configured
-```
-
-**Python:** Resolve the project's existing checks from `.claude/project-commands.json`, CI, and task/tool configuration. Use its chosen environment, formatter, linter, type checker, test runner, and file scope. Do not infer uv, Ruff, basedpyright, or pytest merely from Python files. Report missing required checks as verification limitations. The uv/Ruff/basedpyright profile is optional; see **Project Context: Test and Lint Command Detection** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`.
-
-Also check CI status if PR number is available: `gh pr checks <number>`
-
-Record each command, result, relevant output, and scope of verification. A reproduced check failure can be **Verified** as an observed failure; diagnose its cause separately. Tool warnings do not automatically verify a code defect. Confirmed required-check failures remain merge **BLOCKER**s. Unavailable or skipped required checks are verification limitations, not proof of a code defect; report incomplete verification and what remains to be run.
-
-### Phase 2: Reliability
-
-Scan for performance and security issues:
-
-1. Review static analysis output from Phase 1 for security-relevant warnings
-2. Check for: hardcoded secrets, SQL injection, unsafe deserialization, missing auth checks, N+1 queries, unbounded memory, race conditions
-3. **Verification**: Trace the input or resource through the affected callers, validation/authentication guards, and sensitive operation. Establish a reachable trigger and concrete security or performance consequence using repository evidence or a reproduction. Consult external documentation only when needed to establish relevant API or security semantics; OWASP/CWE links classify a weakness, not prove a vulnerable call path.
-
-Load language-specific references conditionally:
-- **Elixir**: `references/elixir/elixir_otp_best_practices.md` — when reviewing concurrency, GenServers, supervision
-- **Python**: `references/python/python_review_checklist.md` — security section
-
-Tag findings using the framework's definitions: **Verified** requires a reproduction or complete repository-backed causal argument; **Likely** has local evidence with a stated unresolved assumption; **Uncertain** lacks enough evidence to establish the defect. A source URL or tool flag alone does not raise confidence.
-Severity: **MAJOR**, escalate to **BLOCKER** for confirmed security vulnerabilities.
-
-### Phase 3: Form
-
-Check alignment with design principles and codebase conventions:
-
-1. **Search for existing patterns first** — grep the codebase for similar implementations before flagging deviations. This is the highest-priority check.
-2. Check module structure, import ordering, public API surface
-3. Verify high cohesion / low coupling
-4. **Verification**: Cite affected callers, repository rules, configured lint checks, or comparable implementations, and explain the concrete compatibility or maintenance consequence. Pattern matches and style guides establish conventions, not that a local abstraction is defective. Include external references only when they clarify applicable semantics or an adopted rule.
-
-Load language-specific references conditionally:
-- **Elixir**: `references/elixir/elixir_style_guide.md` — formatting, naming, module structure
-- **Elixir**: `references/elixir/ecto_phoenix_patterns.md` — schemas, changesets, controllers, LiveView
-- **Python**: `references/python/python_style_guide.md` — contextual design review; apply the project's configured tools, conventions, and library versions
-- **Python**: `references/python/python_review_checklist.md` — code quality section
-
-Severity: **MAJOR** for demonstrated design or compatibility problems, **MINOR** for evidenced convention violations. Personal preferences belong in Taste.
-
-### Phase 4: Clarity
-
-Assess whether code communicates its intent:
-
-1. Check variable/function naming — are they self-documenting?
-2. Check function length — can you understand at a glance?
-3. Check comments — do they explain "why" not "what"?
-4. Check public API documentation (@doc, docstrings)
-5. Flag dead code, commented-out code, TODO debris
-6. **Verification**: Show the affected usage or maintenance task and the concrete ambiguity or cost. Check the project's own conventions and cite local examples or rules. External naming/documentation guides are optional context; they do not establish a local defect.
-
-Load conditionally:
-- **Elixir**: `references/elixir/elixir_style_guide.md` — if not already loaded in Form phase
-- **Python**: `references/python/python_style_guide.md` — if not already loaded in Form phase (docstrings, comments, naming sections)
-
-Severity: **MINOR**.
-
-### Phase 5: Edge Cases
-
-Identify boundary conditions and failure modes:
-
-1. Flag nil/None handling gaps, empty collection handling, boundary values
-2. Check error paths — do they return meaningful errors?
-3. Check external service failure handling (timeouts, retries)
-4. Check concurrent access safety
-5. **Verification**: Trace how a boundary input or failure can reach the code, accounting for caller contracts and guards. Show the resulting crash or degraded behavior with repository evidence or a focused reproduction. Document unresolved reachability assumptions. External references may clarify semantics but are not required to verify a local edge case.
-
-Load conditionally:
-- **Elixir**: `references/elixir/testing_practices.md` — for test coverage of edge cases
-
-Severity: **BLOCKER** for crash-causing gaps, **MAJOR** for degraded behavior.
-
-### Phase 6: Purpose
-
-Verify code solves the stated task:
-
-1. Compare PR description/ticket/commit messages against the actual diff
-2. Flag scope creep — changes unrelated to stated purpose
-3. Flag missing implementation — stated goals not addressed
-4. Assess whether the approach is appropriate (not over/under-engineered)
-5. **Verification**: This is a comparison phase — cite the PR description and specific diff sections as evidence.
-
-Severity: **BLOCKER**.
-
-### Phase 7: Taste
-
-Note personal preferences. These are **non-blocking observations only**.
-
-- Alternative approaches worth considering
-- Stylistic preferences beyond established conventions
-- "I would have done it differently" observations
-
-Severity: **NITPICK** only. Must never block a merge. No confidence tagging needed.
-
-### Phase 8: Test Coverage Assessment
-
-Cross-cutting check across all phases:
-
-- Happy path tested?
-- Error cases and edge cases covered? (ties to Phase 5)
-- Tests are behavior-based (test what code does, not how)?
-- Test organization follows existing patterns? (ties to Phase 3)
-- Test code gets the same review rigor as production code
+Continue useful inspection when a check fails or cannot run. A confirmed
+required-check failure remains a blocker; missing dependencies/services or
+unconfigured required checks mean incomplete verification, not a proven code
+bug. Run actual API/browser/integration flows only when authorized capabilities
+and project requirements support them; otherwise report the missing evidence.
+Do not install tools, rewrite lockfiles, or assume a new toolchain for review.
 
 ## Output Format
 
-Structure all reviews using this format. Use PASS only when required checks are complete and no blocking findings remain; FAIL for established blockers; INCOMPLETE when required verification is unavailable and no blocker is established.
+Use PASS only when required verification is complete and no material finding
+or decision prevents acceptance. Use FAIL for established blocking findings or
+confirmed required-check failures. Use INCOMPLETE for required evidence or
+material decisions still unavailable. Existing human approvals remain required.
+The status describes the reviewed revision, never permission to merge.
 
-````markdown
-# PR Review: {branch_name}
+```markdown
+# PR review: <target>
 
-**PR Number:** {number or "N/A"}
-**Status:** {PASS / FAIL / INCOMPLETE}
+Reviewed: <base/head revisions and any worktree scope>
+Status: <PASS / FAIL / INCOMPLETE>
+Review round: <known count / 3, or history unavailable; one pass only>
 
-## Summary
-{3-5 sentences: what changed, quality assessment, overall verdict}
+## Findings
+<count of actionable findings, or No actionable findings found>
 
-## Test Results
-- **Tests:** {PASS / FAIL / SKIPPED / UNAVAILABLE}
-- **Formatting/Linting:** {PASS / FAIL / SKIPPED / UNAVAILABLE}
-- **Static Analysis:** {PASS / FAIL / SKIPPED / UNAVAILABLE}
+- <severity; confidence; file:line; issue>
+  <Reachable trigger, causal path, consequence, local evidence or reproduction,
+  remaining uncertainty, and a concrete correction. Use snippets only when useful.>
 
-## Verification Limitations
-{Commands, outcomes, relevant output, and scope of checks; reasons for skipped/unavailable checks and what remains unverified, or "None". Include limitations even when status is FAIL.}
+## Verification
+<Actual commands, results, scope and checked source; unavailable or skipped
+required checks and what remains unverified. Link to large evidence.>
 
-## Strengths
-- {positive aspects}
-
-## Issues Found
-
-### {SEVERITY_EMOJI} {SEVERITY}: {Issue Title}
-**File:** `{file_path}:{line_number}`
-**Phase:** {Evidence | Reliability | Form | Clarity | Edge Cases | Purpose | Taste}
-**Confidence:** {Verified | Likely | Uncertain}
-
-**Current Code:**
-```{lang}
-{actual code from the file}
+## Human decisions and next action
+<Material questions, open findings/dispositions for a continuing review,
+required owner review, or none. At the round budget, request reassessment.>
 ```
 
-**Problem:** {what's wrong and why}
-**Trigger:** {input, state, or event that exposes the issue}
-**Execution Path:** {entry point/caller → relevant guards → affected operation; for conventions, the affected usage or maintenance task}
-**Consequence:** {observable failure, impact, or concrete maintenance cost}
-**Repository Evidence / Reproduction:** {file:line references and causal reasoning, or command/input with expected vs actual result}
-**Uncertainty:** {unresolved assumptions and verification limits, or "None"}
-**Reference (optional):** [{documentation name}]({URL}) — {specific semantics or adopted rule it establishes; omit when unnecessary}
-
-**Suggested Fix:**
-```{lang}
-{concrete fix}
-```
----
-
-## PERFECT Summary
-
-| Phase | Issues | Top Severity | Human Action Needed |
-|-------|--------|-------------|-------------------|
-| Evidence | {n} | {severity} | {None / action} |
-| Reliability | {n} | {severity} | {None / action} |
-| Form | {n} | {severity} | {None / action} |
-| Clarity | {n} | {severity} | {None / action} |
-| Edge Cases | {n} | {severity} | {None / action} |
-| Purpose | {n} | {severity} | {None / action} |
-| Taste | {n} | NITPICK | Author discretion |
-
-## Recommendations
-1. {prioritized recommendations}
-
-## Issue Totals
-**Total Issues:** {count}
-- Blockers: {count}
-- Major: {count}
-- Minor: {count}
-- Nitpicks: {count}
-- By confidence: {verified} Verified, {likely} Likely, {uncertain} Uncertain
-````
-
-## Severity Levels
-
-| Level | Emoji | Meaning |
-|-------|-------|---------|
-| BLOCKER | Red circle | Must fix before merge — broken functionality, security, test failures |
-| MAJOR | Orange circle | Should fix before merge — demonstrated maintainability, compatibility, or test coverage problems |
-| MINOR | Yellow circle | Should address — code smell, missing docs, minor improvements |
-| NITPICK | White circle | Optional — style, formatting, preferences |
-
-## Critical Requirements
-
-- Every issue MUST include exact file path and line number
-- Every issue MUST include the actual code snippet (not just the diff)
-- Every issue MUST include a concrete fix with code example
-- Every issue MUST include a Phase tag; every non-Taste issue MUST include a Confidence tag
-- Every finding MUST explain its trigger, affected execution path, consequence, repository evidence or reproduction, and uncertainty
-- Assign confidence from local evidence using the framework definitions; URLs, pattern matches, and tool warnings alone do not verify a defect
-- Read the actual files — do not rely solely on diffs
-- Check callers of modified functions to verify compatibility
-- Focus on actionable, copy-paste-ready suggestions
-- Acknowledge good work alongside issues
-- Investigate uncertain findings through callers, contracts, tests, or a focused reproduction. State remaining uncertainty; do not make an uncertain candidate a blocking defect
-- Use external references when they establish relevant semantics; ordinary local correctness findings do not require web verification
-- Record failed or unavailable checks and continue useful inspection; preserve their effect on merge readiness without treating unavailable infrastructure as a code defect
+Omit inapplicable detail. Put explicitly requested suggestions in a separate
+nonblocking section. Do not require a full code example for a one-line finding
+or copy tool diagnostics already represented by a root-cause finding.

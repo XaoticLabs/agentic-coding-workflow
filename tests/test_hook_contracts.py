@@ -610,8 +610,17 @@ def test_python_stop_and_format_do_not_select_tools_implicitly(
         configuration.write_text(json.dumps(commands))
     environment = tool_environment(project, "python")
     result = invoke(project, "lint-on-stop.sh", {}, **environment)
-    assert result.returncode == 0 and result.stdout == ""
-    assert not (project / ".claude/verification").exists()
+    assert result.returncode == 0, result.stderr
+    record = json.loads(
+        next((project / ".claude/verification").glob("*.json")).read_text()
+    )
+    if commands is None or commands == {}:
+        assert json.loads(result.stdout)["decision"] == "block"
+        assert record["status"] == "incomplete"
+        assert "Unconfigured" in result.stdout
+    else:
+        assert result.stdout == ""
+        assert record["status"] == "disabled"
     formatted = subprocess.run(
         [str(ROOT / "scripts/format-project.sh"), str(project)],
         env={**os.environ, **environment},
@@ -620,6 +629,91 @@ def test_python_stop_and_format_do_not_select_tools_implicitly(
     )
     assert formatted.returncode == 0, formatted.stderr
     assert not Path(environment["TEST_CALLS"]).exists()
+
+
+@pytest.mark.parametrize(
+    "markers",
+    [
+        ("go.mod",),
+        ("go.work",),
+        ("package.json", "tsconfig.json"),
+        ("go.mod", "pyproject.toml", "package.json"),
+        ("mix.exs", "go.mod"),
+    ],
+)
+@pytest.mark.parametrize("failure", [False, True])
+def test_stop_runs_project_checks_across_languages_and_preserves_pipe_failures(
+    project: Path, markers: tuple[str, ...], failure: bool
+) -> None:
+    for marker in markers:
+        (project / marker).touch()
+    (project / "source.txt").write_text("unchanged\n")
+    git(project, "add", ".")
+    git(project, "commit", "--quiet", "-m", "Initial")
+    (project / ".claude").mkdir(exist_ok=True)
+    (project / ".claude/project-commands.json").write_text(
+        json.dumps(
+            {
+                "lint": "printf 'static check ran\\n'",
+                "test": (
+                    "printf 'behavior failed\\n'; false | cat"
+                    if failure
+                    else "printf 'behavior checked\\n'"
+                ),
+                "format": "touch formatting-must-not-run",
+            }
+        )
+    )
+    result = invoke(project, "lint-on-stop.sh", {"session_id": "polyglot"})
+    assert result.returncode == 0, result.stderr
+    record = json.loads(
+        next((project / ".claude/verification").glob("*.json")).read_text()
+    )
+    assert record["status"] == ("failed" if failure else "passed")
+    assert record["checked"] == record["after"]
+    assert (project / "source.txt").read_text() == "unchanged\n"
+    assert not (project / "formatting-must-not-run").exists()
+    if failure:
+        assert json.loads(result.stdout)["decision"] == "block"
+        assert (
+            "static check ran" in result.stdout and "behavior failed" in result.stdout
+        )
+    else:
+        assert result.stdout == ""
+
+
+@pytest.mark.parametrize("marker", ["go.mod", "package.json", "pyproject.toml"])
+def test_missing_checks_cannot_be_recorded_as_verified(
+    project: Path, marker: str
+) -> None:
+    (project / marker).touch()
+    git(project, "add", ".")
+    git(project, "commit", "--quiet", "-m", "Initial")
+    (project / ".claude").mkdir(exist_ok=True)
+    (project / ".claude/project-commands.json").write_text(
+        json.dumps(
+            {
+                "test": "printf 'configured test ran\\n'",
+            }
+        )
+    )
+    for attempt in range(4):
+        result = invoke(
+            project,
+            "lint-on-stop.sh",
+            {"session_id": "missing", "stop_hook_active": attempt > 0},
+        )
+        assert result.returncode == 0, result.stderr
+        report = json.loads(result.stdout)
+        if attempt < 3:
+            assert report["decision"] == "block"
+            assert "Unconfigured" in report["reason"] and "lint" in report["reason"]
+        else:
+            assert report["continue"] is False
+    record = json.loads(
+        next((project / ".claude/verification").glob("*.json")).read_text()
+    )
+    assert record["status"] == "blocked"
 
 
 @pytest.mark.parametrize("failed_tool", ["black", "mypy", "pytest", None])

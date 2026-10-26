@@ -68,6 +68,10 @@ Review and ship when requested; honor project approval policy and existing
 authorization using **External Actions and Approval** in `references/shared-patterns.md`.
 Local files and approval grants do not authenticate human review.
 
+Use `references/review-policy.md` for reviewable changes, PR evidence, actionable
+findings, and bounded repair; `references/project-readiness.md` documents
+project-owned Go/Python/TypeScript checks and configuration readiness.
+
 Always inspect recent `git log` before committing and follow the repository's historical commit pattern. Current history uses concise, lowercase `type: description` subjects (for example, `fix: ...`), normally without a body.
 
 ## File Organization

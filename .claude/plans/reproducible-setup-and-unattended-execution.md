@@ -13,21 +13,26 @@ Coordinate deterministic coverage and CI integration with the adjacent
 [harness regression suite plan](harness-regression-suite.md). Keep recipe and
 boundary tests free of paid model calls.
 
+Progress note, 2026-10-25: project readiness now reports command configuration,
+and review launchers no longer guess/install dependencies. Go/Python/Node/mixed
+verification requires selected checks. Reproducible setup recipes, service
+lifecycle management, and trusted containment below remain future work.
+
 ## Current foundations and gaps
 
 - [Project commands](../../scripts/project-commands.py) centralize `build`,
   `test`, `lint`, `format`, and `run` as strings or explicit disables. They lack
   installation, separate type checking, per-command directories, prerequisites,
   exit-code expectations, and timeout behavior.
-- [Review setup](../../scripts/review-in-worktree.sh) independently guesses
-  installation commands, continues after failures, and falls back from
-  `npm ci` to `npm install`. The optional [Python profile](../../profiles/python/uv-ruff-basedpyright/)
+- [Review setup](../../scripts/review-in-worktree.sh) now inspects configuration
+  without installing dependencies. A shared reproducible setup executor is
+  still needed. The optional [Python profile](../../profiles/python/uv-ruff-basedpyright/)
   already separates formatting from checks and uses `--frozen --no-sync`.
 - [Ralph](../../skills/ralph/scripts/loop.sh) hardcodes
   `--dangerously-skip-permissions`. The shared [Claude runner](../../scripts/lib/claude-runner.sh)
   records pipeline statuses and supports invocation deadlines, but does not
   provide whole-workflow isolation or resource limits.
-- [Stop checks](../../hooks/lib/lint-python.sh) and the controller's final
+- [Stop checks](../../hooks/lib/lint-project.sh) and the controller's final
   [verification gates](../../scripts/lib/parallel-primitives.sh) execute project
   commands directly. Wrapping only the Claude invocation would leave these
   paths, dependency setup, and other helpers outside the boundary.

@@ -31,7 +31,12 @@ Resolve commands using the shared pattern in `${CLAUDE_PLUGIN_ROOT}/references/s
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 ```
 
-Read configured test/lint commands with `scripts/project-commands.py` as shown in the shared pattern. Commands in `.claude/project-commands.json` take precedence over auto-detection. For each missing key, use the shared pattern's detection table; `null` or an empty string explicitly disables that action. Do not parse commands from `.claude/AGENTS.md`.
+Read configured commands using `get --required` as shown in the shared pattern.
+Go, Python, TypeScript/JavaScript, and mixed projects select existing CI/task
+commands; missing actions are unconfigured and must be reported. Explicit null
+or empty actions are disabled. Use legacy detection only when the shared
+contract permits it. Do not parse commands from `.claude/AGENTS.md` or substitute
+a package manager. Follow `references/project-readiness.md`.
 
 Infer the runner from the resolved test command for scope selection and reporting. If no test command is available, report that tests are disabled or no framework was detected, as applicable. Invalid configuration stops the command with an actionable error.
 
@@ -41,7 +46,9 @@ Infer the runner from the resolved test command for scope selection and reportin
 Run the detected test command as-is.
 
 **Specific file or directory:**
-Append the path to the test command:
+Use the resolved runner's supported scope syntax; do not append arguments to
+an arbitrary compound command. Preserve package-manager forwarding and scope
+all commands actually run. Examples for projects using these runners:
 - `mix test test/auth_test.exs`
 - `pytest test/models/`
 - `npm test -- test/auth.test.js`

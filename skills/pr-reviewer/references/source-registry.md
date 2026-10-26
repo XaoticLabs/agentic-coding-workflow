@@ -4,6 +4,15 @@ External references organized by PERFECT phase. Load this file when documentatio
 
 ## Deep-Link Patterns
 
+For Go, start with the [specification](https://go.dev/ref/spec),
+[context package](https://pkg.go.dev/context), and
+[race detector](https://go.dev/doc/articles/race_detector). For TypeScript, use
+the [handbook](https://www.typescriptlang.org/docs/handbook/intro.html) and
+[module reference](https://www.typescriptlang.org/docs/handbook/modules/reference.html).
+Use the project's runtime/version; Node semantics come from
+[Node documentation](https://nodejs.org/api/), and browser/framework semantics
+from the relevant platform's own documentation.
+
 For linking to specific rules in review comments:
 
 | Tool/DB | URL Pattern | Example |

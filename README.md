@@ -62,6 +62,19 @@ Use the least elaborate workflow that resolves material uncertainty and produces
 
 Choose by uncertainty, impact, reversibility, and scope. Inspection may reveal a need for more planning, or show that existing context is sufficient. Clarification ends when the outcome, scope, material decisions, and verification approach are clear. Every path includes verification and reports its evidence and limitations.
 
+Make substantial changes independently understandable and testable. PRs explain
+the problem and resulting behavior, important decisions, actual verification
+and checked source, remaining reviewer decisions, and recovery when relevant.
+Keep concurrency within the team's review capacity. The shared
+[review policy](references/review-policy.md) covers evidence and review scope.
+
+Default code reviews prioritize actionable defects with local evidence; a clean
+result is valid. `/review --suggestions` adds optional design/taste feedback.
+Authorized author/reviewer repair carries prior findings and the round count;
+after three completed rounds, unresolved material findings need human
+reassessment. An ordinary review performs one pass. Existing human review
+requirements remain in force.
+
 For interactive work, a conversational plan is often enough. Save a plan or generate a detailed spec when requested or useful for handoff. `/plan --interview` selects deeper questioning; `/write-spec` selects detailed specification; `/explain` and `/review --learn` select teaching; `/implement --approve-tests` selects explicit approval of acceptance-test expectations. `/implement --plan` selects plan mode and plan approval, and `--worktree` requests isolation. These are optional modes, with no fixed question or document-length quotas.
 
 **Ordinary unattended work:** Use native `/goal` in a continuing feature session.
@@ -91,7 +104,7 @@ are already authorized.
 | `/agentic-coding-workflow:write-spec` | Transforms a plan into an implementation spec with atomic, actionable tasks. |
 | `/agentic-coding-workflow:implement` | Implements a spec task or ad-hoc description with planning and verification proportional to the task. Optional `--plan`, `--worktree`, and `--approve-tests` modes. |
 | `/agentic-coding-workflow:test` | Detects project test framework, runs the suite (or a subset), and reports structured results. |
-| `/agentic-coding-workflow:review` | Unified code review — PR review, spec compliance (`--spec`), plan critique (`--plan`), WIP squash (`--prep`), or interactive review and code questions on local changes or branches (`--learn`, with optional path filters and `--strict`). Track progress with `--stats`. Auto-detects Elixir/Python, supports parallel multi-branch reviews. |
+| `/agentic-coding-workflow:review` | Code/PR review, spec compliance (`--spec`), plan critique (`--plan`), PR prep (`--prep`), or teaching (`--learn`, `--stats`). Supports Go, Python, TypeScript/JavaScript, Elixir, and mixed changes. Use `--suggestions` for optional design/taste feedback. |
 | `/agentic-coding-workflow:ship` | Pushes the current branch, creates a PR with a generated description, and reports the URL. |
 
 ### Autonomous & Parallel
@@ -133,7 +146,7 @@ are already authorized.
 | `/agentic-coding-workflow:skill-forge` | Build, fix, and optimize Claude Code skills — scaffolding, progressive disclosure, eval-driven iteration |
 | `tmux-multiplexer` | Controls tmux for spinning up multi-agent workflows and parallel tasks |
 | `neovim-controller` | Talks to a running Neovim instance via RPC — open files, run LSP commands, navigate symbols |
-| `pr-reviewer` | The brains behind `/agentic-coding-workflow:review` — uses the PERFECT framework (Purpose, Edge Cases, Reliability, Form, Evidence, Clarity, Taste) with repository-grounded findings and explicit verification limits. Knows Elixir and Python patterns, auto-detects language |
+| `pr-reviewer` | Inspects Go, Python, TypeScript/JavaScript, Elixir, and mixed changes using PERFECT as an inspection guide; reports actionable findings, verification limits, and human decisions concisely |
 | `/agentic-coding-workflow:ralph` | Launches the specialized executor with enforced limits, verification, recovery records, and desktop notifications |
 | `data-analytics` | Database querying and data analysis support — MCP server config, connection setup, SQL help |
 
@@ -201,7 +214,7 @@ The default hooks require Python 3.11+, Bash, Git, and jq; their Python scripts 
 | Hook | Event | What it does |
 |------|-------|--------------|
 | `dangerous_command_blocker.py` | PreToolUse | Catches dangerous commands (`rm -rf /`, `.env` access) and blocks them |
-| `lint-on-stop.sh` | Stop | Runs configured Python lint/test commands or Elixir checks without fixes; records the verified revision and worktree fingerprint |
+| `lint-on-stop.sh` | Stop | Runs project-configured lint/test commands for any stack, or legacy Elixir checks; records revision/fingerprint and distinguishes incomplete/disabled verification |
 | `ralph-on-stop.sh` | Stop | During Ralph builds, enforces plan updates; review stays in the outer executor |
 | `validate-output.py` | Stop | Validates registered task graphs using the scheduler's shared parser |
 | `toast-notify.sh` | Stop | Pops up a macOS notification when Claude needs your attention |
@@ -250,9 +263,32 @@ Project commands are configured in `.claude/project-commands.json`. For an exist
 }
 ```
 
-Supported keys are `build`, `test`, `lint`, `format`, and `run`. Missing test/lint keys use framework auto-detection outside Python; Python commands must be selected from the consuming project’s CI/task configuration and saved explicitly; `null` or `""` explicitly disables an action. Invalid configuration stops verification. Ralph also blocks on unconfigured Python test/lint commands; its generator leaves unknown Python actions missing rather than inventing tools or silently disabling checks. Ralph's `generate-agents-md.sh` initializes detected defaults, preserves existing overrides, and renders `.claude/AGENTS.md` from the same values. Move custom commands previously kept in the Markdown guide into this JSON file. Both files are copied into worker worktrees.
+Supported keys are `build`, `test`, `lint`, `format`, and `run`. Go, Python,
+TypeScript/JavaScript, and mixed projects select commands from their existing
+CI/task configuration. Missing lint/test actions are unconfigured; null or an
+empty string explicitly disables an action. Invalid configuration blocks.
+The Stop hook and Ralph verification reject missing checks. Ralph's generator
+leaves unknown commands missing, preserves overrides/disables, and renders
+`.claude/AGENTS.md`; it retains legacy defaults for Elixir-only projects. Move
+custom commands from that Markdown guide to the JSON file. Both files are
+copied into worker worktrees. See [Project readiness](references/project-readiness.md)
+for setup/service documentation and mixed-project aggregate commands.
 
-Formatting is an explicit action: `"${CLAUDE_PLUGIN_ROOT}/scripts/format-project.sh"` runs the configured `format` command, with an Elixir default when absent. Python Stop checks run only configured `lint` and `test` commands, preserving quoting and operators. Missing or disabled actions do not run and do not count as successful verification. Include check-only formatting and typing in `lint`, and keep source/test scope in actual tool configuration. Check commands must not run fixes or install dependencies. The optional uv profile uses `--frozen --no-sync`. Configured checks run on every branch, including committed code.
+Run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/project-commands.py" readiness "$PWD"`
+from the consuming project with the plugin root set. This read-only JSON report
+distinguishes configured, unconfigured, disabled, invalid, and legacy/unsupported
+roots. It does not run checks or prove environment readiness. Separate review
+launches inspect this configuration and never install dependencies or change
+lockfiles; missing dependencies remain explicit verification limitations.
+
+Formatting is explicit: `"${CLAUDE_PLUGIN_ROOT}/scripts/format-project.sh"` runs
+the configured format command, with a legacy Elixir default when absent. Stop
+runs configured lint/test commands for any stack, preserving quoting and pipe
+failures. Missing actions produce incomplete verification; both actions disabled
+produce a disabled record, never passed. Include required check-only formatting
+and typing in lint, and keep scope in tool configuration. Checks must not fix
+files or install dependencies. The optional uv profile uses `--frozen --no-sync`.
+Configured checks run on every branch, including committed code.
 
 Verification records in `.claude/verification/<session-hash>.json` identify `HEAD` and a SHA-256 of the working inputs before and after checks. Ignored project commands, rules, guidance, and specs participate in the fingerprint; runtime logs and markers do not. `scope: "worktree"` includes local inputs beyond the committed tree. Correction turns verify again, and an earlier success is reused only for unchanged inputs. Three failed attempts produce an explicit `blocked` result and stop with a user-visible failure; a new user turn can retry. Infrastructure failures remain `incomplete`, state-capture failures remain `unavailable`, and a crash leaves `running`, never a stale success.
 

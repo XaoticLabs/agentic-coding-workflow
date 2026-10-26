@@ -1,6 +1,6 @@
 #!/bin/bash
-# Python lint/test runner — called by lint-on-stop.sh
-# Expects: PYTHON_LINT_COMMAND and PYTHON_TEST_COMMAND resolved by caller
+# Project lint/test runner — called by lint-on-stop.sh for any configured stack
+# Expects: PROJECT_LINT_COMMAND and PROJECT_TEST_COMMAND resolved by caller
 # Sets: has_code_errors, has_infra_warnings, infra_warnings, output (appends)
 
 # Source infra classifier
@@ -8,7 +8,7 @@ SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 source "${SCRIPT_DIR}/infra-patterns.sh"
 
 for action in lint test; do
-  if [ "$action" = lint ]; then command="$PYTHON_LINT_COMMAND"; else command="$PYTHON_TEST_COMMAND"; fi
+  if [ "$action" = lint ]; then command="$PROJECT_LINT_COMMAND"; else command="$PROJECT_TEST_COMMAND"; fi
   [ -n "$command" ] || continue
   output+="=== project ${action} ===\n"
   # Preserve project quoting and operators; pipe failures must not be hidden.

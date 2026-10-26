@@ -80,6 +80,11 @@ mkdir -p <target-project-path>/.claude/plans
 
 Keep the plan concise and actionable. Reference relevant files and existing patterns where they ground decisions. Detailed code, schemas, and per-file instructions belong in an optional `/agentic-coding-workflow:write-spec` handoff. Validate meaningful content under the core headings; do not pad a plan to a line count or add sections that do not help this task.
 
+For substantial work, identify independently understandable, testable review
+and integration boundaries. Keep dependent behavior and its tests together;
+avoid unrelated refactoring and arbitrary PR size quotas. Follow **Reviewable
+changes** in `${CLAUDE_PLUGIN_ROOT}/references/review-policy.md`.
+
 #### Document Template
 
 ```markdown

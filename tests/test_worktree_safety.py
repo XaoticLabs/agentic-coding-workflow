@@ -238,6 +238,40 @@ def launch_reviews(
     )
 
 
+@pytest.mark.parametrize("review_mode", ["defects", "suggestions"])
+def test_review_launch_preserves_mode_and_does_not_install_dependencies(
+    project: Path, review_environment: dict[str, str], tmp_path: Path, review_mode: str
+) -> None:
+    # Node setup must not select npm or fall back to a lockfile-changing install.
+    (project / "package.json").write_text('{"packageManager": "pnpm@10.0.0"}')
+    git(project, "add", "package.json")
+    git(project, "commit", "--quiet", "-m", "Node project")
+    git(project, "branch", "-f", "review-one")
+    write_executable(tmp_path / "bin/npm", 'touch "$TEST_INSTALL_ATTEMPT"\n')
+    write_executable(
+        tmp_path / "bin/claude",
+        'python3 -c \'import json, os, sys; from pathlib import Path; Path(os.environ["TEST_REVIEW_ARGS"]).write_text(json.dumps(sys.argv[1:]))\' "$@"\n',
+    )
+    arguments = tmp_path / "review-args.json"
+    installation = tmp_path / "install-attempt"
+    result = launch_reviews(
+        project,
+        {
+            **review_environment,
+            "REVIEW_MODE": review_mode,
+            "TEST_REVIEW_ARGS": str(arguments),
+            "TEST_INSTALL_ATTEMPT": str(installation),
+        },
+        "review-one",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    args = json.loads(arguments.read_text())
+    context = args[args.index("--append-system-prompt") + 1]
+    assert f"Review mode: {review_mode}" in context
+    assert f"{PLUGIN_ROOT}/skills/pr-reviewer" in context
+    assert not installation.exists()
+
+
 @pytest.mark.parametrize("exit_code, signal", [(0, ""), (7, ""), (143, "TERM"), (129, "HUP")])
 def test_review_exit_cleans_only_its_owned_worktree_and_archives_evidence(
     project: Path, review_environment: dict[str, str], exit_code: int, signal: str

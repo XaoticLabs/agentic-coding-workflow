@@ -11,6 +11,8 @@ REVIEW_SCRIPT="${SCRIPT_DIR}/review-in-worktree.sh"
 source "${SCRIPT_DIR}/lib/worktree-safety.sh"
 
 LANGUAGE="$1"
+REVIEW_MODE="${REVIEW_MODE:-defects}"
+case "$REVIEW_MODE" in defects|suggestions) ;; *) echo "Error: invalid REVIEW_MODE" >&2; exit 2 ;; esac
 shift
 BRANCHES=("$@")
 WORKTREE_PATHS=()
@@ -87,7 +89,7 @@ done
 # Single branch — run directly, no tmux needed
 if [ ${#BRANCHES[@]} -eq 1 ]; then
   echo "Single branch — launching review directly..."
-  exec bash "$REVIEW_SCRIPT" "$REPO_ROOT" "${WORKTREE_PATHS[0]}" "${BRANCHES[0]}" "$LANGUAGE" "${PR_NUMBERS[0]}"
+  exec bash "$REVIEW_SCRIPT" "$REPO_ROOT" "${WORKTREE_PATHS[0]}" "${BRANCHES[0]}" "$LANGUAGE" "${PR_NUMBERS[0]}" "$REVIEW_MODE"
 fi
 
 WORKSPACE_NAME="pr-review-$(date +%s)"
@@ -98,7 +100,7 @@ for i in "${!BRANCHES[@]}"; do
   WORKTREE_PATH="${WORKTREE_PATHS[$i]}"
   PR_NUM="${PR_NUMBERS[$i]}"
 
-  printf -v CMD '%q ' env "WORKTREE_OWNER_TOKEN=${WORKTREE_OWNER_TOKEN}" bash "$REVIEW_SCRIPT" "$REPO_ROOT" "$WORKTREE_PATH" "$BRANCH" "$LANGUAGE" "$PR_NUM"
+  printf -v CMD '%q ' env "WORKTREE_OWNER_TOKEN=${WORKTREE_OWNER_TOKEN}" bash "$REVIEW_SCRIPT" "$REPO_ROOT" "$WORKTREE_PATH" "$BRANCH" "$LANGUAGE" "$PR_NUM" "$REVIEW_MODE"
 
   if [ "$FIRST" = true ]; then
     if [ -n "${TMUX:-}" ]; then

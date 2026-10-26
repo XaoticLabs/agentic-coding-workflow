@@ -156,7 +156,7 @@ detect_test_command() {
   local test_cmd=""
   local config_status
 
-  if test_cmd=$(python3 "$_PROJECT_COMMANDS_SCRIPT" get "$project_dir" test); then
+  if test_cmd=$(python3 "$_PROJECT_COMMANDS_SCRIPT" get "$project_dir" test --required); then
     printf '%s\n' "$test_cmd"
     return 0
   else
@@ -197,7 +197,7 @@ detect_lint_command() {
   local lint_cmd=""
   local config_status
 
-  if lint_cmd=$(python3 "$_PROJECT_COMMANDS_SCRIPT" get "$project_dir" lint); then
+  if lint_cmd=$(python3 "$_PROJECT_COMMANDS_SCRIPT" get "$project_dir" lint --required); then
     printf '%s\n' "$lint_cmd"
     return 0
   else
@@ -239,7 +239,7 @@ run_test_gate() {
   fi
 
   echo "  Running tests: $test_cmd"
-  if (cd "$project_dir" && eval "$test_cmd") > "$log_file" 2>&1; then
+  if (cd "$project_dir" && bash -o pipefail -c "$test_cmd") > "$log_file" 2>&1; then
     return 0
   else
     return 1
@@ -252,7 +252,7 @@ run_verification_gate() {
   local project_dir="$1" log_prefix="$2" lint_cmd passed=true
   if ! run_test_gate "$project_dir" "${log_prefix}-test.log"; then passed=false; fi
   if lint_cmd=$(detect_lint_command "$project_dir"); then
-    if [ -n "$lint_cmd" ] && ! (cd "$project_dir" && eval "$lint_cmd") > "${log_prefix}-lint.log" 2>&1; then
+    if [ -n "$lint_cmd" ] && ! (cd "$project_dir" && bash -o pipefail -c "$lint_cmd") > "${log_prefix}-lint.log" 2>&1; then
       passed=false
     fi
   else

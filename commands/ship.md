@@ -123,6 +123,13 @@ Read the template file. Preserve its exact structure — headings, sections, che
 
 The goal is that a reviewer opening the PR sees their familiar template fully filled out, not a generic description pasted over it.
 
+Fit the **PR evidence** facts from
+`${CLAUDE_PLUGIN_ROOT}/references/review-policy.md` into existing sections.
+Distinguish tests actually run from planned checks, name the checked source
+state, and surface remaining reviewer decisions and recovery details when
+relevant. Link to artifacts instead of pasting large logs. Preserve the template;
+do not add a second checklist that repeats it.
+
 Write the filled template to `.claude/pr-description.md`.
 
 **If no PR template was found:**
@@ -131,16 +138,18 @@ Fall back to the default format:
 
 ```markdown
 ## Summary
-- (2-3 bullet points covering what this PR does and why)
+- (problem, observable before/after behavior, and important implementation decision)
 
-## Changes
-- (one bullet per logical commit, with file counts)
+## Verification
+- Checked source: (commit SHA, or identified worktree state)
+- (actual command, result, and scope; link to relevant runtime/CI evidence)
+- Not run / limitations: (required checks still unavailable, or none)
 
-## Test plan
-- [ ] (specific things to verify — derived from spec acceptance criteria or from reading the diff)
+## Reviewer decisions
+- (specific remaining behavior, compatibility, or architecture decisions, or none)
 
-## Notes
-- (anything reviewers should pay attention to)
+## Recovery
+- (revert/disable approach and data limitations when consequential; omit if inapplicable)
 ```
 
 Write to `.claude/pr-description.md`.

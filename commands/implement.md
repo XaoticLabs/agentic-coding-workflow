@@ -134,6 +134,13 @@ Derive a valid, unused branch name from the spec slug or ad-hoc description, pre
 
 For substantial work, maintain a concise checklist of implementation steps and acceptance checks. A small change does not need a separate todo artifact.
 
+Choose reviewable behavior/interface boundaries using
+`${CLAUDE_PLUGIN_ROOT}/references/review-policy.md`. Keep each proposed change
+understandable and verifiable; identify dependent follow-ups explicitly. When
+the review queue is the bottleneck, finish evidence and address open feedback
+before increasing parallel implementation. Do not change team WIP policy or
+split tightly coupled code/tests just to meet a size target.
+
 **Understand the context:**
 - Read all files mentioned in "Files to create/modify"
 - Read any files mentioned in the detailed specification
@@ -217,6 +224,11 @@ If the green implementation has obvious duplication or awkwardness, clean it up 
 
 Run the test, lint, and other checks selected in Phase 3. Use focused checks when appropriate and run broader regression checks when shared behavior or project policy calls for them. Configured required checks must pass. Explicitly report checks that are disabled, unavailable, or not run.
 
+Use `${CLAUDE_PLUGIN_ROOT}/references/project-readiness.md` for Go, Python,
+TypeScript, and mixed-project command selection. When relevant, exercise the
+actual API, integration, or browser flow and retain concise evidence. Report
+the checked revision or working-input fingerprint and what remains unverified.
+
 **Check each acceptance criterion:**
 Go through the acceptance criteria one by one and verify:
 - [ ] Each criterion is met
@@ -233,6 +245,12 @@ Go through the acceptance criteria one by one and verify:
 ### Phase 6: Summary Report
 
 Report what changed, what was verified with actual outcomes, and any unresolved limitations. For a small change, a short paragraph is sufficient. For a substantial task, use the following structure and omit inapplicable sections:
+
+Include the **PR evidence** facts from
+`${CLAUDE_PLUGIN_ROOT}/references/review-policy.md`: behavior, important decision,
+observed verification and source state, remaining reviewer decisions, and
+recovery when consequential. An authorized author/reviewer loop follows the
+same policy's three-round budget; ordinary implementation does not start one.
 
 ```markdown
 ## Implementation Complete: Task [N] - [Name]
