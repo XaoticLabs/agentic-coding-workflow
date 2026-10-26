@@ -99,13 +99,13 @@ are already authorized.
 
 | Command | What it does |
 |---------|--------------|
-| `/agentic-coding-workflow:prime` | Loads initial context — git logs, docs, project structure. Add `--deep` for thorough codebase analysis. |
+| `/agentic-coding-workflow:prime` | Loads project and optional Jira/Linear ticket context through CLI/API tools. Add `--deep` for thorough codebase analysis. |
 | `/agentic-coding-workflow:plan` | Writes a concise plan from a ticket, description, or context document; asks about material uncertainty. Add `--interview` for deeper exploration. |
 | `/agentic-coding-workflow:write-spec` | Transforms a plan into an implementation spec with atomic, actionable tasks. |
-| `/agentic-coding-workflow:implement` | Implements a spec task or ad-hoc description with planning and verification proportional to the task. Optional `--plan`, `--worktree`, and `--approve-tests` modes. |
+| `/agentic-coding-workflow:implement` | Implements a ticket, spec task, or description with proportional planning/verification. Optional `--plan`, `--worktree`, `--approve-tests`, `--start-ticket`, and independent `--review` modes. |
 | `/agentic-coding-workflow:test` | Detects project test framework, runs the suite (or a subset), and reports structured results. |
 | `/agentic-coding-workflow:review` | Code/PR review, spec compliance (`--spec`), plan critique (`--plan`), PR prep (`--prep`), or teaching (`--learn`, `--stats`). Supports Go, Python, TypeScript/JavaScript, Elixir, and mixed changes. Use `--suggestions` for optional design/taste feedback. |
-| `/agentic-coding-workflow:ship` | Pushes the current branch, creates a PR with a generated description, and reports the URL. |
+| `/agentic-coding-workflow:ship` | Pushes the branch and creates/reuses a PR. Optional `--follow-up` handles CI/review repairs; `--link-ticket` and `--ticket-status` request ticket updates. |
 
 ### Autonomous & Parallel
 
@@ -236,6 +236,62 @@ artifact, heading, and line-count expectations are ignored.
 Python tooling is project-specific. The global toolchain blocker and regex style hook have been removed. `/agentic-coding-workflow:setup-python-rules` adapts judgment guidance to the existing stack. The optional [uv/Ruff/basedpyright profile](profiles/python/uv-ruff-basedpyright/README.md) supplies actual tool configuration and check commands only when explicitly selected. Tool configuration owns formatting, lint, typing, and file exclusions.
 
 `/ship` prepares the destination, branch/commit, PR title, complete body, base/head, and draft status before any required review. It chooses a title from the final change and reuses existing authorization for unchanged actions. The agent-writable approval marker and ship hook have been removed: the workflow is an instruction-level policy, not authenticated approval enforcement. Organizations requiring enforcement need a trusted external permission service or publishing executor with approval storage inaccessible to the agent, bound to the exact outgoing action and content. See [External Actions and Approval](references/shared-patterns.md#external-actions-and-approval).
+
+## Jira and Linear without MCP connectors
+
+Ticket-aware workflows share a CLI-first resolver. Jira uses `acli` when the
+requested operation is supported. Both providers have direct API adapters;
+Linear or another Jira CLI can use an explicitly configured argv/JSON adapter.
+There is no implicit CLI install, login, account switching, or MCP requirement.
+
+Set `.claude/ticket-tracker.json` in the **consuming project**, for example:
+
+```json
+{
+  "default_provider": "jira",
+  "providers": {
+    "jira": {
+      "site": "https://example.atlassian.net",
+      "status_map": {"in_progress": "In Progress", "in_review": "Code Review"}
+    }
+  }
+}
+```
+
+Use your actual statuses/site. `auto` uses the supported installed CLI first,
+then configured API access for unavailable operations; a failing CLI does not
+silently fall back. Jira API credentials default to `JIRA_EMAIL` and
+`JIRA_API_TOKEN`; Linear defaults to `LINEAR_API_KEY`. Keep credential values
+in your existing environment/secret tooling. A CLI login does not configure
+API credentials. See [Ticket trackers](references/ticket-trackers.md) for
+OAuth/scoped-token settings, custom CLI contracts, identity checks, and limits.
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/tickets.py" --project-dir "$PWD" doctor
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/tickets.py" --project-dir "$PWD" doctor --check
+```
+
+The first command inspects available connections/versions; `--check` also probes
+authentication with read-only operations. Neither proves write permission.
+URLs select their tracker; a bare `ABC-123` uses the project default or explicit
+`--tracker jira|linear`. The same key can exist in both providers.
+
+```text
+/agentic-coding-workflow:implement ABC-123 --tracker jira --worktree --start-ticket --review
+/agentic-coding-workflow:ship --ticket https://example.atlassian.net/browse/ABC-123 --link-ticket --follow-up
+```
+
+Implementation retrieves the ticket, establishes scope/checks, optionally starts
+it, and includes bounded independent review/repair. Review the diff/evidence
+yourself before invoking ship. Shipping can follow CI/review feedback for a
+default 15-minute conversational budget and reuse the same three-round review
+history. It does not merge. A read-only `scripts/pr-status.py PR_URL --head SHA`
+helper binds checks and unresolved review threads to the published revision.
+Ticket writes are opt-in; low-level `transition`/`link-pr` commands prepare JSON
+without writing until `--apply` is supplied. See [Delivery follow-up](references/delivery-follow-up.md)
+for draft PRs, status timing, failures, single-writer coordination, and pilot
+measurements. Live-provider and native-agent validation are separate from the
+deterministic adapter tests.
 
 ## CLAUDE.md & Rules System
 

@@ -17,6 +17,7 @@ when `RALPH_MODE=1` is explicitly set by the specialized executor.
 ## Instructions
 
 - Identify the task from the request and available context; use an existing plan or spec when relevant
+- For Jira/Linear inputs, use the shared CLI/API ticket resolver and **Ticket Context and Lifecycle** in `references/shared-patterns.md`. Preserve provider/scope/native identity and ticket criteria through handoffs; ticket reads do not authorize status updates. Keep project tracker configuration available in the selected worktree.
 - Search the codebase before implementing — don't duplicate existing work
 - Implement the agreed requirements and preserve unrelated work
 - Follow existing codebase patterns and conventions

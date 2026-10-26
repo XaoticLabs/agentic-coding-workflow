@@ -4,9 +4,11 @@ allowed-tools:
   - Bash
   - Read
   - Write
+  - Edit
   - Glob
   - Grep
   - AskUserQuestion
+  - Agent
 effort: medium
 ---
 
@@ -21,6 +23,16 @@ $ARGUMENTS - Either:
 - A spec path or slug (e.g., `batch-analysis` or `.claude/specs/batch-analysis-spec.md`) — uses for PR description context
 - `--draft` flag — creates a draft PR instead of a ready-for-review PR
 - `--no-squash` — accepted for compatibility; this command preserves commits. History rewriting requires a separate request.
+- `--ticket <key-or-url>` and optional `--tracker jira|linear` — retrieve Jira/Linear context through the shared CLI/API resolver
+- `--link-ticket` — also add an idempotent PR link to the associated ticket
+- `--ticket-status <semantic-or-native-status>` — also transition the ticket after the PR is ready for the requested lifecycle stage
+- `--follow-up` — inspect CI and review feedback, fix/commit supported in-scope issues, reverify, push, and refresh generated verification evidence within the continuing review budget
+- `--follow-up-minutes N` — conversational follow-up budget (default 15; positive integer at most 120); requires `--follow-up`
+
+Remove flags before interpreting the spec/slug input. Ticket write flags require
+an associated ticket. Follow-up is opt-in and never authorizes merge/deployment,
+force pushes, accepting weakened requirements, or resolving review threads on
+someone else's behalf. Honor project-specific review requirements.
 
 ## Instructions
 
@@ -67,6 +79,15 @@ Read the project's verification requirements and configured commands using **Pro
 - Otherwise, look for specs matching the branch name in `.claude/specs/`
 - Also check `.claude/plans/` for a corresponding plan
 - Check for Ralph summary: read `.claude/ralph-logs/ralph-summary-<slug>.md` if it exists for run metrics and context
+
+For `--ticket`, or a ticket explicitly associated with the current feature
+session/spec, follow **Ticket Context and Lifecycle** in the shared patterns.
+Use the shared resolver, not MCP connectors. Preserve the canonical provider,
+scope, native ID, and ticket URL, and fit the ticket link and acceptance evidence
+into the PR template. A branch prefix alone is not enough to choose a tracker.
+Do not replace unavailable ticket context with a fabricated description. Prepare
+requested ticket write proposals along with the publishing proposal; report an
+unavailable ticket connection independently of an otherwise authorized PR.
 
 **Gather context:**
 ```bash
@@ -166,6 +187,7 @@ Before any push or PR creation, prepare and show the concrete proposal:
 - Local branch and exact HEAD commit; destination branch and push refspec
 - PR repository, base and head branches, exact title, complete description, and draft status
 - Verification results and any unresolved limitations
+- Any selected ticket-link/status actions and post-publish follow-up scope/budget
 
 Apply **External Actions and Approval** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`. Honor any project requirement to review this proposal. Ask for approval only when the action is outside existing authorization or the workflow explicitly requires review of the final content. An instruction to implement code alone does not authorize publishing. An instruction to ship can authorize ordinary pushes and PR creation within that scope; do not repeatedly ask for the same approval.
 
@@ -193,9 +215,59 @@ gh pr create \
 
 Add `--draft` only when included in the proposal. Run the push and PR creation sequentially and stop on failure. Never force-push as a recovery step without authorization. If the push succeeds and PR creation fails, report the published branch and retain the description for a retry; do not ask to approve the unchanged push again.
 
-If a PR already exists, retrieve its URL with `gh pr view` using the reviewed repository and branch. Report the existing PR without editing its title or description unless that edit is authorized. Keep the local proposal until the outcome is confirmed.
+If a PR already exists, retrieve its URL with `gh pr view` using the reviewed repository and branch. Reuse it for selected follow-up/ticket actions without editing its title or description unless that edit is authorized. Keep the local proposal until the outcome is confirmed.
 
-### Phase 7: Report
+### Phase 7: CI and Review Follow-up (when selected)
+
+Follow [Delivery follow-up](../references/delivery-follow-up.md). The read-only
+snapshot helper combines check results, review decisions, unresolved inline
+threads (including Bugbot), and recent PR feedback, bound to the published HEAD:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/pr-status.py" "$PR_URL" --head "$PUBLISHED_SHA"
+```
+
+Without `--follow-up`, report the PR normally. With it, track elapsed time and
+the prior completed review rounds. For `needs_attention`, inspect actual logs
+and all relevant feedback, fix supported in-scope defects with one branch writer,
+run required verification, review the changed source as required, and prepare
+the exact next ordinary push under the existing publishing authorization.
+Commit only the scoped repairs using repository conventions, preserving
+unrelated changes, and bind verification to the resulting committed source.
+After a successful push, update the expected published SHA before checking again.
+Refresh the PR's generated verification facts for the final published revision
+under `--follow-up` authorization, preserving its template and human-written
+content. Prepare the exact body edit under the same external-action policy;
+do not leave an earlier checked SHA presented as evidence for later edits.
+Respect the existing shared three-round budget across this logical change;
+unknown history is not a new automatic budget. `pending_checks`, missing checks,
+unavailable feedback, or a timeout never count as a clean result. Stop at the
+selected time/round limit with evidence and the next human decision. An unknown
+remote HEAD requires refreshing the diff and verification before any repair or
+push; do not overwrite another writer's changes.
+
+The helper performs no writes and is not an authorization or branch-protection
+gate. Passing CI does not establish acceptance or absence of Bugbot findings;
+some review findings accompany neutral checks. Inspect feedback and dispositions.
+Do not auto-enable Autofix or run it concurrently with the local writer. Honor
+the project's existing bot review timing; draft PR reviews may need enabling.
+
+### Phase 8: Requested Ticket Updates
+
+For `--link-ticket`, prepare and apply `tickets.py link-pr` with the canonical
+ticket URL and the confirmed PR URL under the selected authorization. Provider
+links are idempotent; do not post duplicate comments. A partial failure leaves
+the PR intact and reports the pending ticket action for a retry.
+
+For `--ticket-status`, prepare/apply the requested transition only after its
+lifecycle condition is met. In particular, defer configured `in_review` while
+the PR is draft or requested follow-up is still pending; do not mark the PR
+ready automatically. `done` requires the team's actual completion condition.
+Use native status discovery/mappings as documented by the resolver. Refresh
+the ticket and report actual outcomes; an unconfirmed write requires checking
+current remote state before retrying.
+
+### Phase 9: Report
 
 ```
 Shipped!
@@ -204,6 +276,9 @@ Branch: feature/batch-analysis
 Published commit: <SHA>
 Commits: 3
 PR: https://github.com/org/repo/pull/123
+
+Follow-up: [not selected | ready for human review | pending | needs attention]
+Ticket actions: [not selected | actual outcomes and remaining actions]
 
 Next steps:
   gh pr view 123 --web     # Open in browser
@@ -217,6 +292,8 @@ Next steps:
 - **No upstream remote:** Suggest `git remote add origin <url>`
 - **Proposal changed:** Revalidate the action and content against existing authorization before publishing
 - **Partial publishing failure:** Report which action succeeded and retain the proposal for retry
+- **Follow-up budget or round limit:** Retain the exact HEAD, check/log links, finding dispositions, and next action; do not claim PASS
+- **Ticket write failure:** Report it separately from the published PR, retain the idempotent operation, and check remote state before retrying an unconfirmed write
 
 ## Example Usage
 

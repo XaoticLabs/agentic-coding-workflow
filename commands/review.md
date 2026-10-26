@@ -11,8 +11,6 @@ allowed-tools:
   - ExitPlanMode
   - WebSearch
   - WebFetch
-  - mcp__claude_ai_Linear__get_issue
-  - mcp__claude_ai_Linear__list_issues
 effort: high
 ---
 
@@ -35,6 +33,7 @@ $ARGUMENTS — Determines the review mode:
 | _(empty)_ | Auto-detect | Check for specs first, fall back to current branch review |
 
 Optional flags:
+- `--tracker jira|linear` — select the tracker for a bare ticket key; remove it before mode detection
 - `go`, `python`, `typescript` (`ts`), `javascript` (`js`), or `elixir` prefix — select language guidance while retaining mixed-change coverage
 - `--suggestions` — include a separate nonblocking design/taste section; default reports prioritize actionable defects
 - `--env staging|prod` — for troubleshooting context
@@ -53,7 +52,7 @@ reviews and author/reviewer loops. Preserve learn mode's teaching format.
 2. If starts with `--stats` → **Review Stats** mode
 3. If starts with `--plan` → **Plan Review** mode
 4. If starts with `--prep` → **PR Prep** mode
-5. If starts with `--spec` or argument is a Linear ticket ID (pattern: `LETTERS-DIGITS`) or a spec path (`.claude/specs/`) or a quoted description → **Implementation Review** mode
+5. If starts with `--spec` or argument is a Jira/Linear ticket key or ticket URL, a spec path (`.claude/specs/`), or a quoted description → **Implementation Review** mode
 6. If argument looks like a branch name → **PR Code Review** mode
 7. If empty → check `.claude/specs/` for recent specs; if found, offer Implementation Review; otherwise review current branch
 
@@ -293,12 +292,12 @@ path also serves as the fallback if the launcher is unavailable.
 
 ## Mode: Implementation Review
 
-Review code changes against a spec, Linear ticket, or ad-hoc criteria.
+Review code changes against a spec, Jira/Linear ticket, or ad-hoc criteria.
 
 ### 1. Locate Review Criteria
 
 - **Spec path/slug:** Read `.claude/specs/<slug>-spec.md`, extract acceptance criteria
-- **Linear ticket ID** (e.g., `AI-1234`): Fetch via Linear MCP, extract criteria
+- **Ticket key or URL** (e.g., `AI-1234`): Follow **Ticket Context and Lifecycle** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`; fetch through the shared CLI/API resolver, extract criteria, and preserve provider/site/native identity. Do not use MCP connectors. If retrieval fails or relevant context is truncated, report the gap and inspect available source; do not claim ticket compliance without the missing criteria.
 - **Quoted description:** Use directly as criteria
 - **Empty:** List `.claude/specs/`, ask user to select or provide criteria
 
@@ -444,7 +443,7 @@ Show before/after commit count, backup branch, PR description path, and next ste
 /agentic-coding-workflow:review --learn --focus edge-cases,reliability   # Drill specific phases
 /agentic-coding-workflow:review --stats                                  # Show learning progress
 /agentic-coding-workflow:review --spec batch-analysis                    # Review against spec
-/agentic-coding-workflow:review --spec AI-1234                           # Review against Linear ticket
+/agentic-coding-workflow:review --spec AI-1234 --tracker jira            # Review against a Jira ticket
 /agentic-coding-workflow:review --spec "users can reset password"        # Review against description
 /agentic-coding-workflow:review --plan feature-name                      # Staff engineer plan critique
 /agentic-coding-workflow:review --prep                                   # Squash WIP, generate PR desc

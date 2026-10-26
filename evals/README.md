@@ -17,6 +17,7 @@ does not establish that they represent unseen real-world tasks.
 | --- | --- | --- |
 | Tuning | `skill-forge-small-skill`, `skill-forge-near-miss` | Self-contained skill creation and ordinary prose near-miss |
 | Tuning | `native-goal-workflow`, `spawn-native-goal`, `spawn-native-worktree`, `resume-feature-session` | Workflow selection, native isolation, goals, and session continuity |
+| Tuning | `ticket-cli-api-routing`, `delivery-follow-up` | CLI/API ticket identity, explicit fallback, and bounded PR feedback handling |
 | Holdout | `skill-forge-repair-skill` | Repair evidence handling and missing-fact behavior while preserving invocation policy |
 | Holdout | `skill-forge-explicit-deploy` | Draft a manually invoked deployment workflow without executing it |
 

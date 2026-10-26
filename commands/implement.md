@@ -10,6 +10,7 @@ allowed-tools:
   - EnterPlanMode
   - ExitPlanMode
   - EnterWorktree
+  - Agent
 effort: high
 ---
 
@@ -24,11 +25,16 @@ $ARGUMENTS - Either:
 - A spec path and task number (e.g., `.claude/specs/feature-name-spec.md 3`)
 - A spec path and task name (e.g., `.claude/specs/feature-name-spec.md "Create migration"`)
 - An ad-hoc description (e.g., `"add a health check endpoint"`)
+- A Jira/Linear ticket key or URL; retrieve its context through the shared CLI/API resolver
 
 Optional modes:
 - `--plan` — use plan mode and obtain plan approval before implementation
 - `--worktree` — implement in an isolated worktree
 - `--approve-tests` — prepare acceptance tests and obtain explicit approval of their behavioral expectations before implementation
+- `--tracker jira|linear` — select the ticket provider
+- `--ticket <key-or-url>` — associate an ad-hoc/spec task with a ticket
+- `--start-ticket` — also transition the associated ticket to configured `in_progress` once scope and the working checkout are established
+- `--review` — include independent review and supported repairs within the shared three-round budget before returning the final result
 
 Parse these flags separately from the description or spec/task selector. Honor equivalent modes explicitly requested in the conversation or spec. A normal TDD request selects test-first development without automatically adding separate failing commits or a test-approval gate. Merely naming tests in a spec does not select contract mode.
 
@@ -40,7 +46,7 @@ Parse these flags separately from the description or spec/task selector. Honor e
 
 Switch to autonomous mode — skip all interactive prompts and implement exactly one task:
 
-Ralph owns isolation, execution limits, progress preservation, and its test and verification integrity policy. Follow `skills/ralph/references/PROMPT_build.md` for its contract and verification requirements. Reject conflicting interactive `--plan` or `--approve-tests` flags before starting; do not silently drop an approval request. The interactive phases below do not change Ralph's gates.
+Ralph owns isolation, execution limits, progress preservation, and its test and verification integrity policy. Follow `skills/ralph/references/PROMPT_build.md` for its contract and verification requirements. Reject conflicting interactive `--plan`, `--approve-tests`, `--start-ticket`, or `--review` flags before starting; do not silently drop a selected mode. The interactive phases below do not change Ralph's gates.
 
 1. **Parse spec location** from `$ARGUMENTS` or environment (`RALPH_SPEC_DIR`)
 2. **Read `IMPLEMENTATION_PLAN.md`** from the spec directory
@@ -73,12 +79,25 @@ Ralph owns isolation, execution limits, progress preservation, and its test and 
 - Summary reports — the commit and plan update are the record
 
 **If not in Ralph mode**, proceed with the normal interactive flow below.
+The new `--start-ticket` and `--review` flags are interactive workflow modes;
+reject them in Ralph mode rather than silently bypassing Ralph's executor and
+verification contracts. Ralph can consume already fetched ticket criteria in
+its spec without taking ownership of remote ticket updates.
 
 ---
 
 ### Phase 0: Inspect and Choose the Workflow
 
 Follow **Proportional Workflow** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`. Read relevant project guidance, inspect the worktree status, search for existing behavior, and identify the intended outcome and verification approach. Preserve unrelated local changes.
+
+For a ticket input or `--ticket`, follow **Ticket Context and Lifecycle** in
+the shared patterns. Retrieve through `scripts/tickets.py get`, carry the exact
+provider/scope/native ID/canonical URL, and use the title, description, relevant
+comments, and acceptance criteria as the task input. Keep source requirements
+distinct from your own derived checks. If a ticket input replaces a spec,
+continue as an ad-hoc task after resolving material uncertainty. Do not treat
+an unreadable ticket as permission to guess its implementation. `--start-ticket`
+requires an associated ticket; reject it if none is available.
 
 - **Small, clear change:** Proceed through the applicable implementation and verification phases without a separate plan document or approval round.
 - **Substantial or ambiguous change:** Resolve material uncertainty, maintain a concise conversational plan, then implement. Save a plan or generate a spec only when requested or useful for handoff. Ask questions only when their answers could change implementation, acceptance criteria, or risk.
@@ -131,6 +150,14 @@ Also read the corresponding plan in `.claude/plans/` if available, for example `
 **Choose the checkout:** Use the current checkout by default when project policy permits. For `--worktree`, concurrent work that needs isolation, or project-required isolation, reuse an appropriate existing worktree or create one using **Worktree Creation** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`.
 
 Derive a valid, unused branch name from the spec slug or ad-hoc description, preserving a ticket prefix. Use a supplied name when present; a routine derived name needs no confirmation. Report the branch and path. Copy relevant untracked or ignored plan/spec files and project command configuration into a new worktree when needed. Do not overwrite existing files or assume a new worktree includes uncommitted inputs; resolve any dependency on local changes before switching. Perform remaining phases in the selected checkout.
+
+Carry `.claude/ticket-tracker.json` into an isolated checkout when needed,
+preserving its project-selected settings and any existing destination file.
+After setup and scope are established, `--start-ticket` authorizes preparing
+and applying the `in_progress` transition through the resolver. Use the
+canonical ticket URL and any selected tracker. A repeated request already at
+the target status is a no-op. Report failures without claiming the ticket moved;
+continue authorized local work unless project policy requires synchronization.
 
 For substantial work, maintain a concise checklist of implementation steps and acceptance checks. A small change does not need a separate todo artifact.
 
@@ -242,6 +269,26 @@ Go through the acceptance criteria one by one and verify:
 - Check that error handling is appropriate
 - Review test and verification diffs for weakened coverage or bypasses; record rationale, independent review, and any required human approval
 
+### Phase 5b: Independent Review and Repair (when `--review` is selected)
+
+Use the existing review command/pr-reviewer guidance in a separate read-only
+context. Give it the full diff, original criteria, base/head or working-input
+fingerprint, verification evidence, and prior findings/round count. A model's
+agreement does not replace runnable evidence. The implementation session owns
+all edits; do not launch another writer on the same branch.
+
+Follow `${CLAUDE_PLUGIN_ROOT}/references/review-policy.md` for the initial full
+review, actionable findings, incremental re-review, and at most three completed
+rounds per logical change across local and remote stages. Fix supported defects,
+retain evidence for rejected findings, and rerun affected/required checks on
+the final source state. Preserve the current round and dispositions in the
+continuing session or `.claude/reviews/<ticket-or-branch>.json` for handoff; this
+record is context, not trusted approval. Existing rounds do not reset at push.
+If an independent reviewer is unavailable, report independent review NOT_RUN.
+If material findings remain at the budget, hand off without claiming completion
+or a clean review. An ordinary implementation without this flag retains its
+existing one-session verification path and project-required review rules.
+
 ### Phase 6: Summary Report
 
 Report what changed, what was verified with actual outcomes, and any unresolved limitations. For a small change, a short paragraph is sufficient. For a substantial task, use the following structure and omit inapplicable sections:
@@ -251,6 +298,9 @@ Include the **PR evidence** facts from
 observed verification and source state, remaining reviewer decisions, and
 recovery when consequential. An authorized author/reviewer loop follows the
 same policy's three-round budget; ordinary implementation does not start one.
+For ticket work, include the canonical ticket identity and actual transition
+outcome. For `--review`, include the reviewed source, completed rounds, remaining
+findings, and the next action so shipping can resume the same history.
 
 ```markdown
 ## Implementation Complete: Task [N] - [Name]

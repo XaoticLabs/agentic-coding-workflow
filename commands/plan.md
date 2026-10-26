@@ -8,7 +8,6 @@ allowed-tools:
   - AskUserQuestion
   - WebFetch
   - Agent
-  - mcp__claude_ai_Linear__get_issue
 effort: high
 ---
 
@@ -19,11 +18,15 @@ Produces a concise, codebase-grounded plan. Resolves material uncertainty before
 ## Input
 
 $ARGUMENTS - Either:
-- A Linear ticket ID (e.g., `AI-1234`)
+- A Jira/Linear ticket key or URL (e.g., `AI-1234`)
 - A feature description string (e.g., `"batch conversation analysis"`)
 - A path to an existing context document (e.g., `../other-repo/docs/research.md`)
 
 Optional flag: `--interview` — explore the problem, challenge consequential assumptions, and discuss alternatives with the user before writing. Remove the flag before interpreting the remaining input. Honor an explicit request for review or approval before writing.
+
+`--tracker jira|linear` selects the ticket provider when a bare key is ambiguous.
+Remove this flag before interpreting the remaining input; URLs and project
+configuration can also select the provider.
 
 ## Instructions
 
@@ -39,9 +42,10 @@ During research and clarification, use read-only tools, ticket retrieval, WebFet
 - Check if `.claude/prime-context/context.md` exists in the target project — if so, read it
 - If the input is a path to a context file, read that instead
 
-**If the input looks like a ticket ID** (pattern: letters-numbers like "AI-1234", "COMMS-567"):
-- Use the Linear MCP tool to fetch the ticket details
+**If the input is a ticket key or Jira/Linear ticket URL:**
+- Follow **Ticket Context and Lifecycle** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`; use the shared CLI/API resolver, not MCP connectors
 - Extract: title, description, acceptance criteria, any linked tickets
+- Preserve the returned provider, scope, native ID, canonical URL, and any context limitations in the plan's Source and relevant open questions
 - Use this as the starting point
 
 **If the input is a feature description:**
@@ -139,14 +143,14 @@ Report the saved path, the approach, verification criteria, and any blocking ope
 ## Example Usage
 
 ```
-/agentic-coding-workflow:plan AI-1234
+/agentic-coding-workflow:plan AI-1234 --tracker jira
 /agentic-coding-workflow:plan --interview "batch conversation analysis for admin dashboard"
 /agentic-coding-workflow:plan ../other-repo/docs/research-spec.md
 ```
 
 ## Error Handling
 
-- If Linear MCP unavailable or ticket not found, ask user to provide the feature description directly
+- If ticket retrieval fails, report the resolver's error and continue independent code investigation. Resolve missing criteria from the configured connection or user-provided content before claiming a complete ticket-based plan; label a requested draft's missing context explicitly. Do not silently switch providers/accounts or treat unavailable context as an empty ticket.
 - If the user wants to skip further questions, write from available context and identify assumptions and any blockers in Open Questions
 - If the target project's `.claude/plans/` directory can't be created, ask the user where to save
 - If prime-context doesn't exist, proceed without it (don't error)

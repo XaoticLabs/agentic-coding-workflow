@@ -72,6 +72,13 @@ Use `references/review-policy.md` for reviewable changes, PR evidence, actionabl
 findings, and bounded repair; `references/project-readiness.md` documents
 project-owned Go/Python/TypeScript checks and configuration readiness.
 
+Ticket connectors default to installed CLI tools and explicitly configured APIs,
+not MCP. Reuse `scripts/tickets.py` and `references/ticket-trackers.md` across
+prime/plan/implement/review/ship. Keep provider/site/native identity consistent,
+report unavailable or unauthenticated connections, and make remote updates
+explicit. `references/delivery-follow-up.md` connects independent review and
+post-publish CI/feedback handling to the existing shared review budget.
+
 Always inspect recent `git log` before committing and follow the repository's historical commit pattern. Current history uses concise, lowercase `type: description` subjects (for example, `fix: ...`), normally without a body.
 
 ## File Organization

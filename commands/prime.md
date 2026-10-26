@@ -5,8 +5,8 @@ allowed-tools:
   - Grep
   - Bash
   - Agent
-  - mcp__claude_ai_Linear__get_issue
-  - mcp__claude_ai_Linear__list_issues
+  - Write
+  - AskUserQuestion
 effort: medium
 ---
 
@@ -16,7 +16,7 @@ Prime project context before starting work on a ticket or feature. The determini
 
 ## Variables
 
-ticket_id: $ARGUMENTS (optional - Linear ticket ID like "AI-3364", can include "--deep" flag)
+ticket_reference: $ARGUMENTS (optional Jira/Linear key or URL; supports `--tracker jira|linear` and `--deep`)
 
 ## Pre-Gathered Context
 
@@ -29,7 +29,8 @@ The following was injected at invocation time — do NOT re-gather this data wit
 ## Instructions
 
 Parse the arguments to extract:
-- `ticket_id`: Any ticket ID pattern (letters followed by dash and numbers, e.g., "AI-3364")
+- `ticket_reference`: A ticket key such as `AI-3364`, or a Jira/Linear ticket URL
+- `tracker`: Optional `--tracker jira|linear`; remove it before interpreting the reference
 - `deep_mode`: Whether "--deep" flag is present
 
 ### Quick Mode (default)
@@ -38,10 +39,11 @@ The pre-gathered context above already contains git state, tech stack, directory
 
 1. **Analyze the pre-gathered context** — identify the project's purpose, architecture patterns, and current state from the injected data above. Don't re-read files that were already injected.
 
-2. **Ticket Details** (if ticket_id provided)
-   - Use the Linear MCP tool to fetch the ticket
+2. **Ticket Details** (if a ticket reference is provided)
+   - Follow **Ticket Context and Lifecycle** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`. Fetch through `scripts/tickets.py get` in the target project using the selected tracker, CLI, and API configuration. Do not call MCP connectors.
    - Extract: title, description, acceptance criteria, status, assignee
    - Note any linked issues or parent tickets
+   - Carry the returned provider, scope, native ID, and canonical URL into the saved context. Preserve limitations such as truncated comments; fetch relevant missing context through the same configured account when needed. This read does not transition the ticket.
 
 3. **Synthesize** — connect the dots between project structure, recent git activity, and ticket requirements to form an actionable starting point.
 
@@ -129,12 +131,12 @@ When working with Elixir/Phoenix projects, specifically highlight:
 ## Example Invocations
 
 - `/agentic-coding-workflow:prime` — Quick context, no ticket
-- `/agentic-coding-workflow:prime AI-3364` — Quick context with Linear ticket
+- `/agentic-coding-workflow:prime AI-3364 --tracker jira` — Quick context with a Jira ticket
 - `/agentic-coding-workflow:prime --deep` — Deep context analysis, no ticket
-- `/agentic-coding-workflow:prime AI-3364 --deep` — Deep context with ticket
+- `/agentic-coding-workflow:prime https://linear.app/acme/issue/AI-3364/title --deep` — Deep context with a Linear ticket
 
 ## Error Handling
 
 - If the pre-gathered context script failed (see warning above), fall back to manual gathering using Read/Bash tools
-- If Linear MCP is unavailable or ticket not found, continue without ticket info and note the issue
+- If the resolver reports ambiguity, select the provider/site once and retain it. For missing connections, authentication failures, or missing tickets, report the specific error and continue useful project inspection. Label ticket context unavailable; do not invent acceptance criteria or claim the ticket was read. See the tracker setup reference before requesting pasted content.
 - If README.md doesn't exist, note that and continue with other context gathering
