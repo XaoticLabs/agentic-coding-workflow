@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Process and evidence contracts shared by Ralph workers and the orchestrator.
+# Model propagation and recorded pipelines used by shell workflow launchers.
 
 [[ -n "${_CLAUDE_RUNNER_LOADED:-}" ]] && return 0
 _CLAUDE_RUNNER_LOADED=1

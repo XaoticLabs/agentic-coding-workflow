@@ -354,10 +354,10 @@ def protected_path(path: Path) -> bool:
 
 
 def read_ui_evidence() -> tuple[Path | None, str | None]:
-    ui_evidence = os.environ.get("RALPH_EVAL_UI_EVIDENCE", "")
+    ui_evidence = os.environ.get("WORKFLOW_EVAL_UI_EVIDENCE", "")
     ui = None
     ui_hash = None
-    if os.environ.get("RALPH_EVALUATE_UI", "false") == "true":
+    if os.environ.get("WORKFLOW_EVALUATE_UI", "false") == "true":
         ui = Path(ui_evidence).resolve()
         if (
             not ui_evidence
@@ -366,7 +366,7 @@ def read_ui_evidence() -> tuple[Path | None, str | None]:
             or not any(ui.iterdir())
         ):
             raise ValueError(
-                "UI evaluation requires pre-recorded RALPH_EVAL_UI_EVIDENCE inside the project"
+                "UI evaluation requires pre-recorded WORKFLOW_EVAL_UI_EVIDENCE inside the project"
             )
         ui_hash = ui_fingerprint(ui)
     return ui, ui_hash

@@ -1,7 +1,7 @@
 {
   "name": "agentic-coding-workflow",
-  "version": "1.4.0",
-  "description": "Comprehensive agentic coding toolkit",
+  "version": "2.0.0",
+  "description": "Scoped coding workflows, source-bound verification, and the Relay task supervisor",
   "homepage": "https://github.com/XaoticLabs/agentic-coding-workflow",
   "repository": "https://github.com/XaoticLabs/agentic-coding-workflow",
   "keywords": [
@@ -13,5 +13,8 @@
     "ai-workflows",
     "hooks",
     "experimental"
-  ]
+  ],
+  "author": {
+    "name": "XaoticLabs"
+  }
 }

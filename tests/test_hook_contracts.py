@@ -93,18 +93,32 @@ def test_output_validation_ignores_document_rules_but_checks_task_graphs(
         + "\n"
     )
     expectations = project / ".claude/expected-output.json"
-    expectations.write_text(json.dumps({
-        "source": "ralph-plan",
-        "rules": [
-            {"type": "file_exists", "path": "missing-document.md"},
-            {"type": "file_contains", "path": ".claude/plan.md",
-             "sections": ["## Missing"]},
-            {"type": "dir_files_contain", "path": "missing-specs",
-             "sections": ["## Acceptance Criteria"]},
-            {"type": "file_min_lines", "path": ".claude/plan.md", "min_lines": 100},
-            {"type": "task_index_format", "path": ".claude/plan.md"},
-        ],
-    }))
+    expectations.write_text(
+        json.dumps(
+            {
+                "source": "relay-plan",
+                "rules": [
+                    {"type": "file_exists", "path": "missing-document.md"},
+                    {
+                        "type": "file_contains",
+                        "path": ".claude/plan.md",
+                        "sections": ["## Missing"],
+                    },
+                    {
+                        "type": "dir_files_contain",
+                        "path": "missing-specs",
+                        "sections": ["## Acceptance Criteria"],
+                    },
+                    {
+                        "type": "file_min_lines",
+                        "path": ".claude/plan.md",
+                        "min_lines": 100,
+                    },
+                    {"type": "task_index_format", "path": ".claude/plan.md"},
+                ],
+            }
+        )
+    )
 
     result = invoke(project, "validate-output.py", {})
 
@@ -159,66 +173,7 @@ def test_global_edit_hooks_do_not_run_post_tool_checks(project: Path) -> None:
             },
         },
     )
-    assert results == []
-
-
-@pytest.mark.parametrize("mode", ["0", "1"])
-def test_ralph_plan_update_gate_is_active_only_for_builds(
-    project: Path, mode: str
-) -> None:
-    (project / "IMPLEMENTATION_PLAN.md").write_text("- [ ] Task\n")
-    (project / "code.txt").write_text("before\n")
-    git(project, "add", ".")
-    git(project, "commit", "--quiet", "-m", "Initial")
-    base = git(project, "rev-parse", "HEAD")
-    (project / "code.txt").write_text("after\n")
-    git(project, "commit", "--quiet", "-am", "Implement without plan update")
-    result = invoke(
-        project,
-        "ralph-on-stop.sh",
-        {"stop_hook_active": False},
-        RALPH_MODE=mode,
-        RALPH_PRE_COMMIT=base,
-    )
-    assert result.returncode == 0, result.stderr
-    if mode == "1":
-        assert json.loads(result.stdout)["decision"] == "block"
-        assert "IMPLEMENTATION_PLAN.md was not updated" in result.stdout
-    else:
-        assert result.stdout == ""
-
-
-def test_ralph_plan_update_passes_without_launching_a_quality_judge(project: Path) -> None:
-    (project / "IMPLEMENTATION_PLAN.md").write_text("- [ ] Task\n")
-    (project / "code.txt").write_text("before\n")
-    git(project, "add", ".")
-    git(project, "commit", "--quiet", "-m", "Initial")
-    base = git(project, "rev-parse", "HEAD")
-    (project / "IMPLEMENTATION_PLAN.md").write_text("- [x] Task\n")
-    (project / "code.txt").write_text("after\n")
-    git(project, "commit", "--quiet", "-am", "Implement and update plan")
-    executable(
-        project.parent / "bin/claude",
-        """
-import os
-from pathlib import Path
-Path(os.environ["TEST_JUDGE_MODE"]).write_text(os.environ.get("RALPH_MODE", ""))
-print("FAIL: this judge must not run")
-""",
-    )
-    mode_file = project.parent / "judge-mode"
-    result = invoke(
-        project,
-        "ralph-on-stop.sh",
-        {"stop_hook_active": False},
-        RALPH_MODE="1",
-        RALPH_PRE_COMMIT=base,
-        TEST_JUDGE_MODE=str(mode_file),
-        PATH=f"{project.parent / 'bin'}{os.pathsep}{os.environ['PATH']}",
-    )
-    assert result.returncode == 0, result.stderr
-    assert result.stdout == ""
-    assert not mode_file.exists()
+    assert all(result.returncode == 0 and result.stdout == "" for result in results)
 
 
 def tool_environment(
@@ -294,10 +249,12 @@ def test_stop_verifies_the_native_worktree_instead_of_the_launch_checkout(
         json.dumps({"lint": None, "test": "python3 -c 'raise SystemExit(0)'"})
     )
     (native_worktree / ".claude/project-commands.json").write_text(
-        json.dumps({
-            "lint": None,
-            "test": "python3 -c 'import sys; print(\"native checkout failed\"); sys.exit(1)'",
-        })
+        json.dumps(
+            {
+                "lint": None,
+                "test": "python3 -c 'import sys; print(\"native checkout failed\"); sys.exit(1)'",
+            }
+        )
     )
     result = invoke(
         project,
@@ -307,7 +264,9 @@ def test_stop_verifies_the_native_worktree_instead_of_the_launch_checkout(
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)["decision"] == "block"
     assert "native checkout failed" in json.loads(result.stdout)["reason"]
-    record = json.loads(next((native_worktree / ".claude/verification").glob("*.json")).read_text())
+    record = json.loads(
+        next((native_worktree / ".claude/verification").glob("*.json")).read_text()
+    )
     assert record["status"] == "failed"
     assert not (project / ".claude/verification").exists()
 
@@ -316,10 +275,14 @@ def test_task_graph_validation_follows_the_active_native_checkout(
     project: Path, native_worktree: Path
 ) -> None:
     expectations = native_worktree / ".claude/expected-output.json"
-    expectations.write_text(json.dumps({
-        "source": "native test",
-        "rules": [{"type": "task_index_format", "path": "plan.md"}],
-    }))
+    expectations.write_text(
+        json.dumps(
+            {
+                "source": "native test",
+                "rules": [{"type": "task_index_format", "path": "plan.md"}],
+            }
+        )
+    )
     (project / "plan.md").write_text("- [ ] **Task 1: Old checkout**\n")
     payload = {"cwd": str(native_worktree / "nested"), "session_id": "native"}
     result = invoke(project, "validate-output.py", payload)
@@ -346,17 +309,26 @@ def test_native_cwd_handling_preserves_a_project_inside_a_monorepo(
     component = project / "backend"
     (component / ".claude").mkdir(parents=True)
     (component / "src").mkdir()
-    (component / ".claude/expected-output.json").write_text(json.dumps({
-        "source": "backend", "rules": [{"type": "task_index_format", "path": "plan.md"}],
-    }))
+    (component / ".claude/expected-output.json").write_text(
+        json.dumps(
+            {
+                "source": "backend",
+                "rules": [{"type": "task_index_format", "path": "plan.md"}],
+            }
+        )
+    )
     result = invoke(
-        project, "validate-output.py", {"cwd": str(component / "src")},
+        project,
+        "validate-output.py",
+        {"cwd": str(component / "src")},
         CLAUDE_PROJECT_DIR=str(component),
     )
     assert json.loads(result.stdout)["decision"] == "block"
     (component / "plan.md").write_text("- [ ] **Task 1: Backend task**\n")
     result = invoke(
-        project, "validate-output.py", {"cwd": str(component / "src")},
+        project,
+        "validate-output.py",
+        {"cwd": str(component / "src")},
         CLAUDE_PROJECT_DIR=str(component),
     )
     assert result.returncode == 0 and result.stdout == "", result.stderr

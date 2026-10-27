@@ -18,7 +18,7 @@ echo "hooks/hooks.json is valid JSON"
 
 # Extract command-type hook paths
 SCRIPTS=$(HOOKS_FILE="$HOOKS_FILE" python3 - <<'EOF'
-import json, os
+import json, os, shlex
 
 with open(os.environ["HOOKS_FILE"]) as f:
     data = json.load(f)
@@ -31,7 +31,10 @@ for event_hooks in hooks_map.values():
             if hook.get("type") == "command":
                 cmd = hook.get("command", "")
                 if cmd:
-                    paths.append(cmd)
+                    argv = shlex.split(cmd)
+                    if len(argv) != 1:
+                        raise SystemExit("Hook validator expects one quoted executable path")
+                    paths.append(argv[0])
 
 for p in paths:
     print(p)

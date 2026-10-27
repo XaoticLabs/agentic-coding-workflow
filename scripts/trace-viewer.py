@@ -60,13 +60,17 @@ def view_timeline(events: list[dict]):
             slug = ev.get("slug", "?")
             mode = ev.get("mode", "?")
             max_iters = ev.get("max_iters", "?")
-            print(f"\n{BOLD}{ts}  RUN_START{RESET}  slug={slug} mode={mode} max_iters={max_iters}")
+            print(
+                f"\n{BOLD}{ts}  RUN_START{RESET}  slug={slug} mode={mode} max_iters={max_iters}"
+            )
 
         elif etype == "plan_state":
             done = ev.get("done", 0)
             total = ev.get("total", 0)
             remaining = ev.get("remaining", 0)
-            print(f"  {DIM}{ts}  PLAN   {done}/{total} done, {remaining} remaining{RESET}")
+            print(
+                f"  {DIM}{ts}  PLAN   {done}/{total} done, {remaining} remaining{RESET}"
+            )
 
         elif etype == "prompt_built":
             prompt_bytes = ev.get("prompt_bytes", 0)
@@ -77,7 +81,9 @@ def view_timeline(events: list[dict]):
             task = ev.get("task", "?")
             retry = ev.get("retry", "?")
             threshold = ev.get("threshold", "?")
-            print(f"  {YELLOW}{ts}  STRUGGLE  retry {retry}/{threshold} on: {task}{RESET}")
+            print(
+                f"  {YELLOW}{ts}  STRUGGLE  retry {retry}/{threshold} on: {task}{RESET}"
+            )
 
         elif etype == "iteration_start":
             it = ev.get("iter", "?")
@@ -119,7 +125,9 @@ def view_timeline(events: list[dict]):
                 extra = f"\n           {DIM}msg: {commit_msg[:80]}{RESET}"
             if diff_stat:
                 extra += f"\n           {DIM}{diff_stat}{RESET}"
-            print(f"  {color}{BOLD}{ts}  VERDICT  {outcome}{RESET}  {DIM}{task}{RESET}{extra}")
+            print(
+                f"  {color}{BOLD}{ts}  VERDICT  {outcome}{RESET}  {DIM}{task}{RESET}{extra}"
+            )
 
         elif etype == "iteration_end":
             dur = ev.get("duration_s", 0)
@@ -149,7 +157,9 @@ def view_timeline(events: list[dict]):
             kept = ev.get("kept", "?")
             reverted = ev.get("reverted", "?")
             dur = ev.get("duration_m", "?")
-            print(f"\n{BOLD}{ts}  RUN_END{RESET}  {iters} iters, {GREEN}{kept} kept{RESET}, {RED}{reverted} reverted{RESET}, {dur} min")
+            print(
+                f"\n{BOLD}{ts}  RUN_END{RESET}  {iters} iters, {GREEN}{kept} kept{RESET}, {RED}{reverted} reverted{RESET}, {dur} min"
+            )
 
         elif etype == "message_end":
             tool_calls = ev.get("tool_calls", 0)
@@ -166,7 +176,9 @@ def view_timeline(events: list[dict]):
         elif etype == "api_retry":
             attempt = ev.get("attempt", "?")
             status = ev.get("error_status", "?")
-            print(f"  {YELLOW}{ts}  API_RETRY  attempt={attempt} status={status}{RESET}")
+            print(
+                f"  {YELLOW}{ts}  API_RETRY  attempt={attempt} status={status}{RESET}"
+            )
 
 
 def view_summary(events: list[dict]):
@@ -201,7 +213,6 @@ def view_summary(events: list[dict]):
         print()
 
     outcomes = Counter(v.get("outcome", "?") for v in verdicts)
-    total = len(verdicts)
     kept = sum(1 for v in verdicts if "KEEP" in v.get("outcome", ""))
     reverted = sum(1 for v in verdicts if "REVERT" in v.get("outcome", ""))
     timeouts = sum(1 for v in verdicts if "TIMEOUT" in v.get("outcome", ""))
@@ -254,7 +265,9 @@ def view_summary(events: list[dict]):
             print(f"  {BOLD}Prompt size:{RESET}")
             print(f"    Avg: {avg_kb}KB  Min: {min_kb}KB  Max: {max_kb}KB")
             if max_kb > avg_kb * 2 and avg_kb > 0:
-                print(f"    {YELLOW}Warning: prompt size grew significantly — may indicate bloat{RESET}")
+                print(
+                    f"    {YELLOW}Warning: prompt size grew significantly — may indicate bloat{RESET}"
+                )
 
     print()
     print(f"  {BOLD}Outcome breakdown:{RESET}")
@@ -366,8 +379,12 @@ def main():
 
     parser = argparse.ArgumentParser(description="Ralph trace viewer")
     parser.add_argument("trace_file", help="Path to JSONL trace file")
-    parser.add_argument("--view", choices=["timeline", "summary", "tools", "reverts"],
-                        default="timeline", help="View to render (default: timeline)")
+    parser.add_argument(
+        "--view",
+        choices=["timeline", "summary", "tools", "reverts"],
+        default="timeline",
+        help="View to render (default: timeline)",
+    )
     args = parser.parse_args()
 
     events = load_events(args.trace_file)

@@ -1,4 +1,4 @@
-"""Evaluation failures never become acceptance in any Ralph mode."""
+"""Evaluation failures never become acceptance in independent review."""
 
 import copy
 import json
@@ -8,7 +8,7 @@ import subprocess
 
 import pytest
 
-from test_ralph_pipeline import EVALUATION, git
+from workflow_test_support import EVALUATION, git
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -48,7 +48,7 @@ if mode == 'spec':
     (directory / 'specs').mkdir(exist_ok=True)
     (directory / 'specs/requirements.md').write_text('Changed criteria')
 if mode == 'ui_change':
-    pathlib.Path(os.environ['RALPH_EVAL_UI_EVIDENCE'], 'interaction.txt').write_text('Changed evidence')
+    pathlib.Path(os.environ['WORKFLOW_EVAL_UI_EVIDENCE'], 'interaction.txt').write_text('Changed evidence')
 if mode == 'malformed':
     print('{invalid')
 elif mode != 'missing':
@@ -97,7 +97,7 @@ def evaluate(
             "TEST_EVAL_PAYLOAD": json.dumps(EVALUATION if payload is None else payload),
             "TEST_EVAL_MODE": mode,
             "TEST_EVAL_EXIT": str(exit_code),
-            "RALPH_EVALUATE_UI": "false",
+            "WORKFLOW_EVALUATE_UI": "false",
             **(variables or {}),
         },
         timeout=8,
@@ -295,8 +295,8 @@ def test_ui_evaluation_requires_current_local_evidence(project: Path, evidence: 
         project,
         mode="ui_change" if evidence == "changed" else "",
         variables={
-            "RALPH_EVALUATE_UI": "true",
-            "RALPH_EVAL_UI_EVIDENCE": str(directory),
+            "WORKFLOW_EVALUATE_UI": "true",
+            "WORKFLOW_EVAL_UI_EVIDENCE": str(directory),
         },
     )
     if evidence == "present":
@@ -335,18 +335,21 @@ def test_intermediate_secret_changes_are_not_exposed_in_history(project: Path):
 
 
 @pytest.mark.parametrize("mode", ["", "missing"])
-def test_direct_evaluate_mode_uses_the_same_read_only_contract(
-    project: Path, mode: str
-):
+def test_direct_evaluator_uses_the_same_read_only_contract(project: Path, mode: str):
     spec = project / ".claude/specs/direct"
     spec.mkdir(parents=True)
     result = subprocess.run(
         [
-            "bash",
-            str(ROOT / "skills/ralph/scripts/loop.sh"),
-            str(spec),
-            "evaluate",
-            "1",
+            "python3",
+            str(ROOT / "scripts/evaluate.py"),
+            "--base",
+            "HEAD",
+            "--revision",
+            "HEAD",
+            "--verdict",
+            str(project / ".claude/evaluation/direct-verdict.json"),
+            "--log",
+            str(project / ".claude/evaluation/direct-cli.json"),
         ],
         cwd=project,
         text=True,
@@ -357,7 +360,7 @@ def test_direct_evaluate_mode_uses_the_same_read_only_contract(
             "PATH": f"{project.parent / 'bin'}{os.pathsep}{os.environ['PATH']}",
             "TEST_EVAL_PAYLOAD": json.dumps(EVALUATION),
             "TEST_EVAL_MODE": mode,
-            "RALPH_EVALUATE_UI": "false",
+            "WORKFLOW_EVALUATE_UI": "false",
         },
         timeout=8,
     )
@@ -365,7 +368,7 @@ def test_direct_evaluate_mode_uses_the_same_read_only_contract(
     arguments = json.loads((project / ".claude/argv.json").read_text())
     assert "--dangerously-skip-permissions" not in arguments
     assert arguments[arguments.index("--tools") + 1] == "Read,Glob,Grep"
-    path = next((project / ".claude/ralph/direct/runs").glob("*/eval-verdict.json"))
+    path = project / ".claude/evaluation/direct-verdict.json"
     assert json.loads(path.read_text())["verdict"] == (
         "ACCEPT" if not mode else "ERROR"
     )

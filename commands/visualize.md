@@ -1,4 +1,5 @@
 ---
+description: Explain a system with a diagram grounded in its actual code and behavior.
 allowed-tools:
   - Read
   - Glob

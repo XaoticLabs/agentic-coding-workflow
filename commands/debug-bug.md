@@ -1,4 +1,5 @@
 ---
+description: Reproduce and investigate a defect, then verify a focused correction.
 allowed-tools:
   - Read
   - Glob

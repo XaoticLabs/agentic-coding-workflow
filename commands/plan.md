@@ -1,4 +1,5 @@
 ---
+description: Inspect a substantial task and write a concise, verifiable implementation plan.
 allowed-tools:
   - Read
   - Glob
@@ -144,7 +145,7 @@ Remove optional headings that are not needed, and remove the template's parenthe
 
 ### Phase 4: Report
 
-Report the saved path, the approach, verification criteria, and any blocking open questions. An existing plan may guide implementation directly. Suggest `/agentic-coding-workflow:write-spec <slug>` when a detailed specification or Ralph handoff would help.
+Report the saved path, the approach, verification criteria, and any blocking open questions. An existing plan may guide implementation directly. Suggest `/agentic-coding-workflow:write-spec <slug>` when a detailed specification or Relay handoff would help.
 
 ## Example Usage
 

@@ -1,490 +1,259 @@
 # Agentic Coding Workflow
 
-A Claude Code plugin with commands, skills, and hooks for a streamlined development workflow.
+A Claude Code plugin for scoped implementation, useful review, and verifiable
+delivery. Use one continuing session for ordinary work. Use **Relay** when the
+work needs enforced execution limits, dependent workers, or durable recovery.
 
-## Quick Start
+## Start here
 
-**1. Install Claude Code** (if you haven't already):
+Install [Claude Code](https://code.claude.com/docs/en/setup), then run:
 
-Native install (recommended):
-```bash
-curl -fsSL https://claude.ai/install.sh | bash
-```
-Homebrew:
-```bash
-brew install --cask claude-code
-```
-
-**2. Add the marketplace and install the plugin:**
-```bash
-claude
-# then inside Claude Code:
+```text
 /plugin marketplace add XaoticLabs/agentic-coding-workflow
 /plugin install agentic-coding-workflow@agentic-coding-marketplace
 ```
 
-Alternatively, use the interactive UI:
-```bash
-claude
-# then inside Claude Code:
-/plugin
-# Go to "Marketplaces" tab → Add → enter: XaoticLabs/agentic-coding-workflow
-# Follow instructions to install and enable
-/reload-plugins
+For development, validate with `claude plugin validate .` and launch
+`claude --plugin-dir "$PWD"`. Reload changes with `/reload-plugins` or restart.
+The scripts use Python 3.11+, Git, Bash, and—in existing shell helpers—jq.
+tmux is needed only for explicitly selected terminal/session workflows.
+Relay requires Linux, macOS, or WSL for POSIX process groups and file locks.
+
+Configure the consuming project's actual commands in
+`.claude/project-commands.json`. Keep runtime artifacts ignored in that project:
+
+```gitignore
+.claude/*
+!.claude/rules/
+!.claude/skills/
 ```
 
-**3. Start using it** — open any project and try:
-```bash
-cd your-project
-claude
-```
-Then type any of these:
-- `/agentic-coding-workflow:prime` — loads your project context (git history, docs, structure)
-- `/agentic-coding-workflow:implement "<change>"` — inspects, implements, verifies, and reports; plans when needed
-- `/agentic-coding-workflow:plan` — get a concise plan for a substantial or ambiguous task
-- `/goal <measurable completion condition>` — ordinary unattended continuation in the same session
-- `/agentic-coding-workflow:ralph` — specialized execution with enforced limits and recovery
-
-## Why This Exists
-
-**This plugin adds opinionated workflows on top of Claude Code** so you don't have to figure out prompting patterns yourself. Once you're more comfortable with Claude Code (or your agentic TUI of choice) I highly recommend modifying, creating, deleting, and experimenting with your own flow. This is just how one engineer works and is an attempt to unify and codify things that might help people get a more consistent flow with less of a headache of config.
-
-### The mental model
-
-Use the least elaborate workflow that resolves material uncertainty and produces verifiable results.
-
-| Task | Default workflow |
-|------|------------------|
-| Small, clear change | Inspect relevant context → implement → verify → report |
-| Substantial feature | Clarify material uncertainty → maintain a concise plan → implement → verify → review |
-| Ordinary unattended work | Set a native `/goal` → continue in one isolated feature session → verify → review |
-| Enforced limits or coordinated recovery | Select Ralph with agreed boundaries → execute in owned worktrees → verify → review |
-
-Choose by uncertainty, impact, reversibility, and scope. Inspection may reveal a need for more planning, or show that existing context is sufficient. Clarification ends when the outcome, scope, material decisions, and verification approach are clear. Every path includes verification and reports its evidence and limitations.
-
-Executor processes preserve model selection through a shared
-[model policy](references/model-policy.md), instead of forcing Sonnet for builds,
-evaluation, or merge resolution. Set `WORKFLOW_MODEL=best` to select the native
-best available alias where supported, or supply the team's explicit model ID.
-Role overrides remain available; observed model IDs are retained when provided.
-
-For runtime work, follow [behavioral evidence](references/verification-evidence.md).
-Use [private execution environments](references/execution-environments.md) for
-repeatable setup and services, [batch experiments](references/experiments.md)
-for comparable alternatives, and [lifecycle observations](references/lifecycle-observation.md)
-for health/log/deployment/flag checks and requested scheduled follow-up.
-These are explicit tools; installing the plugin starts no infrastructure or schedules.
-
-Make substantial changes independently understandable and testable. PRs explain
-the problem and resulting behavior, important decisions, actual verification
-and checked source, remaining reviewer decisions, and recovery when relevant.
-Keep concurrency within the team's review capacity. The shared
-[review policy](references/review-policy.md) covers evidence and review scope.
-
-Default code reviews prioritize actionable defects with local evidence; a clean
-result is valid. `/review --suggestions` adds optional design/taste feedback.
-Authorized author/reviewer repair carries prior findings and the round count;
-after three completed rounds, unresolved material findings need human
-reassessment. An ordinary review performs one pass. Existing human review
-requirements remain in force.
-
-For interactive work, a conversational plan is often enough. Save a plan or generate a detailed spec when requested or useful for handoff. `/plan --interview` selects deeper questioning; `/write-spec` selects detailed specification; `/explain` and `/review --learn` select teaching; `/implement --approve-tests` selects explicit approval of acceptance-test expectations. `/implement --plan` selects plan mode and plan approval, and `--worktree` requests isolation. These are optional modes, with no fixed question or document-length quotas.
-
-**Ordinary unattended work:** Use native `/goal` in a continuing feature session.
-Keep related tasks and their decisions together, compact context when needed,
-and resume the named session after an interruption. The normal path does not
-require a spec directory, task partitioner, generated briefings, or a commit and
-fresh session after every task. Deterministic verification and required
-independent review still apply.
-
-**Specialized execution (Ralph):** Select this executor for enforced iteration/time
-limits, dependency waves, rollback, or durable execution records. It uses
-isolated single-task workers, external checks, and mandatory independent
-verification-integrity review. RED/GREEN commits are optional; test files are
-not frozen. Corrections or possible coverage reductions need rationale and
-review, and human-approved expectations need human approval to change. The
-launch command confirms scope and limits before starting unless those settings
-are already authorized.
-
-## Commands
-
-### Core Workflow
-
-| Command | What it does |
-|---------|--------------|
-| `/agentic-coding-workflow:prime` | Loads project and optional Jira/Linear ticket context through CLI/API tools. Add `--deep` for thorough codebase analysis. |
-| `/agentic-coding-workflow:plan` | Writes a concise plan; `--interview` explores material decisions and `--compare` plans repeatable alternatives. |
-| `/agentic-coding-workflow:write-spec` | Transforms a plan into an implementation spec with atomic, actionable tasks. |
-| `/agentic-coding-workflow:implement` | Implements a ticket, spec task, or description with proportional planning/verification. Optional `--plan`, `--worktree`, `--approve-tests`, `--start-ticket`, and independent `--review` modes. |
-| `/agentic-coding-workflow:test` | Detects project test framework, runs the suite (or a subset), and reports structured results. |
-| `/agentic-coding-workflow:review` | Code/PR review, spec compliance (`--spec`), plan critique (`--plan`), PR prep (`--prep`), or teaching (`--learn`, `--stats`). Supports Go, Python, TypeScript/JavaScript, Elixir, and mixed changes. Use `--suggestions` for optional design/taste feedback. |
-| `/agentic-coding-workflow:ship` | Pushes the branch and creates/reuses a PR. Optional `--follow-up` handles CI/review repairs; `--link-ticket` and `--ticket-status` request ticket updates. |
-
-### Autonomous & Parallel
-
-| Command | What it does |
-|---------|--------------|
-| `/agentic-coding-workflow:ralph` | Autonomous coding loop. Works through every task unattended — implements, tests, commits, updates the plan, repeats. Supports `--once` (one observed autonomous iteration), `--clean-room` (greenfield), `--harvest` (extract patterns), `--parallel` (multiple worktrees), `--checkpoint-every=N` (human steering pauses), `--eval-gates-merge` (require a fresh end-of-run ACCEPT verdict before merge), and `--time-budget=N` (per-iteration time limit). Desktop notifications for key events. |
-| `/agentic-coding-workflow:parallel` | Spins up N worktrees with tmux panes and Claude sessions for parallel task work. |
-| `/agentic-coding-workflow:reunify` | Merges parallel worktree branches back, runs tests after each merge, resolves conflicts, and verifies against the spec. |
-| `/agentic-coding-workflow:spawn` | Starts a named plugin agent with native worktree/tmux support; `--goal` starts native continuation, and `--resume <session>` restores existing work. |
-| `/agentic-coding-workflow:dashboard` | Live tmux dashboard monitoring all active worktrees and Claude activity. |
-
-### Debugging & Analysis
-
-| Command | What it does |
-|---------|--------------|
-| `/agentic-coding-workflow:debug-bug` | Finds/fixes bugs with runtime evidence; `--experiment` batches executable probes and comparisons. |
-| `/agentic-coding-workflow:troubleshoot` | Infrastructure diagnostics + kubectl access. Covers local Docker, staging, and prod k8s. |
-| `/agentic-coding-workflow:analyze` | Data analyst — takes query results, CSVs, or datasets and produces insights, summaries, and visualizations. |
-| `/agentic-coding-workflow:query` | Translates natural language questions into SQL, runs them, and presents results. |
-| `/agentic-coding-workflow:techdebt` | Scans the codebase for tech debt and surfaces actionable findings. |
-
-### Learning & Improvement
-
-| Command | What it does |
-|---------|--------------|
-| `/agentic-coding-workflow:explain` | Educational breakdown of code, changes, or systems — the "why" behind the code, not just what it does. |
-| `/agentic-coding-workflow:visualize` | Generates architecture diagrams — ASCII for terminal, Mermaid for docs, HTML for rich visuals. |
-| `/agentic-coding-workflow:harness-audit` | Inventories all harness components, documents their assumptions, and suggests simplification experiments as models improve. |
-| `/agentic-coding-workflow:update-rules` | Updates CLAUDE.md or `.claude/rules/` after corrections or pattern discoveries. |
-
-## Skills
-
-| Skill | What it does |
-|-------|--------------|
-| `/agentic-coding-workflow:git-worktree` | Uses native interactive worktrees; retains owned-worktree creation, status, preservation, and cleanup for specialized executors |
-| `/agentic-coding-workflow:parallel` | Creates multiple worktrees with tmux panes and Claude sessions for parallel work |
-| `/agentic-coding-workflow:reunify` | Reunifies parallel worktree branches back onto a parent feature branch |
-| `/agentic-coding-workflow:skill-forge` | Build, fix, and optimize Claude Code skills — scaffolding, progressive disclosure, eval-driven iteration |
-| `tmux-multiplexer` | Controls tmux for spinning up multi-agent workflows and parallel tasks |
-| `neovim-controller` | Talks to a running Neovim instance via RPC — open files, run LSP commands, navigate symbols |
-| `pr-reviewer` | Inspects Go, Python, TypeScript/JavaScript, Elixir, and mixed changes using PERFECT as an inspection guide; reports actionable findings, verification limits, and human decisions concisely |
-| `/agentic-coding-workflow:ralph` | Launches the specialized executor with enforced limits, verification, recovery records, and desktop notifications |
-| `data-analytics` | Database querying and data analysis support — MCP server config, connection setup, SQL help |
-
-### Invocation and gradual migration
-
-Claude Code still supports existing command files and prefers skills for new
-work. This plugin keeps its existing commands while consolidating overlapping
-workflows as they are maintained. `ralph` and `reunify` now each have one skill
-entrypoint; their slash names and arguments are unchanged. Shared workflow
-patterns live in [references/shared-patterns.md](references/shared-patterns.md),
-outside command discovery. See the [Claude Code skills documentation](https://code.claude.com/docs/en/skills).
-
-Publishing (`ship`), session/worker launches (`spawn`, `ralph`, `parallel`,
-`tmux-multiplexer`), branch/worktree changes (`reunify`, `git-worktree`), and
-infrastructure operations (`troubleshoot`) use
-`disable-model-invocation: true` for explicit invocation. Background reference
-skills use `user-invocable: false` where appropriate: that hides the user command
-while allowing the model to invoke the skill. Invocation controls do not replace
-the authorization needed for the actions a workflow performs.
-
-### Native sessions and recovery
-
-The custom `/agentic-coding-workflow:checkpoint` skill has been retired. Use
-native `/rewind` for session recovery, `/resume` to continue a saved session,
-and `/branch` for a conversation branch. Existing `.claude/checkpoints/` files
-are left untouched; their metadata and notes do not restore conversation state
-or uncommitted file contents. Keep durable history in Git. Native recovery has
-[documented coverage and retention limits](https://code.claude.com/docs/en/checkpointing).
-Ralph's `--checkpoint-every` remains a separate human steering pause.
-
-For ordinary interactive isolation, use native `EnterWorktree` in a session or
-`claude --worktree <name> --tmux` for a new one. `/spawn <role> --worktree <name>`
-loads the plugin's agent and delegates the same setup to Claude Code. Names
-follow native worktree semantics. Shared-checkout panes and specialized Ralph,
-review, and parallel executors retain their explicit lifecycle controls. Plugin
-cleanup preserves native worktrees, whose lifecycle is managed by Claude Code.
-See the [native worktree guide](https://code.claude.com/docs/en/worktrees).
-
-Keep one session for related feature work. `/spawn` uses `--name` when supplied,
-or the worktree name for an isolated session. Return with `/resume <name>` or
-`/spawn --resume <name>`; the latter restores the saved agent and checkout
-without creating another worktree. Native compaction retains a summary; keep
-the criteria, decisions, constraints, remaining work, and verification commands
-in focus. Recheck current state after resume, including interrupted commands.
-Start fresh for unrelated work, strict isolation, or demonstrated context
-degradation. Independent reviewers and explicit Ralph workers keep their own
-contexts. See [session management](https://code.claude.com/docs/en/sessions).
-
-## Agents
-
-Reusable agent role definitions in `agents/` — work as both subagent prompts (via the `Agent` tool) and full primary instances (via `claude --plugin-dir /path/to/agentic-coding-workflow --agent agentic-coding-workflow:<role>`).
-
-Read a few relevant files directly. Delegate investigations whose intermediate output would overwhelm the main task, parallelize independent components with clear interfaces, and use independent verification when its expected benefit justifies its cost. Implementation can run in the current session, a capable subagent, or a separate primary instance; choose by tools, permissions, turn budget, isolation, and oversight. See the [routing policy](CLAUDE.md#subagents-vs-primary-instances--when-to-use-which) and [Claude subagent reference](https://code.claude.com/docs/en/sub-agents).
-
-| Agent | Role |
-|-------|------|
-| `implementer` | Code implementation from specs and tasks |
-| `test-writer` | Test creation and coverage |
-| `evaluator` | Independent code evaluation (used by Ralph) |
-
-## Hooks
-
-The default hooks require Python 3.11+, Bash, Git, and jq; their Python scripts use the standard library and do not require uv. Tool approvals use Claude Code's normal permission handling. Command/skill `allowed-tools` and CLI `--allowedTools` grant prompt-free approval; they are not a complete tool whitelist. CLI `--tools` restricts available tools and `--disallowedTools` adds explicit denies. See the [CLI reference](https://code.claude.com/docs/en/cli-reference).
-
-| Hook | Event | What it does |
-|------|-------|--------------|
-| `dangerous_command_blocker.py` | PreToolUse | Catches dangerous commands (`rm -rf /`, `.env` access) and blocks them |
-| `lint-on-stop.sh` | Stop | Runs project-configured lint/test commands for any stack, or legacy Elixir checks; records revision/fingerprint and distinguishes incomplete/disabled verification |
-| `ralph-on-stop.sh` | Stop | During Ralph builds, enforces plan updates; review stays in the outer executor |
-| `validate-output.py` | Stop | Validates registered task graphs using the scheduler's shared parser |
-| `toast-notify.sh` | Stop | Pops up a macOS notification when Claude needs your attention |
-| `stop-failure-logger.sh` | StopFailure | Logs API failures (rate limits, auth errors) and sends toast notifications |
-
-Review worktree cleanup belongs to the launcher and the individual review process.
-They track only worktrees created by that invocation, check ownership and activity,
-archive workflow artifacts, and remove clean checkouts without force. Partial launch
-failures clean up pending worktrees; launched reviews handle their own exit. Dirty,
-unmerged, locked, active, or unowned worktrees are retained with their paths reported.
-There is no global session-end sweep. Uncatchable termination leaves worktrees for
-explicit recovery through the worktree workflow, retaining its safety checks.
-
-Task-graph validation checks structured and legacy task indexes with the same
-parser used by the scheduler. Ordinary plans and specs have no output-registration
-step. Ralph planning and `write-spec --ralph` register graph checks only; legacy
-artifact, heading, and line-count expectations are ignored.
-
-Python tooling is project-specific. The global toolchain blocker and regex style hook have been removed. `/agentic-coding-workflow:setup-python-rules` adapts judgment guidance to the existing stack. The optional [uv/Ruff/basedpyright profile](profiles/python/uv-ruff-basedpyright/README.md) supplies actual tool configuration and check commands only when explicitly selected. Tool configuration owns formatting, lint, typing, and file exclusions.
-
-`/ship` prepares the destination, branch/commit, PR title, complete body, base/head, and draft status before any required review. It chooses a title from the final change and reuses existing authorization for unchanged actions. The agent-writable approval marker and ship hook have been removed: the workflow is an instruction-level policy, not authenticated approval enforcement. Organizations requiring enforcement need a trusted external permission service or publishing executor with approval storage inaccessible to the agent, bound to the exact outgoing action and content. See [External Actions and Approval](references/shared-patterns.md#external-actions-and-approval).
-
-## Jira and Linear without MCP connectors
-
-Ticket-aware workflows share a CLI-first resolver. Jira uses `acli` when the
-requested operation is supported. Both providers have direct API adapters;
-Linear or another Jira CLI can use an explicitly configured argv/JSON adapter.
-There is no implicit CLI install, login, account switching, or MCP requirement.
-
-Set `.claude/ticket-tracker.json` in the **consuming project**, for example:
+Project configuration can instead be committed using targeted exceptions. Keep
+secrets outside tracked configuration. Missing checks are unconfigured, not
+passing. Explicit null/empty commands disable that action under project policy.
+See [project readiness](references/project-readiness.md) for Go/Python/TypeScript
+and mixed projects; optional Python profiles live in [profiles/python](profiles/python/uv-ruff-basedpyright/README.md).
 
 ```json
 {
-  "default_provider": "jira",
-  "providers": {
-    "jira": {
-      "site": "https://example.atlassian.net",
-      "status_map": {"in_progress": "In Progress", "in_review": "Code Review"}
-    }
-  }
+  "lint": "make lint",
+  "test": "make test",
+  "verify": "make verify-user-paths",
+  "quick_check": "make check-changed",
+  "format": "make format"
 }
 ```
 
-Use your actual statuses/site. `auto` uses the supported installed CLI first,
-then configured API access for unavailable operations; a failing CLI does not
-silently fall back. Jira API credentials default to `JIRA_EMAIL` and
-`JIRA_API_TOKEN`; Linear defaults to `LINEAR_API_KEY`. Keep credential values
-in your existing environment/secret tooling. A CLI login does not configure
-API credentials. See [Ticket trackers](references/ticket-trackers.md) for
-OAuth/scoped-token settings, custom CLI contracts, identity checks, and limits.
+These example commands must exist in your project. `verify` is an optional
+runtime gate in Relay. `quick_check` is an optional advisory edit hook; it never
+replaces final verification. Formatting is explicit; verification runs check-only
+commands. `scripts/configure-project.sh` can refresh an operations guide while
+preserving configured overrides; it does not invent Go/Python/Node CI policy.
+
+## Three everyday recipes
+
+**Fix a regression.** Start with the observed failure and the behavior expected:
+
+```text
+/agentic-coding-workflow:implement "Fix the retry handler losing cancellation; add a regression and run the configured checks"
+```
+
+Inspect relevant code, reproduce, implement, verify, and report. Use
+`/agentic-coding-workflow:debug-bug` for uncertain root causes. A small change
+does not require a separate spec, worktree, committee, or approval round.
+
+**Build a feature.** Plan when uncertainty or scope warrants it:
+
+```text
+/agentic-coding-workflow:plan "Add cursor pagination to the audit API"
+/agentic-coding-workflow:implement "Implement the agreed pagination plan"
+```
+
+Continue related work in the same session. An existing ticket can supply the
+criteria; `/implement ABC-123 --tracker jira --worktree --review` requests an
+isolated implementation and independent review. `/write-spec` is for detailed
+handoffs, `--interview` selects deeper planning, and `--approve-tests` selects
+human approval of acceptance-test expectations. Ordinary TDD needs no approval
+of agent-authored tests or separate RED/GREEN commits.
+
+For ordinary unattended continuation, set a native goal in that session:
+
+```text
+/goal The agreed pagination criteria hold, configured tests and lint pass, and the final verification evidence is shown.
+```
+
+Native goals judge surfaced evidence; they do not execute independent tests or
+replace project review requirements. Use native compaction/resume for continuity.
+
+**Prepare review and delivery.** Produce a change a reviewer can assess:
+
+```text
+/agentic-coding-workflow:review
+/agentic-coding-workflow:ship --draft --follow-up
+```
+
+Ship when requested and authorized. It prepares/publishes a PR and optionally
+follows CI/review feedback; it does not merge or deploy. Keep an explicit record
+of changed behavior, verification, and remaining gaps. The existing shared
+repair budget is three completed review rounds per logical change, including
+local and remote feedback. See [review policy](references/review-policy.md) and
+[ticket-to-PR follow-up](references/delivery-follow-up.md).
+
+## Relay: the specialized supervisor
+
+```text
+/agentic-coding-workflow:write-spec pagination --relay
+/agentic-coding-workflow:relay pagination --once
+/agentic-coding-workflow:relay pagination --resume
+/agentic-coding-workflow:relay pagination --status
+```
+
+Relay's fixed execution graph is:
+
+```mermaid
+flowchart LR
+  Task[Eligible task] --> Implement[Implement]
+  Implement --> Check[Project checks]
+  Check -->|pass| Review[Independent review]
+  Check -->|bounded repair| Implement
+  Review -->|revise| Implement
+  Review -->|accept current source| Integrate[Integrate and recheck changed source]
+  Integrate --> Accepted[Accept and unlock dependents]
+  Accepted --> Task
+  Accepted --> Final[Whole-graph review]
+  Final --> Done[Preserved candidate for delivery]
+```
+
+The supervisor owns task state, commits, worktrees, deadlines, and acceptance.
+Workers implement scoped tasks and leave edits uncommitted. Deterministic project
+checks and a separate read-only reviewer verify the same source. A plan checkbox
+or a worker saying done cannot accept a task. Combining parallel candidates
+requires checks and review of the combined source.
+
+Defaults: one worker, 50 implementation calls, three attempts per task,
+600 seconds per process, 3,600 total active seconds across resumptions. No
+unlimited mode. `--workers N` permits up to six disjoint workers;
+`--parallel N` is an alias. `--once` may return incomplete. A clean initial
+checkout, an existing task plan, and configured verification are required.
+
+The original branch remains untouched. Failed and accepted candidates, logs,
+and state are preserved. Conflicts, changed guidance/source, missing review,
+timeouts, or exhausted budgets stop explicitly. There is no automatic publish,
+final merge, destructive reset, or global cleanup sweep.
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/tickets.py" --project-dir "$PWD" doctor
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/tickets.py" --project-dir "$PWD" doctor --check
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/relay.py" pagination --workers 2 --time-budget 300 --run-budget 1800
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/relay.py" pagination --stop
 ```
 
-The first command inspects available connections/versions; `--check` also probes
-authentication with read-only operations. Neither proves write permission.
-URLs select their tracker; a bare `ABC-123` uses the project default or explicit
-`--tracker jira|linear`. The same key can exist in both providers.
+Records live in `.claude/relay/<slug>/runs/<id>/`: typed `state.json`, append-only
+`events.jsonl`, and raw per-node process/check/review evidence. Stop cancels
+owned process groups. Resume validates the checkpoint and rechecks accepted
+source; it does not reset limits or silently adopt a changed branch.
 
-```text
-/agentic-coding-workflow:implement ABC-123 --tracker jira --worktree --start-ticket --review
-/agentic-coding-workflow:ship --ticket https://example.atlassian.net/browse/ABC-123 --link-ticket --follow-up
-```
+Relay replaces Ralph without a compatibility entrypoint. Existing run artifacts
+are retained; see the [supervisor contract](skills/relay/references/supervisor.md)
+for the current interface and execution behavior.
+Use [manual parallel/reunify](skills/parallel/SKILL.md) for independently steered
+branches and [worktree cleanup](skills/git-worktree/SKILL.md) when explicitly
+reclaiming owned, safely merged work.
 
-Implementation retrieves the ticket, establishes scope/checks, optionally starts
-it, and includes bounded independent review/repair. Review the diff/evidence
-yourself before invoking ship. Shipping can follow CI/review feedback for a
-default 15-minute conversational budget and reuse the same three-round review
-history. It does not merge. A read-only `scripts/pr-status.py PR_URL --head SHA`
-helper binds checks and unresolved review threads to the published revision.
-Ticket writes are opt-in; low-level `transition`/`link-pr` commands prepare JSON
-without writing until `--apply` is supplied. See [Delivery follow-up](references/delivery-follow-up.md)
-for draft PRs, status timing, failures, single-writer coordination, and pilot
-measurements. Live-provider and native-agent validation are separate from the
-deterministic adapter tests.
+## Graph engineering and decision models
 
-## CLAUDE.md & Rules System
+Separate three concerns: the task dependency DAG, bounded execution transitions,
+and evidence that connects criteria to observed outcomes. Add specialized nodes
+where context, capability, independence, or recovery warrants them. Keep tightly
+coupled work together. Deterministic checks do not need an LLM node.
 
-This plugin ships with a `CLAUDE.md` and `.claude/rules/` directory that teach Claude how to work on this plugin. Projects that install this plugin should create their own:
+[Graph engineering](references/graph-engineering.md) explains this design, the
+useful pstack/gstack patterns it adopts, and corrections to common claims about
+context isolation, prompt constraints, flake retries, and multi-agent benchmarks.
+There is no dependency on either external workflow pack.
 
-- **`CLAUDE.md`** (project root) — project-wide conventions, architecture, preferred patterns
-- **`.claude/rules/<topic>.md`** — path-scoped rules that only load when Claude touches matching files (uses YAML `paths:` frontmatter)
-- **`~/.claude/CLAUDE.md`** — personal preferences that apply across all projects
+Jev/Laya integration starts with **failure observations**. Rules classify locally
+by default. Explicit `--triage-config` enables a Jev-compatible API call beside
+the rule result. Both remain advisory: neither can approve work, waive a check,
+retry a command, change a permission, or publish. No hook calls a decision model
+by default. See [decision models](references/decision-models.md) for configuration,
+data boundaries, and evaluation before promoting a classifier into routing.
 
-Claude Code only reads `paths` from rule frontmatter; other fields are ignored. Rules without `paths` load unconditionally. See the [rule frontmatter reference](https://code.claude.com/docs/en/memory#rule-frontmatter-reference).
+## Hooks and verification
 
-The `/agentic-coding-workflow:update-rules` command helps you capture useful corrections and patterns when requested.
+All lifecycle registrations live in [hooks/hooks.json](hooks/hooks.json).
 
-**Scope precedence:** Managed policy > CLI args > Local settings > Project settings > User settings
+| Event | Behavior |
+| --- | --- |
+| `PreToolUse` | Existing dangerous-command and protected-path checks |
+| `SessionStart` | Cheap checkout/branch/check-configuration report; no tests run |
+| `PostToolUseFailure` | Local failure evidence and heuristic category; no automatic retry |
+| `PostToolUse` for edits | Only the project's explicit advisory `quick_check` |
+| `Notification` | Native desktop alert when input is needed |
+| `StopFailure` | API-error log and best-effort alert; cannot recover the failed turn |
+| `Stop` | Task-graph validation and final project lint/test checks; a separate response-finished notification |
 
-## Typical Workflow
+Notifications support macOS `osascript` and Linux `notify-send` when available;
+set `WORKFLOW_NOTIFY=false` to disable them. They do not send external messages.
+Hooks for one event run concurrently, so a response-finished notification is not
+a verification-completed signal. Relay sends its terminal status after its own
+gates finish. Optional observations fail open; required Stop gates intentionally
+block unverifiable requirements and have failure/timeout blocking configured.
 
-Project commands are configured in `.claude/project-commands.json`. For an existing Black/mypy project, for example:
+Final checks are tied to HEAD and a source fingerprint, including ignored
+workflow guidance. Changed source invalidates previous success. Correction
+attempts are bounded; exhaustion is reported as blocked. Tests must preserve
+acceptance criteria, with rationale and independent review of corrections.
 
-```json
-{
-  "test": "python -m pytest",
-  "lint": "python -m black --check . && python -m mypy .",
-  "format": "python -m black ."
-}
-```
+`/agentic-coding-workflow:verify-project` exercises a real CLI/API/browser/worker
+path and retains source-bound evidence. When requested, it creates and proves a
+reusable project-local verification runbook. The `runtime-verifier` agent is
+available for independent exercises; `evaluator` performs read-only code review.
+See [runtime evidence](references/verification-evidence.md).
 
-Supported keys are `build`, `test`, `lint`, `format`, and `run`. Go, Python,
-TypeScript/JavaScript, and mixed projects select commands from their existing
-CI/task configuration. Missing lint/test actions are unconfigured; null or an
-empty string explicitly disables an action. Invalid configuration blocks.
-The Stop hook and Ralph verification reject missing checks. Ralph's generator
-leaves unknown commands missing, preserves overrides/disables, and renders
-`.claude/AGENTS.md`; it retains legacy defaults for Elixir-only projects. Move
-custom commands from that Markdown guide to the JSON file. Both files are
-copied into worker worktrees. See [Project readiness](references/project-readiness.md)
-for setup/service documentation and mixed-project aggregate commands.
+Tool grants and prompt instructions are not an OS sandbox. Review tool lists
+are restricted; implementation and runtime verification use shell tools. For
+hard filesystem/network boundaries, use [contained execution environments](references/execution-environments.md).
 
-Run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/project-commands.py" readiness "$PWD"`
-from the consuming project with the plugin root set. This read-only JSON report
-distinguishes configured, unconfigured, disabled, invalid, and legacy/unsupported
-roots. It does not run checks or prove environment readiness. Separate review
-launches inspect this configuration and never install dependencies or change
-lockfiles; missing dependencies remain explicit verification limitations.
+## Optional tools
 
-Formatting is explicit: `"${CLAUDE_PLUGIN_ROOT}/scripts/format-project.sh"` runs
-the configured format command, with a legacy Elixir default when absent. Stop
-runs configured lint/test commands for any stack, preserving quoting and pipe
-failures. Missing actions produce incomplete verification; both actions disabled
-produce a disabled record, never passed. Include required check-only formatting
-and typing in lint, and keep scope in tool configuration. Checks must not fix
-files or install dependencies. The optional uv profile uses `--frozen --no-sync`.
-Configured checks run on every branch, including committed code.
+Use namespaced commands: `/agentic-coding-workflow:<name>`.
 
-Verification records in `.claude/verification/<session-hash>.json` identify `HEAD` and a SHA-256 of the working inputs before and after checks. Ignored project commands, rules, guidance, and specs participate in the fingerprint; runtime logs and markers do not. `scope: "worktree"` includes local inputs beyond the committed tree. Correction turns verify again, and an earlier success is reused only for unchanged inputs. Three failed attempts produce an explicit `blocked` result and stop with a user-visible failure; a new user turn can retry. Infrastructure failures remain `incomplete`, state-capture failures remain `unavailable`, and a crash leaves `running`, never a stale success.
+| Purpose | Commands/skills |
+| --- | --- |
+| Context and design | `prime`, `plan`, `write-spec` |
+| Implementation and delivery | `implement`, `test`, `review`, `ship` |
+| Bounded or manually parallel work | `relay`, `spawn`, `parallel`, `reunify`, `dashboard`, `git-worktree` |
+| Investigation | `debug-bug`, `troubleshoot`, `query`, `analyze` |
+| Understanding and upkeep | `explain`, `visualize`, `techdebt`, `update-rules`, `harness-audit` |
+| Reusable capabilities | `verify-project`, `devex-review`, `test-audit`, `skill-forge`, `pr-reviewer` |
 
-Ralph records prompt, Claude, and stream-processor statuses separately in `<iteration-log>.status.json` and saves each stage's stderr. A failed stage stops the run with a nonzero exit and preserves work without marking its commits accepted. Worker and merge failures block dependent waves. Each run has unique worktree and branch names, so preserved work does not collide with a later run.
+The tmux, Neovim RPC, database-analysis, and language-specific integrations remain
+optional. Nothing in the default recipe requires adopting them. Choose
+subagents versus primary sessions from tool access, work ownership, context,
+and oversight; implementation does not inherently need a separate primary.
 
-All evaluator modes use the same `ACCEPT` / `REVISE` / `ERROR` / `NOT_RUN` contract. Evaluators use native restricted permissions with Read, Glob, and Grep, no shell or write tools, no MCP tools, and explicit denies for common secret paths. The controller supplies diff/log evidence and writes the reports from validated structured CLI output. Scores use the documented 1–5 scale; missing evidence, inconsistent averages, process errors, timeouts, and changes during evaluation are ERROR. Reports include the candidate SHA and source fingerprint. Iteration, wave, and final reports retain separate paths. Restricted evaluators require Claude Code v2.1.248 or later.
+Shared helpers cover [CLI/API tickets](references/ticket-trackers.md),
+[batch experiments](references/experiments.md), [model selection](references/model-policy.md),
+and [read-only lifecycle observations/schedules](references/lifecycle-observation.md).
+No provider integration, schedule, company rollout, or remote notification is
+activated by installing this plugin.
 
-Final verification precedes evaluation and cleanup. Single-run merges recheck the candidate and target after confirmation and fast-forward to the verified SHA; a diverged target requires integration and fresh verification. Parallel runs also invalidate verification after any candidate change. `--eval-gates-merge` requires a current ACCEPT; optional advisory evaluation can report REVISE, while ERROR remains a failed run. UI evaluation reads evidence captured before final verification from `RALPH_EVAL_UI_EVIDENCE`, a nonempty directory inside the project, rather than starting a server or browser with evaluator permissions.
-
-Hook feedback follows the [Claude Code hook protocol](https://code.claude.com/docs/en/hooks). StopFailure logs API errors, including the rendered error message, to `.claude/logs/stop-failures.jsonl`; it provides observability and notifications, with no automatic retry or worker lifecycle transition.
-
-Ralph plans use a fenced JSON `{"tasks": [...]}` index under `## Task Index`. Each task has `id`, `name`, `status` (`pending`/`done`), `priority`, `deps` (integer IDs), and `files` (path strings), with optional `spec` and `completed_in`. The shared `scripts/task-plan.py` parser validates the entire dependency graph before scheduling. Unknown IDs, duplicates, self-dependencies, and cycles are errors. Existing checkbox plans remain supported; all comma-separated dependencies are preserved. Completed dependencies are already satisfied. The planner, progress displays, stop validator, and scheduler use the same task model.
-
-Parallel run artifacts live under `.claude/ralph/<slug>/runs/<run>/`. `trace.jsonl` contains orchestrator events. Worker inputs are preserved as `worker-traces/<wave-worker>/<worker-run>/trace.jsonl`. `unified-trace.jsonl` combines every input in timestamp order and labels events with `source` and `worker_run`. It is refreshed on exit to include final verification, evaluation, and completion events, and remains after worker cleanup. The retrospective and analysis tools consume this combined artifact. To reproduce it, run `scripts/stitch-traces.sh <run>/worker-traces <slug> <run>/trace.jsonl <run>/unified-trace.jsonl`. Invalid input fails visibly and leaves any prior combined artifact intact.
-
-### Small, clear change
-
-Run `/agentic-coding-workflow:implement "fix the health check response header"`. It inspects the relevant code, makes the change in the current checkout, runs appropriate checks, and reports the result. Existing work and project rules are respected. No separate plan, spec, worktree, or approval round is required by default.
-
-### Substantial feature
-
-Clarify decisions that affect behavior, scope, or risk, then maintain a concise plan while implementing. A typical flow is `/plan` → `/implement "<planned feature>"` → `/review`. `/implement` can also manage a conversational plan itself. Use `/test` for additional test runs and `/ship` when ready to publish.
-
-For a detailed handoff, select the spec workflow:
-
-1. `/agentic-coding-workflow:prime` — Load up context for a ticket
-2. `/agentic-coding-workflow:plan AI-1234` — Talk through what you're building, go over edge cases and things you might not have thought of
-3. `/agentic-coding-workflow:review --plan` — Get a plan critique if useful
-4. `/agentic-coding-workflow:write-spec feature-name` — Turn the plan into an implementation spec
-5. `/agentic-coding-workflow:implement 1` — Build task 1 from the spec
-6. Repeat for remaining tasks. Use `/agentic-coding-workflow:parallel 3 specs/feature/` to work on multiple tasks simultaneously with auto task assignment
-7. `/agentic-coding-workflow:reunify` — Merge parallel branches back (if you used parallel)
-8. `/agentic-coding-workflow:test` — Run the test suite
-9. `/agentic-coding-workflow:review --spec` — Make sure it matches the spec
-10. `/agentic-coding-workflow:ship` — Create the PR
-
-### Ordinary unattended feature work
-
-In an already isolated feature session, enter the completion condition directly:
-
-```text
-/goal The agreed authentication criteria hold, and the project's configured tests and lint pass with final results shown.
-```
-
-To start a separate named feature session with the plugin's implementation role:
-
-```text
-/agentic-coding-workflow:spawn implementer --worktree auth-update --goal "The agreed authentication criteria hold, and configured tests and lint pass with final results shown."
-```
-
-This delegates to native `/goal` as the initial prompt, names the session
-`auth-update`, and leaves permission handling unchanged. Continue related
-follow-ups there. Use `/goal` for status, `/goal clear` to clear the condition,
-and native `/compact` when a focused summary would help. Return later with
-`claude --resume auth-update`; an active goal restores with the session, while
-an achieved or cleared goal does not. Set a new goal explicitly when needed.
-
-Write conditions that can be demonstrated by real checks. The native evaluator
-judges surfaced conversation evidence and does not inspect the environment
-independently. A time/turn clause is model-judged, not an enforced process limit.
-Keep deterministic checks and required independent review; use Ralph when
-external bounds or executor recovery are required. An impossible verdict or a
-cleared goal is not verified completion. See [native goals](https://code.claude.com/docs/en/goal).
-
-### Enforced limits and coordinated recovery (Ralph)
-
-Use Ralph when the task needs its external limits, scheduling, rollback, or
-durable executor records. Its one-task worker sessions remain an explicit
-isolation boundary. Ordinary serial feature work uses the native goal path above.
-
-1. `/agentic-coding-workflow:prime` — Load context
-2. `/agentic-coding-workflow:plan AI-1234` — Plan the feature
-3. `/agentic-coding-workflow:review --plan` — Critique material risks if useful
-4. `/agentic-coding-workflow:write-spec feature-name --ralph` — Generate atomic specs + implementation plan
-5. `/agentic-coding-workflow:ralph feature-name --once` — Observe one autonomous iteration, then review its results to validate the spec and plan
-6. `/agentic-coding-workflow:ralph feature-name --max 20 --time-budget=600` — Approve scope, completion checks, limits, and stop conditions, then launch in isolation
-7. Go do something else. Check back with `/agentic-coding-workflow:ralph feature-name --status` or read `.claude/ralph-status.md`
-8. Steer mid-loop by writing instructions to `.claude/ralph-inject.md`
-9. `/agentic-coding-workflow:ralph feature-name --harvest` — After completion, extract reusable patterns
-10. `/agentic-coding-workflow:review --spec` → `/agentic-coding-workflow:ship` — Review and create the PR
-
-For greenfield work, add `--clean-room` to skip codebase search. For large features, `--parallel 3` splits work across worktrees — three independent Claude instances working through dependency-ordered tasks simultaneously.
-
-**"Where do I start?"**
-Run `claude` in a project and use `/agentic-coding-workflow:implement "<clear change>"`.
-For an ambiguous feature, start with `/agentic-coding-workflow:plan`. Keep related
-tasks in that session. Use native `/goal` for ordinary unattended continuation;
-select `/agentic-coding-workflow:ralph` for enforced bounds or executor recovery.
-
-## Validation and behavioral evaluation
-
-Local structural diagnostics identify missing skill files, frontmatter fields,
-resources, and script issues. They do not assign a quality score or establish
-that a skill improves outcomes:
+## Validation and maintenance
 
 ```bash
-python3 skills/skill-forge/scripts/validate-skill.py skills/skill-forge --verbose
 python3 -m pytest -q
 bash scripts/validate-hooks.sh
 claude plugin validate .
 ```
 
-Reusable native eval cases under `evals/` cover skill creation and repair,
-triggering near-misses, explicit invocation policy, native isolated and goal
-sessions, feature-session resume, and workflow selection. Cases, graders, and
-sanitized [benchmark summaries](evals/benchmarks/) stay in version control.
-With Claude Code v2.1.269 or later and model access, run tuning cases from this
-trusted checkout:
+Validate skill entrypoints with
+`python3 skills/skill-forge/scripts/validate-skill.py skills/relay --json`.
+Native behavioral evaluation follows [evals/README.md](evals/README.md), keeping
+tuning and final holdout cases separate. Local fixture tests establish controller
+and adapter behavior; they do not establish live-provider accuracy or a delivery
+speedup. Retain actual results and `NOT_RUN` limitations in `evals/benchmarks/`.
 
-```bash
-claude plugin eval . --tag tuning --allow-tools Write Edit --no-publish
-```
-
-Freeze the candidate and success criteria, then run the final holdout separately:
-
-```bash
-claude plugin eval . --tag holdout --allow-tools Write Edit --no-publish
-```
-
-Choose descriptions and instructions using tuning results only. A holdout used
-to guide further edits becomes tuning evidence; reserve fresh final cases
-before claiming independent effectiveness. Unfiltered suite runs include holdout.
-
-The default comparison runs cases with and without the plugin. Inspect outcome
-differences, failures, cost, and duration; invocation checks diagnose triggering
-rather than prove an outcome improved. Runs use model calls and their results
-remain under ignored `evals/results/`. Preserve useful evidence in a tracked
-summary before cleaning disposable workspaces. Native evals complement standards
-validation and deterministic repository tests. See the [case and reporting policy](evals/README.md)
-and [plugin eval documentation](https://code.claude.com/docs/en/plugin-evals).
+Before adding another review layer or retiring a safeguard, use `harness-audit`
+to compare the native-session baseline and proposed workflow on representative
+cases. Measure accepted behavior, useful defects caught, false findings, human
+effort, time, and total cost. For team adoption, have another developer execute
+the three recipes from a fresh checkout and fix the friction they encounter.

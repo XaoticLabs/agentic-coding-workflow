@@ -1,4 +1,5 @@
 ---
+description: Inspect active workflow sessions and worktrees from the terminal.
 allowed-tools:
   - Bash
   - Read

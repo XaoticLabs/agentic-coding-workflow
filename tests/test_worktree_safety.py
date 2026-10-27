@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from test_ralph_pipeline import git, write_executable
+from workflow_test_support import git, write_executable
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 PRIMITIVES = PLUGIN_ROOT / "scripts/lib/parallel-primitives.sh"
@@ -103,7 +103,7 @@ def test_cleanup_preserves_unsafe_worktrees(
 def test_successful_cleanup_archives_ignored_workflow_artifacts(
     project: Path, worktree: Path
 ) -> None:
-    artifact = worktree / ".claude/ralph/run/eval-summary.md"
+    artifact = worktree / ".claude/relay/run/eval-summary.md"
     artifact.parent.mkdir(parents=True)
     artifact.write_text("Review this result")
     archive = project / ".claude/saved worker"
@@ -118,7 +118,7 @@ def test_successful_cleanup_archives_ignored_workflow_artifacts(
     assert result.returncode == 0, result.stderr
     assert not worktree.exists()
     assert (
-        archive / ".claude/ralph/run/eval-summary.md"
+        archive / ".claude/relay/run/eval-summary.md"
     ).read_text() == "Review this result"
     assert "worker" not in git(project, "branch", "--list", "worker")
 
@@ -209,11 +209,11 @@ def review_environment(project: Path, tmp_path: Path) -> dict[str, str]:
     write_executable(tools / "tmux", "exit 0\n")
     write_executable(
         tools / "claude",
-        'mkdir -p .claude/review\n'
+        "mkdir -p .claude/review\n"
         'echo "Review evidence" > .claude/review/report.md\n'
         'if [ -n "${TEST_REVIEW_SIGNAL:-}" ]; then\n'
         '  kill -s "$TEST_REVIEW_SIGNAL" "$PPID"\n'
-        'fi\n'
+        "fi\n"
         'exit "${TEST_REVIEW_EXIT:-0}"\n',
     )
     return {
@@ -272,24 +272,31 @@ def test_review_launch_preserves_mode_and_does_not_install_dependencies(
     assert not installation.exists()
 
 
-@pytest.mark.parametrize("exit_code, signal", [(0, ""), (7, ""), (143, "TERM"), (129, "HUP")])
+@pytest.mark.parametrize(
+    "exit_code, signal", [(0, ""), (7, ""), (143, "TERM"), (129, "HUP")]
+)
 def test_review_exit_cleans_only_its_owned_worktree_and_archives_evidence(
     project: Path, review_environment: dict[str, str], exit_code: int, signal: str
 ) -> None:
     unrelated = project / ".claude/worktrees/pr-review-unrelated"
     result = shell(
-        project, 'create_worker_worktree "$2" "$3" unrelated "" "" "" main',
+        project,
+        'create_worker_worktree "$2" "$3" unrelated "" "" "" main',
         str(unrelated),
     )
     assert result.returncode == 0, result.stderr
-    review_environment.update(TEST_REVIEW_EXIT=str(exit_code), TEST_REVIEW_SIGNAL=signal)
+    review_environment.update(
+        TEST_REVIEW_EXIT=str(exit_code), TEST_REVIEW_SIGNAL=signal
+    )
 
     result = launch_reviews(project, review_environment, "review-one")
 
     assert result.returncode == exit_code, result.stdout + result.stderr
     assert not (project / ".claude/worktrees/pr-review-review-one").exists()
     assert unrelated.is_dir()  # Even a clean, inactive checkout with the same owner.
-    report = next((project / ".claude/worktree-archives").glob("*/.claude/review/report.md"))
+    report = next(
+        (project / ".claude/worktree-archives").glob("*/.claude/review/report.md")
+    )
     assert report.read_text() == "Review evidence\n"
 
 
@@ -346,8 +353,14 @@ def test_review_process_refuses_another_owners_worktree(
     project: Path, worktree: Path, review_environment: dict[str, str]
 ) -> None:
     result = subprocess.run(
-        ["bash", str(PLUGIN_ROOT / "scripts/review-in-worktree.sh"),
-         str(project), str(worktree), "worker", "python"],
+        [
+            "bash",
+            str(PLUGIN_ROOT / "scripts/review-in-worktree.sh"),
+            str(project),
+            str(worktree),
+            "worker",
+            "python",
+        ],
         cwd=project,
         env={**review_environment, "WORKTREE_OWNER_TOKEN": "different-owner"},
         capture_output=True,
@@ -357,25 +370,3 @@ def test_review_process_refuses_another_owners_worktree(
     assert result.returncode != 0
     assert worktree.is_dir()
     assert not (worktree / ".claude/review/report.md").exists()
-
-
-def test_merge_checkout_failure_preserves_target_worktree(
-    project: Path, worktree: Path
-) -> None:
-    result = subprocess.run(
-        [
-            "bash",
-            str(PLUGIN_ROOT / "skills/ralph/scripts/merge-workers.sh"),
-            "--target",
-            "worker",
-            "--branches",
-            "main",
-        ],
-        cwd=project,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 2
-    assert worktree.is_dir()
-    assert git(worktree, "branch", "--show-current") == "worker"

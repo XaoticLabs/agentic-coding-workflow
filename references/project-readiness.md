@@ -30,6 +30,8 @@ Save the project's actual CI/task commands in `.claude/project-commands.json`.
 The core keys remain `build`, `test`, `lint`, `format`, and `run`. Optional
 `install` is used only by explicit environment setup. `health`, `logs`,
 `deploy_status`, and `flag_status` support [lifecycle observations](lifecycle-observation.md).
+`verify` adds a project-owned runtime gate to Relay. `quick_check` opts into a
+short advisory check after edits; it never populates final verification evidence.
 Initialization retains its five core arguments and preserves extra keys. The Stop
 hook runs configured **lint and test** commands; include required check-only
 formatting, typing, and other static checks in the project's lint task.
@@ -84,7 +86,7 @@ disable an unknown check to silence an incomplete result. Existing project
 policy decides whether a disable is appropriate.
 
 The existing command reader also accepts `get <project> <action> --required`.
-Stop and Ralph use this configuration contract; the generator leaves unknown
+Stop and Relay use this configuration contract; the generator leaves unknown
 Go/Python/Node/mixed tasks missing and preserves explicit overrides. Legacy
 defaults remain available for Elixir-only roots. The inspector does not parse
 shell commands to infer whether they cover every component; owners select

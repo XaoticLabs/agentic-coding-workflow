@@ -5,10 +5,10 @@
 # ///
 
 """
-Ralph Stream Processor — sits between Claude's stream-json output and the terminal.
+Workflow Stream Processor — sits between Claude's stream-json output and the terminal.
 
 stdin:  stream-json from `claude -p --output-format stream-json`
-stdout: reconstructed text output (captured to iter log file by loop.sh)
+stdout: reconstructed text output (captured by a calling workflow)
 stderr: live activity display (visible in tmux pane)
 trace:  JSONL events appended to --trace-file
 
@@ -79,7 +79,7 @@ def display(msg: str, quiet: bool):
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description="Ralph stream processor")
+    parser = argparse.ArgumentParser(description="Workflow stream processor")
     parser.add_argument("--trace-file", required=True, help="Path to JSONL trace file")
     parser.add_argument("--quiet", action="store_true", help="Suppress live display")
     args = parser.parse_args()
@@ -110,7 +110,9 @@ def main():
             if data.get("type") == "system":
                 subtype = data.get("subtype", "")
                 if subtype == "init":
-                    write_trace(trace_fd, "model", model=data.get("model"), source="cli_init")
+                    write_trace(
+                        trace_fd, "model", model=data.get("model"), source="cli_init"
+                    )
                 if subtype == "api_retry":
                     display(
                         f"  {datetime.now().strftime('%H:%M:%S')}  ⟳ API retry "
@@ -118,9 +120,12 @@ def main():
                         f"status {data.get('error_status', '?')})",
                         args.quiet,
                     )
-                    write_trace(trace_fd, "api_retry",
-                                attempt=data.get("attempt", 0),
-                                error_status=data.get("error_status", 0))
+                    write_trace(
+                        trace_fd,
+                        "api_retry",
+                        attempt=data.get("attempt", 0),
+                        error_status=data.get("error_status", 0),
+                    )
                 continue
 
             # ── CLI stream-json format ──
@@ -132,7 +137,9 @@ def main():
             if top_type == "assistant":
                 msg = data.get("message", {})
                 if msg.get("model"):
-                    write_trace(trace_fd, "model", model=msg["model"], source="assistant")
+                    write_trace(
+                        trace_fd, "model", model=msg["model"], source="assistant"
+                    )
                 for block in msg.get("content", []):
                     bt = block.get("type", "")
                     if bt == "tool_use":
@@ -145,10 +152,13 @@ def main():
                             f"{tool_name:<6} {summary}",
                             args.quiet,
                         )
-                        write_trace(trace_fd, "tool_call",
-                                    tool=tool_name,
-                                    input_summary=summary[:200],
-                                    duration_ms=0)
+                        write_trace(
+                            trace_fd,
+                            "tool_call",
+                            tool=tool_name,
+                            input_summary=summary[:200],
+                            duration_ms=0,
+                        )
                     elif bt == "text":
                         text = block.get("text", "")
                         if text.strip():
@@ -183,11 +193,14 @@ def main():
                     else:
                         iter_summary = tail[-300:].strip()
                     iter_summary = iter_summary.replace("\n", " ")
-                write_trace(trace_fd, "message_end",
-                            tool_calls=tool_count,
-                            input_tokens=input_tokens,
-                            output_tokens=output_tokens,
-                            iteration_summary=iter_summary)
+                write_trace(
+                    trace_fd,
+                    "message_end",
+                    tool_calls=tool_count,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    iteration_summary=iter_summary,
+                )
                 display(
                     f"  {datetime.now().strftime('%H:%M:%S')}  "
                     f"── done ({tool_count} tool calls, "
@@ -278,10 +291,13 @@ def main():
                         args.quiet,
                     )
 
-                    write_trace(trace_fd, "tool_call",
-                                tool=tool_name,
-                                input_summary=summary[:200],
-                                duration_ms=int(elapsed * 1000))
+                    write_trace(
+                        trace_fd,
+                        "tool_call",
+                        tool=tool_name,
+                        input_summary=summary[:200],
+                        duration_ms=int(elapsed * 1000),
+                    )
 
                 elif block["type"] == "text":
                     full_text = "".join(block["text_chunks"])
@@ -315,11 +331,14 @@ def main():
                         iter_summary = tail[-300:].strip()
                     iter_summary = iter_summary.replace("\n", " ")
 
-                write_trace(trace_fd, "message_end",
-                            tool_calls=tool_count,
-                            input_tokens=input_tokens,
-                            output_tokens=output_tokens,
-                            iteration_summary=iter_summary)
+                write_trace(
+                    trace_fd,
+                    "message_end",
+                    tool_calls=tool_count,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    iteration_summary=iter_summary,
+                )
                 display(
                     f"  {datetime.now().strftime('%H:%M:%S')}  "
                     f"── done ({tool_count} tool calls, "
@@ -335,9 +354,12 @@ def main():
         # Flush any remaining blocks as partial events
         for idx, block in blocks.items():
             if block["type"] == "tool_use":
-                write_trace(trace_fd, "tool_call_partial",
-                            tool=block["name"],
-                            note="stream interrupted before completion")
+                write_trace(
+                    trace_fd,
+                    "tool_call_partial",
+                    tool=block["name"],
+                    note="stream interrupted before completion",
+                )
         trace_fd.close()
         # Ensure stdout is flushed
         try:

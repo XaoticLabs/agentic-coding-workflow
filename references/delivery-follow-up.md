@@ -76,7 +76,7 @@ authorized action, not an automatic effect of a local disposition.
 Stop waiting/repairing when elapsed time reaches it, or when rounds are
 exhausted, and preserve exact HEAD, check/log links, findings, and next action.
 Do not silently restart a budget. This is a command workflow, not a new trusted
-executor enforcing unattended wall-clock limits; use Ralph's existing controls
+executor enforcing unattended wall-clock limits; use Relay's existing controls
 when externally enforced limits are needed. Required human review still applies.
 
 ## Lifecycle automation

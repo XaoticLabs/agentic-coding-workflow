@@ -23,11 +23,15 @@ def is_runtime(path: str) -> bool:
         path.startswith(".claude/")
         and not path.startswith(".claude/rules/")
         and not path.startswith(".claude/specs/")
+        and not path.startswith(".claude/skills/")
         and path
         not in (
             ".claude/AGENTS.md",
             ".claude/project-commands.json",
             ".claude/project-environment.json",
+            ".claude/relay-policy.json",
+            ".claude/settings.json",
+            ".claude/settings.local.json",
         )
     )
 
@@ -39,7 +43,11 @@ def snapshot() -> dict[str, str]:
         git_bytes("ls-files", "--others", "--exclude-standard", "-z").split(b"\0")
     ) - {b""}
     # Guidance is often ignored by Git but still changes what verification means.
-    for directory in (Path(".claude/rules"), Path(".claude/specs")):
+    for directory in (
+        Path(".claude/rules"),
+        Path(".claude/specs"),
+        Path(".claude/skills"),
+    ):
         if directory.is_dir():
             untracked.update(
                 os.fsencode(path) for path in directory.rglob("*") if path.is_file()
@@ -48,6 +56,9 @@ def snapshot() -> dict[str, str]:
         ".claude/AGENTS.md",
         ".claude/project-commands.json",
         ".claude/project-environment.json",
+        ".claude/relay-policy.json",
+        ".claude/settings.json",
+        ".claude/settings.local.json",
     ):
         if Path(name).is_file():
             untracked.add(os.fsencode(name))

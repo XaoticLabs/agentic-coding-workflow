@@ -10,6 +10,7 @@ import signal
 import subprocess
 import time
 from datetime import datetime, timezone
+from collections.abc import Callable
 
 
 def timestamp() -> str:
@@ -95,6 +96,7 @@ def run_command(
     *,
     environment: dict | None = None,
     expected_exit: int = 0,
+    cancel: Callable[[], bool] | None = None,
 ) -> dict:
     arguments(command)
     positive(timeout, "timeout")
@@ -113,8 +115,22 @@ def run_command(
                 start_new_session=True,
             )
             try:
-                code = process.wait(timeout=timeout)
-                outcome = "passed" if code == expected_exit else "failed"
+                deadline = start + timeout
+                while process.poll() is None:
+                    if cancel is not None and cancel():
+                        outcome = "cancelled"
+                        terminate(process)
+                        break
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise subprocess.TimeoutExpired(command, timeout)
+                    try:
+                        process.wait(timeout=min(remaining, 0.2))
+                    except subprocess.TimeoutExpired:
+                        continue
+                code = process.returncode
+                if outcome != "cancelled":
+                    outcome = "passed" if code == expected_exit else "failed"
             except subprocess.TimeoutExpired:
                 outcome = "timeout"
                 terminate(process)

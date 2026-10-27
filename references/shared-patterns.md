@@ -13,7 +13,7 @@ Use the least elaborate workflow that resolves material uncertainty and produces
 | Small, clear change | Inspect relevant context → implement → verify → report |
 | Substantial feature | Clarify material uncertainty → maintain a concise plan → implement → verify → review |
 | Ordinary unattended work | Define a measurable native `/goal` → continue in one isolated feature session → verify → review |
-| Enforced limits or coordinated recovery | Select Ralph with agreed boundaries → execute in owned worktrees → verify → review |
+| Enforced limits or coordinated recovery | Select Relay with agreed boundaries → execute in owned worktrees → verify → review |
 
 - Choose the initial path from the task's uncertainty, impact, reversibility, and scope. A short permissions change may require careful planning; a broad mechanical edit may be straightforward.
 - Inspect relevant code and existing behavior first. Reassess the path when inspection reveals a material decision, dependency, or risk. Explain a change of path briefly; ask only when a decision needs user input.
@@ -24,7 +24,7 @@ Use the least elaborate workflow that resolves material uncertainty and produces
 
 - Use the current checkout for clear interactive work when project policy permits. Use an isolated worktree for unattended execution, concurrent changes, or an explicit isolation request; reuse an appropriate existing worktree.
 - Verify every change using checks appropriate to its behavior and consequences, including project-required gates. Add behavioral or regression tests where useful; use direct inspection or targeted validation for changes without testable behavior. Report actual checks, outcomes, and unresolved limitations. Never imply an unrun check passed.
-- Before unattended execution, establish scope, completion checks, allowed operations, and stop conditions. Use the native goal path when conversational continuation is sufficient. Select Ralph when externally enforced iteration/time limits, dependency waves, rollback, or durable executor records are required. If a material decision exceeds the agreed scope, preserve progress and stop for input. Build authorization does not itself authorize publishing.
+- Before unattended execution, establish scope, completion checks, allowed operations, and stop conditions. Use the native goal path when conversational continuation is sufficient. Select Relay when externally enforced iteration/time limits, dependency waves, preserved rejected candidates, or durable executor records are required. If a material decision exceeds the agreed scope, preserve progress and stop for input. Build authorization does not itself authorize publishing.
 
 ## Ticket Context and Lifecycle
 
@@ -86,7 +86,7 @@ session. State a measurable completion condition, the checks that demonstrate
 it, and relevant constraints. Let native Claude Code own continuation and its
 goal status. Do not add a keep-working hook, custom goal state, or an outer
 loop. Native goals retain the session's permission mode. Time/turn clauses are
-judged from conversation evidence; use Ralph when an enforced bound is needed.
+judged from conversation evidence; use Relay when an enforced bound is needed.
 Native completion does not replace deterministic verification or independent
 review required by **Test and Verification Integrity**.
 
@@ -103,7 +103,7 @@ Name sessions by feature. After an interruption, use native `/resume <name>` or
 before continuing. The launcher also supports `/spawn --resume <name>`; a
 failed resume must not silently start a new session. Never resume one transcript
 into two active workers. Start fresh for unrelated work, strict isolation, or
-demonstrated context degradation. Independent reviewers and explicit Ralph
+demonstrated context degradation. Independent reviewers and explicit Relay
 workers keep separate contexts. See [session controls](https://code.claude.com/docs/en/sessions).
 
 ## External Actions and Approval
@@ -196,7 +196,7 @@ contract, such as Elixir-only roots without a command file. Other errors stop
 verification. Execute selected strings with Bash pipe failure handling and
 preserve their quoting/operators; never hide failures behind a passing pipeline.
 
-Generate initial configuration with `skills/ralph/scripts/generate-agents-md.sh`. Existing values are preserved on refresh. Move any custom commands from `.claude/AGENTS.md` into the JSON file; Markdown is no longer parsed for commands.
+Generate initial configuration with `scripts/configure-project.sh`. Existing values are preserved on refresh. Move any custom commands from `.claude/AGENTS.md` into the JSON file; Markdown is no longer parsed for commands.
 
 **Auto-detection order (only for missing keys):**
 
@@ -211,7 +211,7 @@ Generate initial configuration with `skills/ralph/scripts/generate-agents-md.sh`
 Go, Python, and TypeScript/JavaScript have no automatic verification-toolchain
 fallback: inspect CI, task runners, manifests, and tool configuration, then save
 the actual commands. The generator leaves unknown actions missing, including in
-mixed roots, while preserving explicit overrides/disables. Stop and Ralph
+mixed roots, while preserving explicit overrides/disables. Stop and Relay
 verification block on missing checks. Both Stop actions explicitly disabled
 produce `disabled`, never `passed`. Stop runs configured `lint` and `test`;
 include required check-only formatting and typing in the lint task. Keep
@@ -252,7 +252,7 @@ For a separate isolated session, use `claude --worktree <name> --tmux` or the
 ignored environment files through project-owned `.worktreeinclude` settings.
 See the [worktree documentation](https://code.claude.com/docs/en/worktrees).
 
-The Ralph, review, and dependency-aware parallel executors retain their owned
+The Relay, review, and dependency-aware parallel executors retain their owned
 worktree helpers for lifecycle tracking, exact branch placement, preservation,
 and merge checks. They must not adopt native or user-created worktrees for
 automatic removal. If native isolation is unavailable, report the limitation

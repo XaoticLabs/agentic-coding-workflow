@@ -1,4 +1,5 @@
 ---
+description: Analyze supplied datasets or query results and explain supported findings.
 allowed-tools:
   - Read
   - Glob

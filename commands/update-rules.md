@@ -1,4 +1,5 @@
 ---
+description: Place durable project lessons in their canonical guidance or tooling.
 allowed-tools:
   - Read
   - Write

@@ -2,6 +2,19 @@
 
 This is a Claude Code plugin that provides commands, skills, and hooks for a streamlined development workflow. All changes to this repo are plugin components — treat them accordingly.
 
+## Graph engineering
+
+Use `references/graph-engineering.md` for task dependencies, execution states,
+and source-bound evidence. Keep the ordinary native-session path small. Relay
+(`scripts/relay.py`) is the only specialized execution engine. Its controller owns progress,
+commits, bounded processes, integration, and acceptance. Workers never edit a
+plan to establish completion. Jev/Laya observations cannot authorize actions,
+skip checks, or approve patches. Runtime QA uses the `verify-project` skill and
+`runtime-verifier` role with project-owned procedures and actual artifacts.
+Use `devex-review` for onboarding friction and `test-audit` for evidence-backed
+test improvements. These optional capabilities do not add mandatory review
+phases to every change.
+
 ## Architecture
 
 ```
@@ -52,7 +65,7 @@ Keep changes focused and review maintainability in context: clear responsibiliti
 | Small, clear change | Inspect relevant context → implement → verify → report |
 | Substantial feature | Clarify material uncertainty → maintain a concise plan → implement → verify → review |
 | Ordinary unattended work | Set a native `/goal` → continue in one isolated feature session → verify → review |
-| Enforced limits or coordinated recovery | Select Ralph with agreed boundaries → execute in owned worktrees → verify → review |
+| Enforced limits or coordinated recovery | Select Relay with agreed boundaries → execute in owned worktrees → verify → review |
 
 `/agentic-coding-workflow:implement "<change>"` supports direct interactive work. `/agentic-coding-workflow:plan` writes a concise plan when context is sufficient; `--interview` selects deeper questioning. `/agentic-coding-workflow:write-spec` is available for detailed task handoffs. Teaching (`explain`, `review --learn`) and explicit contract-test approval (`implement --approve-tests`) remain selected modes. Planning, specs, new worktrees, and repeated approvals are not universal prerequisites. Verification and project-required gates apply to every path.
 
@@ -67,8 +80,8 @@ independent reviewers. Follow **Native Goals and Session Continuity** in
 Save generated artifacts in `.claude/plans/` and `.claude/specs/` when needed.
 Use native `/goal` for ordinary unattended continuation; it judges surfaced
 evidence and does not replace deterministic verification or required independent
-review. Select `/agentic-coding-workflow:ralph` for enforced iteration/time bounds,
-dependency waves, rollback, or durable executor records. For manual parallel
+review. Select `/agentic-coding-workflow:relay` for enforced iteration/time bounds,
+dependent workers, preserved candidates, or durable executor records. For manual parallel
 work, use `/agentic-coding-workflow:parallel` and `/agentic-coding-workflow:reunify`.
 Review and ship when requested; honor project approval policy and existing
 authorization using **External Actions and Approval** in `references/shared-patterns.md`.
@@ -97,7 +110,7 @@ Always inspect recent `git log` before committing and follow the repository's hi
 
 ## What NOT to Do
 
-- Prefer skills for new workflows; existing command files remain supported. Consolidate duplicate command/skill names gradually into a single skill, preserving public invocation and arguments. `ralph` and `reunify` now have only skill entrypoints.
+- Prefer skills for new workflows; existing command files remain supported. Consolidate duplicate command/skill names gradually into a single skill. Expose Relay directly without a Ralph compatibility entrypoint. `relay` and `reunify` have skill entrypoints.
 - Use `disable-model-invocation: true` for explicit workflows with consequential side effects. `user-invocable: false` is model-only discovery, not a disabled skill. Invocation controls do not grant authorization for publishing or other underlying actions.
 - Don't put project-specific context (like database schemas or deployment details) in plugin files — that belongs in the consuming project's own CLAUDE.md
 - Command `allowed-tools` frontmatter grants prompt-free approval; it does not restrict the available tool set. Use CLI `--tools` / `--disallowedTools` when restriction is required.

@@ -66,7 +66,7 @@ submodules require a project-specific export strategy.
 The image must support the invoking user's numeric UID/GID and a read-only root
 filesystem; `/tmp` and the private XDG cache remain writable. Resources are
 bounded and capabilities dropped. Invoke this runner around the whole workflow;
-installing the plugin does not automatically contain existing host hooks/Ralph.
+installing the plugin does not automatically contain existing host hooks/Relay.
 No native permission bypass is added.
 
 This project-owned runner supplies isolation for trusted development work.

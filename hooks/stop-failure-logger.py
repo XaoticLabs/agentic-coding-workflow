@@ -3,11 +3,13 @@
 
 import json
 import os
-import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from workflow_notifications import notify  # noqa: E402
 
 MESSAGES = {
     "rate_limit": "Rate limit reached.",
@@ -37,20 +39,9 @@ def main() -> int:
             entry[field] = data.get(field, "")
         with (directory / "stop-failures.jsonl").open("a") as stream:
             stream.write(json.dumps(entry, separators=(",", ":")) + "\n")
-        if shutil.which("osascript"):
-            message = MESSAGES.get(data.get("error"), "Unknown API error.")
-            subprocess.run(
-                [
-                    "osascript",
-                    "-e",
-                    'on run argv\ndisplay notification (item 1 of argv) with title "Claude API Failure"\nend run',
-                    "--",
-                    message,
-                ],
-                capture_output=True,
-                timeout=2,
-                check=False,
-            )
+        notify(
+            "Claude API Failure", MESSAGES.get(data.get("error"), "Unknown API error.")
+        )
     except (OSError, ValueError, TypeError, subprocess.TimeoutExpired):
         pass  # Observability failures must not break a session.
     return 0

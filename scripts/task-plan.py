@@ -185,7 +185,7 @@ def partition(tasks: list[Task], workers: int, plan: Path) -> dict:
     assignments = {f"worker-{worker}": [] for worker in range(workers)}
     learnings = (
         Path(os.environ.get("CLAUDE_PROJECT_DIR", "."))
-        / ".claude/ralph"
+        / ".claude/parallel"
         / plan.parent.name
         / "learnings.json"
     )
@@ -272,9 +272,8 @@ def repair_plan(path: Path, tasks: list[Task]) -> list[dict]:
 
 
 def assigned_ids(tasks: list[Task]) -> set[int] | None:
-    path = (
-        Path(os.environ.get("CLAUDE_PROJECT_DIR", ".")) / ".claude/ralph-assigned-tasks"
-    )
+    project = Path(os.environ.get("CLAUDE_PROJECT_DIR", "."))
+    path = project / ".claude/assigned-tasks"
     if not path.exists():
         return None
     assigned = {int(number) for number in path.read_text().strip().split(",")}

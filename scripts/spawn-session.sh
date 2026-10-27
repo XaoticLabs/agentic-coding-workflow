@@ -66,7 +66,7 @@ if [ -n "$GOAL" ]; then
   [ "${#PROMPT}" -le 4000 ] || error 'The goal condition, including context instructions, exceeds 4000 characters.'
   PROMPT="/goal $PROMPT"
 fi
-# Ordinary sessions must not inherit a caller's Ralph worker contract. Keep
+# Ordinary sessions must not inherit a caller's Relay worker contract. Keep
 # the override in argv so it also survives an existing tmux server's env.
 workflow_model_environment_args
 WORKFLOW_MODEL_ARGS=()
@@ -75,7 +75,7 @@ if [ -z "$RESUME" ]; then
   [ "$ROLE" != evaluator ] || MODEL_ROLE=evaluator
   workflow_model_args "$MODEL_ROLE"
 fi
-CLAUDE_ARGS=("${WORKFLOW_ENV_ARGS[@]}" RALPH_MODE=0 claude --plugin-dir "$PLUGIN_ROOT" "${WORKFLOW_MODEL_ARGS[@]}")
+CLAUDE_ARGS=("${WORKFLOW_ENV_ARGS[@]}" RELAY_MODE=0 claude --plugin-dir "$PLUGIN_ROOT" "${WORKFLOW_MODEL_ARGS[@]}")
 if [ -n "$RESUME" ]; then
   CLAUDE_ARGS+=(--resume "$RESUME")
 else

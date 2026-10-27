@@ -1,4 +1,5 @@
 ---
+description: Translate a data question into project-scoped SQL and present the results.
 allowed-tools:
   - Read
   - Glob

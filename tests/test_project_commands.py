@@ -9,7 +9,7 @@ import pytest
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 PRIMITIVES = PLUGIN_ROOT / "scripts/lib/parallel-primitives.sh"
-GENERATOR = PLUGIN_ROOT / "skills/ralph/scripts/generate-agents-md.sh"
+GENERATOR = PLUGIN_ROOT / "scripts/configure-project.sh"
 
 
 @pytest.fixture

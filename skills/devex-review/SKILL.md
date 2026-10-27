@@ -1,0 +1,39 @@
+---
+name: devex-review
+description: Audit a project's getting-started flow, CLI errors, and developer handoff using a fresh checkout or contained environment, with observed evidence and prioritized friction.
+allowed-tools:
+  - Read
+  - Glob
+  - Grep
+  - Bash
+effort: medium
+---
+
+# Developer experience review
+
+Choose the actual audience and requested journey: a coworker installing this
+plugin, a developer running a service, or an agent consuming a CLI. Reuse the
+project's docs and [contained execution](../../references/execution-environments.md)
+when setup must run. Use `verify-project` for broader runtime behavior; this
+review focuses on reaching useful work and understanding failures.
+
+1. Follow the documented path from a fresh checkout/environment without relying
+   on the author's unrecorded tools, shell aliases, credentials, or prior state.
+   Record the source version, prerequisites, commands, and observed outcomes.
+   Do not install globally, contact coworkers, or change a shared service.
+2. Identify the first useful result. Distinguish observed machine time, waiting,
+   and active human effort; report only measurements actually taken. A command
+   listing or a static read is a walkthrough, not a successful onboarding run.
+3. Exercise a few relevant failures: missing configuration, wrong working
+   directory, unavailable tool/authentication, invalid CLI arguments, and a
+   failed check. Assess whether the output identifies the cause, preserves work,
+   gives a usable next action, and has an appropriate nonzero exit/typed status.
+4. Check that the final handoff names changed behavior, verification, gaps, and
+   remaining decisions. Have a different developer execute the journey when
+   evaluating team adoption; do not simulate that person's feedback as evidence.
+
+Return the highest-cost friction with its trigger, observed output, consequence,
+and a small proposed correction. Separate reproduced issues from static risks
+and unavailable checks. Keep the canonical recipe short and link optional
+advanced paths. Report-only unless fixes are part of the request; changes need
+the same source-bound verification as other work.

@@ -1,4 +1,5 @@
 ---
+description: Prepare and publish a reviewable PR when requested, with optional bounded CI follow-up.
 disable-model-invocation: true
 allowed-tools:
   - Bash
@@ -74,11 +75,11 @@ Read the project's verification requirements and configured commands using **Pro
 
 ### Phase 2: Find Context for PR Description
 
-**Auto-detect spec/plan/ralph summary:**
+**Auto-detect spec/plan/Relay state:**
 - If spec provided in $ARGUMENTS, use it
 - Otherwise, look for specs matching the branch name in `.claude/specs/`
 - Also check `.claude/plans/` for a corresponding plan
-- Check for Ralph summary: read `.claude/ralph-logs/ralph-summary-<slug>.md` if it exists for run metrics and context
+- Check `.claude/relay/<slug>/active.json` and its run state for the preserved candidate, verification, and remaining work. Do not treat a completed run as publishing approval.
 
 For `--ticket`, or a ticket explicitly associated with the current feature
 session/spec, follow **Ticket Context and Lifecycle** in the shared patterns.

@@ -1,4 +1,5 @@
 ---
+description: Configure project-specific Python guidance while preserving its selected toolchain.
 allowed-tools:
   - Read
   - Write

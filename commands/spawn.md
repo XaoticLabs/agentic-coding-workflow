@@ -1,4 +1,5 @@
 ---
+description: Start or resume a named role with native sessions and optional isolated worktrees.
 disable-model-invocation: true
 allowed-tools:
   - Read
@@ -39,8 +40,8 @@ promise to check out an existing branch of that name. No existing tmux session
 is required. Native Claude Code owns this worktree's lifecycle and exit prompts.
 See the [CLI reference](https://code.claude.com/docs/en/cli-reference).
 
-These are ordinary sessions, so the helper disables inherited `RALPH_MODE`
-build gates on both creation and resume. Ralph starts its workers through its
+These are ordinary sessions, so the helper disables inherited `RELAY_MODE`
+build gates on both creation and resume. Relay starts its workers through its
 own executor.
 
 Name a new session with `--name`; otherwise an isolated session uses its

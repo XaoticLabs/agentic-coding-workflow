@@ -1,4 +1,5 @@
 ---
+description: Explain code or changes with their behavior, rationale, and tradeoffs.
 allowed-tools:
   - Read
   - Glob

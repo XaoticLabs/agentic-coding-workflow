@@ -8,7 +8,15 @@ from pathlib import Path
 from typing import cast
 
 ACTIONS = ("build", "test", "lint", "format", "run")
-EXTRA_ACTIONS = ("install", "health", "logs", "deploy_status", "flag_status")
+EXTRA_ACTIONS = (
+    "install",
+    "health",
+    "logs",
+    "deploy_status",
+    "flag_status",
+    "verify",
+    "quick_check",
+)
 
 
 class CommandArguments(argparse.Namespace):

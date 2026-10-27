@@ -1,4 +1,5 @@
 ---
+description: Run the project-selected tests for the requested scope and report actual results.
 allowed-tools:
   - Bash
   - Read

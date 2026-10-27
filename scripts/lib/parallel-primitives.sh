@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shared primitives for parallel workflow orchestration.
-# Source this file from orchestrate-parallel.sh, merge-workers.sh, loop.sh, etc.
+# Shared helpers for explicitly requested manual parallel work and cleanup.
 #
 # Provides:
 #   Worktree lifecycle:  create_worker_worktree, cleanup_worker_worktree, ensure_worktrees_gitignored
@@ -70,11 +70,11 @@ create_worker_worktree() {
   done
 
   # Ensure .claude dirs exist for markers and logs
-  mkdir -p "${worktree_path}/.claude/ralph-logs"
+  mkdir -p "${worktree_path}/.claude/parallel-logs"
 
   # Write task assignments if provided
   if [ -n "$task_list" ]; then
-    echo "$task_list" > "${worktree_path}/.claude/ralph-assigned-tasks"
+    echo "$task_list" > "${worktree_path}/.claude/assigned-tasks"
   fi
 }
 

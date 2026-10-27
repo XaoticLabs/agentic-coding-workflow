@@ -478,7 +478,7 @@ def test_real_stream_processor_retains_observed_model_ids(tmp_path):
     result = subprocess.run(
         [
             sys.executable,
-            str(ROOT / "skills/ralph/scripts/stream-processor.py"),
+            str(ROOT / "scripts/stream-processor.py"),
             "--trace-file",
             str(trace),
             "--quiet",

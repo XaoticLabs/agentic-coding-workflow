@@ -1,0 +1,56 @@
+---
+name: relay
+description: Run a bounded implementation graph with owned worktrees, project checks, independent review, and durable recovery. Use when external limits or dependent workers are needed; ordinary unattended features use native goals.
+disable-model-invocation: true
+user-invocable: true
+allowed-tools:
+  - Read
+  - Bash
+  - AskUserQuestion
+effort: medium
+---
+
+# Relay
+
+Run the existing supervisor, rather than narrating or simulating its graph.
+For architecture, recovery, and scope policy, read
+[the supervisor contract](references/supervisor.md) when relevant.
+
+`$ARGUMENTS`: `<slug> [--once] [--workers N] [--max N] [--max-attempts N]
+[--time-budget SECONDS] [--run-budget SECONDS] [--status | --stop | --resume]`.
+The slug identifies `.claude/specs/<slug>/IMPLEMENTATION_PLAN.md`. Both numeric
+`--flag=value` and `--flag value` forms work. `--parallel` aliases `--workers`.
+
+1. For a build, inspect the task index and acceptance criteria. Use an existing
+   plan; generate one with `/write-spec <slug> --relay` only when needed.
+   Resolve materially missing criteria, project commands, or scope before launch.
+2. Establish authorization for the concrete scope and limits. Reuse existing
+   authorization. Defaults: one worker, 50 implementation calls, three attempts
+   per task, 600 seconds per process, 3,600 total active seconds. No unlimited
+   mode. Work and branches are preserved; the supervisor does not publish or
+   merge into the original branch. Native permissions still apply. Worker shell
+   access is not an OS sandbox.
+3. Pass the slug and options as separate arguments to the canonical entrypoint:
+
+   ```bash
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/relay.py" <slug> [options]
+   ```
+
+   Execute in the foreground so cancellation and results are visible. For an
+   explicitly requested detached session, use the existing tmux skill with this
+   same command and preserve the selected workflow-model environment.
+4. Report the actual status, preserved branch/worktree, checked revision, failed
+   node, and state path. Exit 0 means completed; 1 means blocked; 2 means stopped,
+   incomplete, or invalid input. Read the JSON status to distinguish them.
+   `--once` may leave an incomplete graph; it is not a completion guarantee.
+
+Run records live in `.claude/relay/<slug>/runs/<id>/`. `--status` reads the most
+recent run, `--stop` requests cancellation of its owned processes, and `--resume`
+rechecks the same run without resetting limits or accepted dependencies. A
+changed original checkout, guidance, integration branch, or plan requires
+inspection rather than an automatic rebase or reset.
+
+Decision-model classification is optional and observation-only. Only pass
+`--triage-config <file>` when calls to that configured endpoint are authorized;
+see [failure triage](../../references/decision-models.md). It never changes
+an acceptance edge. No notification hook sends Slack/email messages.

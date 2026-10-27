@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Analyze a parallel Ralph run from the unified trace and worker artifacts.
+# Analyze a historical parallel Ralph run from the unified trace and worker artifacts.
 #
 # Produces a markdown report with:
 #   - Worker comparison table (iterations, kept, reverted, duration, files)

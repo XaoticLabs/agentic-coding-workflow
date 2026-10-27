@@ -1,6 +1,54 @@
 {
   "description": "Core agentic coding workflow hooks - security, verification, and notifications",
   "hooks": {
+    "SessionStart": [
+      {
+        "description": "Reports checkout and project-check readiness without running checks",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/workflow-events.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt|idle_prompt|elicitation_dialog",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/workflow-events.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/workflow-events.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "description": "Runs only an explicitly configured advisory quick_check",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/workflow-events.py\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "description": "Prevents execution of potentially dangerous commands",
@@ -8,7 +56,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/dangerous_command_blocker.py",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/dangerous_command_blocker.py\"",
             "timeout": 5
           }
         ]
@@ -20,7 +68,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/stop-failure-logger.sh",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/stop-failure-logger.sh\"",
             "timeout": 5
           }
         ]
@@ -28,26 +76,24 @@
     ],
     "Stop": [
       {
-        "description": "Validates registered task graphs, runs project checks, enforces Ralph plan updates, and notifies on completion",
+        "description": "Validates task graphs and project checks; notification means the response finished",
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/validate-output.py",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/validate-output.py\"",
+            "timeout": 5,
+            "onFailure": "block"
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/lint-on-stop.sh\"",
+            "timeout": 600,
+            "onFailure": "block"
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/workflow-events.py\"",
             "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/lint-on-stop.sh",
-            "timeout": 600
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/ralph-on-stop.sh",
-            "timeout": 30
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/toast-notify.sh"
           }
         ]
       }

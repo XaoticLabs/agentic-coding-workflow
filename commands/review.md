@@ -1,4 +1,5 @@
 ---
+description: Review code, plans, or acceptance criteria, with optional teaching and bounded repair.
 allowed-tools:
   - Read
   - Glob

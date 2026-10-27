@@ -49,7 +49,7 @@ If not in tmux, tell the user to start tmux first:
 
 ### 2. Parse Tasks and Assign by File Affinity
 
-**From a spec file (Ralph-compatible directory with IMPLEMENTATION_PLAN.md):**
+**From a spec file (Relay-compatible directory with IMPLEMENTATION_PLAN.md):**
 
 If the spec path points to a directory containing `IMPLEMENTATION_PLAN.md`, use the partition script for smart task assignment:
 

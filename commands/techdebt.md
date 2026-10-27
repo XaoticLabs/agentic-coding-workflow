@@ -1,4 +1,5 @@
 ---
+description: Identify concrete maintenance costs and propose focused improvements.
 allowed-tools:
   - Read
   - Glob

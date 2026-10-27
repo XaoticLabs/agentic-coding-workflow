@@ -4,7 +4,7 @@ Use the team's chosen strongest available model for substantial implementation
 and review. Keep selectors configurable; availability changes. Do not silently
 substitute a cheaper family to reduce token spend.
 
-Ralph build/planning/harvest, independent evaluation/review, and merge resolution share
+Relay implementation and independent review, and manual merge resolution share
 `scripts/workflow_models.py`. Precedence is:
 
 1. `WORKFLOW_BUILD_MODEL`, `WORKFLOW_EVALUATOR_MODEL`, or `WORKFLOW_MERGE_MODEL`.

@@ -1,6 +1,6 @@
 ---
 name: implementer
-description: Implements and verifies scoped changes in a continuing feature session, with a single-task contract when explicitly running as a Ralph worker
+description: Implements and verifies scoped changes in a continuing feature session, with a single-task contract when explicitly running as a Relay worker
 effort: high
 maxTurns: 40
 initialPrompt: Inspect the agreed task, current checkout, and verification requirements, then continue the authorized work.
@@ -11,8 +11,8 @@ initialPrompt: Inspect the agreed task, current checkout, and verification requi
 Implement the agreed change and verify its behavior. For related work, retain
 the current feature session and use native compaction rather than restarting
 after every task. Native `/goal` can continue execution toward an explicit
-completion condition. The separate Ralph worker contract below applies only
-when `RALPH_MODE=1` is explicitly set by the specialized executor.
+completion condition. The separate Relay worker contract below applies only
+when `RELAY_MODE=1` is explicitly set by the specialized executor.
 
 ## Instructions
 
@@ -21,7 +21,7 @@ when `RALPH_MODE=1` is explicitly set by the specialized executor.
 - Search the codebase before implementing — don't duplicate existing work
 - Implement the agreed requirements and preserve unrelated work
 - Follow existing codebase patterns and conventions
-- Follow **Test and Verification Integrity** in `references/shared-patterns.md`; explain test corrections and obtain independent review, preserving acceptance criteria and human-approved expectations. Ralph reviews every committed iteration, with no file freeze or mandatory RED commit.
+- Follow **Test and Verification Integrity** in `references/shared-patterns.md`; explain test corrections and obtain independent review, preserving acceptance criteria and human-approved expectations. Relay reviews every committed iteration, with no file freeze or mandatory RED commit.
 - Resolve and run project-configured verification, report actual results, and keep required independent review separate from the implementation session
 - Follow `references/review-policy.md` for reviewable scope, concise PR evidence, and authorized author/reviewer repair limits; include checked source state and remaining human decisions
 - Preserve the user's criteria and the meaning of human-approved expectations through compaction and related follow-up tasks
@@ -36,21 +36,18 @@ when `RALPH_MODE=1` is explicitly set by the specialized executor.
 - Let native `/goal` provide continuation; do not add another keep-working hook, shell loop, or custom conversation-state file.
 - Keep related tasks in this session. Start fresh for an unrelated workstream, required isolation, or demonstrated context degradation; use a separate read-only reviewer where independent review is required.
 
-## Explicit Ralph Worker Contract
+## Explicit Relay Worker Contract
 
-When `RALPH_MODE=1`, follow `skills/ralph/references/PROMPT_build.md` and the
-executor's spec, task plan, and execution boundaries. Pick exactly one eligible
-task, implement and verify it, commit the work, update the plan, and exit so the
-outer executor can run its acceptance and recovery gates. Preserve the worker's
-non-interactive behavior. This is an executor-specific isolation boundary, not
-the default for ordinary feature work.
+When `RELAY_MODE=1`, follow `skills/relay/references/implement.md` and the
+controller-supplied task context. Implement that task and leave edits uncommitted.
+Return a structured ready/blocked result; do not edit the task plan or claim
+acceptance. The supervisor commits, verifies, reviews, and integrates candidates.
 
 ## Output Format
 
 Report the changes, verified outcomes, pending criteria, and blockers. Cite
 actual check results and any independent review. Keep unfinished work explicit.
-For a Ralph worker, the committed changes, updated task plan, and executor logs
-are the durable iteration record.
+For a Relay worker, the controller-owned source and evidence records are the durable iteration record.
 
 ## Best Used As
 

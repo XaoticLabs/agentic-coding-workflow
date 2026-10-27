@@ -1,4 +1,5 @@
 ---
+description: Turn an agreed task into behavioral requirements and optional Relay task inputs.
 allowed-tools:
   - Read
   - Glob
@@ -22,9 +23,9 @@ $ARGUMENTS - Either:
 
 Optional flags:
 - `--approve-tests` — generate a spec that selects explicit approval of acceptance-test expectations during interactive implementation
-- `--ralph` — also generate topic specs and an implementation plan for Ralph's autonomous behavioral-verification workflow
+- `--relay` — also generate topic specs and an implementation plan for Relay's autonomous behavioral-verification workflow
 
-Parse flags before locating the input. Reject `--approve-tests` combined with `--ralph`: Ralph iterations cannot pause for interactive test approval. Invoking this command authorizes generating its artifacts once material decisions are clear.
+Parse flags before locating the input. Reject `--approve-tests` combined with `--relay`: Relay iterations cannot pause for interactive test approval. Invoking this command authorizes generating its artifacts once material decisions are clear.
 
 ## Instructions
 
@@ -111,7 +112,7 @@ Scan the plan document and your Phase 2 analysis for ambiguity:
 - Tasks should have minimal dependencies on other tasks
 - Tasks should be orderable (what must come before what)
 
-**Test mode:** Default to `standard`: specify behavioral and regression checks without requiring test approval or separate failing commits. Ordinary TDD can be used in standard mode. With `--approve-tests` or an equivalent explicit request, select `approved-contract`. With `--ralph`, select `ralph-contract` for compatibility: autonomous behavioral verification with mandatory independent integrity review, optional RED/GREEN commits, and no mid-iteration approval. Acceptance criteria must be specific enough to verify without ambiguity. Apply **Test and Verification Integrity** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md` to every mode.
+**Test mode:** Default to `standard`: specify behavioral and regression checks without requiring test approval or separate failing commits. Ordinary TDD can be used in standard mode. With `--approve-tests` or an equivalent explicit request, select `approved-contract`. With `--relay`, select `relay-contract`: autonomous behavioral verification with mandatory independent integrity review, optional RED/GREEN commits, and no mid-iteration approval. Acceptance criteria must be specific enough to verify without ambiguity. Apply **Test and Verification Integrity** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md` to every mode.
 
 **Task categories to consider:**
 1. **Data/Schema tasks** - migrations, models, types
@@ -206,7 +207,7 @@ Review the document for useful task-specific content.
 > Generated from: `.claude/plans/<slug>.md` (or inline prompt)
 > Generated on: [date]
 
-**Test mode:** [standard | approved-contract | ralph-contract — choose the selected mode]
+**Test mode:** [standard | approved-contract | relay-contract — choose the selected mode]
 
 ## Overview
 
@@ -261,7 +262,7 @@ Review the document for useful task-specific content.
 
 ## Testing Strategy
 
-Selected mode: [standard | approved-contract | ralph-contract]. Describe the relevant behavioral, regression, integration, or direct checks. Standard mode permits ordinary TDD without approval or separate failing commits. Approved-contract mode protects explicitly approved behavioral expectations. Ralph requires independent verification-integrity review without an interactive prompt. All modes permit additions and justified corrections under the shared integrity policy; changing a human-approved expectation requires human approval.
+Selected mode: [standard | approved-contract | relay-contract]. Describe the relevant behavioral, regression, integration, or direct checks. Standard mode permits ordinary TDD without approval or separate failing commits. Approved-contract mode protects explicitly approved behavioral expectations. Relay requires independent verification-integrity review without an interactive prompt. All modes permit additions and justified corrections under the shared integrity policy; changing a human-approved expectation requires human approval.
 
 ### Verification per Task
 | Task | Evidence | Direct Validation | Approved Acceptance Tests (only when selected) |
@@ -296,11 +297,11 @@ Selected mode: [standard | approved-contract | ralph-contract]. Describe the rel
 *Tasks can be picked up independently, respecting dependencies, using the selected test mode and the verification criteria above.*
 ```
 
-### Phase 8: Ralph-Compatible Output (conditional)
+### Phase 8: Relay-Compatible Output (conditional)
 
-**Only run this phase if `--ralph` flag is present in `$ARGUMENTS`.**
+**Only run this phase if `--relay` flag is present in `$ARGUMENTS`.**
 
-After generating the monolithic spec (Phase 7), create a Ralph-compatible directory structure:
+After generating the monolithic spec (Phase 7), create a Relay-compatible directory structure:
 
 **Create the spec directory:**
 ```bash
@@ -312,7 +313,7 @@ so the Stop hook validates the same task graph used by the scheduler:
 
 ```json
 {
-    "source": "write-spec-ralph",
+    "source": "write-spec-relay",
     "rules": [
         {
             "type": "task_index_format",
@@ -336,7 +337,7 @@ Read the monolithic spec's Implementation Tasks section. For each task, create a
   - Acceptance criteria
   - Edge cases
   - Testing requirements
-- Each file must pass the **"one sentence without 'and'" scope test**: you should be able to describe what this file covers in one sentence without using "and"
+- Each file should have a cohesive scope and independently checkable outcomes; split it when dependencies or verification require separate work
 - Do NOT include implementation details (HOW) — that's for the implementer to decide
 
 **Topic file format:**
@@ -375,7 +376,7 @@ Prefer test-first development for behavior changes and regression fixes when pra
 
 Write `.claude/specs/<slug>/IMPLEMENTATION_PLAN.md`:
 
-Use the structured `## Task Index` contract from `skills/ralph/references/PROMPT_plan.md`. Keep task details and acceptance criteria under `## Tasks`.
+Use the structured `## Task Index` schema below, validated by `scripts/task-plan.py`. Keep task details and acceptance criteria under `## Tasks`.
 
 ````markdown
 # Implementation Plan: <Feature Name>
@@ -401,7 +402,7 @@ Use the structured `## Task Index` contract from `skills/ralph/references/PROMPT
 
 ## Learnings
 
-(Populated by Ralph build iterations)
+(Record durable observations explicitly after inspecting run evidence; workers do not edit this plan)
 ````
 
 Validate the index and dependency graph before finishing:
@@ -412,11 +413,11 @@ Validate the index and dependency graph before finishing:
 2. Foundation before features — data models, types, configs before business logic
 3. Within a tier — smaller tasks first (faster iteration, earlier feedback)
 
-**Both formats coexist:** The monolithic `.claude/specs/<slug>-spec.md` (for interactive `/agentic-coding-workflow:implement`) and the directory `.claude/specs/<slug>/` (for `/agentic-coding-workflow:ralph`) are generated together. No conflict.
+**Both formats coexist:** The monolithic `.claude/specs/<slug>-spec.md` (for interactive `/agentic-coding-workflow:implement`) and the directory `.claude/specs/<slug>/` (for `/agentic-coding-workflow:relay`) are generated together. No conflict.
 
 **Report:** After generating, show the directory structure and task summary:
 ```
-Ralph-compatible specs generated:
+Relay-compatible specs generated:
 
   .claude/specs/<slug>/
     01-topic-a.md
@@ -425,7 +426,7 @@ Ralph-compatible specs generated:
     IMPLEMENTATION_PLAN.md
 
   Tasks: N total (X HIGH, Y MEDIUM, Z LOW priority)
-  Ready for: /agentic-coding-workflow:ralph <slug>
+  Ready for: /agentic-coding-workflow:relay <slug>
 ```
 
 ## Quality Checklist
@@ -487,4 +488,4 @@ This would read the plan doc directly and generate a spec from it.
 
 This would treat the inline prompt as a lightweight plan, analyze the codebase, and generate a spec.
 
-Add `--approve-tests` to select approval of acceptance-test expectations during implementation, or `--ralph` to generate autonomous topic specs with Ralph's contract policy. These modes are mutually exclusive.
+Add `--approve-tests` to select approval of acceptance-test expectations during implementation, or `--relay` to generate autonomous topic specs with Relay's contract policy. These modes are mutually exclusive.

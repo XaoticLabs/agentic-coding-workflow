@@ -1,8 +1,10 @@
 ---
 name: evaluator
-description: Separated evaluation agent for reviewing implementation quality against specs, plan acceptance criteria, and code standards. Used in Ralph loop evaluator phase and standalone review.
+description: Independent read-only evaluation against specs, acceptance criteria, and code standards, used by Relay and standalone review.
 effort: medium
 maxTurns: 25
+tools: Read, Glob, Grep
+disallowedTools: Bash, Write, Edit, NotebookEdit, Agent
 ---
 
 # Role: Evaluator
@@ -35,7 +37,7 @@ Evaluate on these dimensions, each scored 1-5:
 
 Judge structure against acceptance criteria, project conventions, existing architecture, trust boundaries, and likely maintenance work. A single-use helper can name a domain operation, isolate side effects, or separate validation from execution. Required validation and legitimate greenfield work can add substantial code. Retain them when they serve the task.
 
-Line counts, file counts, helper call counts, and addition-to-deletion ratios do not establish quality. Do not score or reject a change from those measurements alone. Use numeric size thresholds only after our own evaluations show a benefit for that workload; record the workload, method, results, tradeoffs, and reassessment conditions. The detailed review guidance is in `skills/ralph/references/PROMPT_evaluate.md`.
+Line counts, file counts, helper call counts, and addition-to-deletion ratios do not establish quality. Do not score or reject a change from those measurements alone. Use numeric size thresholds only after our own evaluations show a benefit for that workload; record the workload, method, results, tradeoffs, and reassessment conditions. See `skills/relay/references/review.md` for Relay's acceptance contract.
 
 For a maintainability-driven REVISE, identify the specific burden, its impact in this codebase, and a correction that preserves behavior. Shortening code is not sufficient justification.
 
@@ -118,5 +120,5 @@ Return a JSON verdict:
 
 ## Best Used As
 
-- **Subagent**: In Ralph loop evaluator phase — grades one iteration's output, returns verdict
+- **Subagent**: Independent read-only acceptance or contextual review of a scoped candidate
 - **Primary instance**: `claude --plugin-dir /path/to/agentic-coding-workflow --agent agentic-coding-workflow:evaluator` — for detailed code review sessions where you want to steer the evaluation

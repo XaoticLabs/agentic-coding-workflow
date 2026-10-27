@@ -1,4 +1,5 @@
 ---
+description: Load relevant project and optional ticket context before work.
 allowed-tools:
   - Read
   - Glob

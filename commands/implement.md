@@ -1,4 +1,5 @@
 ---
+description: Implement and verify an agreed change, using plans or independent review when selected.
 allowed-tools:
   - Read
   - Glob
@@ -40,49 +41,19 @@ Parse these flags separately from the description or spec/task selector. Honor e
 
 ## Instructions
 
-### Ralph Mode Detection
+### Relay execution
 
-**If `RALPH_MODE=1` environment variable is set OR `--ralph` flag is present in `$ARGUMENTS`:**
+If `RELAY_MODE=1`, this session is a controller-owned implementation node. Follow
+`skills/relay/references/implement.md` and the supplied task context. Implement
+only that task, leave changes uncommitted, and return the structured ready/blocked
+result. The supervisor owns selection, commits, progress, checks, and independent
+acceptance; never edit a plan to claim completion.
 
-Switch to autonomous mode — skip all interactive prompts and implement exactly one task:
-
-Ralph owns isolation, execution limits, progress preservation, and its test and verification integrity policy. Follow `skills/ralph/references/PROMPT_build.md` for its contract and verification requirements. Reject conflicting interactive `--plan`, `--approve-tests`, `--start-ticket`, or `--review` flags before starting; do not silently drop a selected mode. The interactive phases below do not change Ralph's gates.
-
-1. **Parse spec location** from `$ARGUMENTS` or environment (`RALPH_SPEC_DIR`)
-2. **Read `IMPLEMENTATION_PLAN.md`** from the spec directory
-3. **Auto-pick task:** Select the highest-priority incomplete task (`[ ]`) whose dependencies are all met:
-   - Priority order: HIGH > MEDIUM > LOW
-   - Within same priority: lowest task number first
-   - Skip tasks whose deps reference incomplete tasks
-4. **Search codebase first:** Before implementing, search for existing code matching the task's spec. If already done, mark complete and exit.
-5. **Read the task's spec file** (referenced in the plan's `Spec:` field)
-6. **Implement** following the spec — use existing patterns, don't add extras
-7. **Run tests** (resolve commands using `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`, which reads `.claude/project-commands.json` before auto-detection). Tests must pass.
-8. **Run lint** (use the same structured command configuration). Lint must pass.
-9. **Commit** with a descriptive message:
-   ```
-   feat: <what this task accomplishes>
-
-   Implements task N from IMPLEMENTATION_PLAN.md
-   ```
-10. **Update `IMPLEMENTATION_PLAN.md`:**
-    - Mark task: `- [ ]` → `- [x]`
-    - Add learnings if any
-    - If last task, set `## Status: COMPLETE`
-    - Commit the plan update separately
-11. **Exit cleanly** — do NOT pick up another task
-
-**In Ralph mode, these are disabled:**
-- All `AskUserQuestion` calls — no interactive prompts
-- `EnterPlanMode` / `ExitPlanMode` — no planning phases
-- `TodoWrite` — no todo tracking
-- Summary reports — the commit and plan update are the record
-
-**If not in Ralph mode**, proceed with the normal interactive flow below.
-The new `--start-ticket` and `--review` flags are interactive workflow modes;
-reject them in Ralph mode rather than silently bypassing Ralph's executor and
-verification contracts. Ralph can consume already fetched ticket criteria in
-its spec without taking ownership of remote ticket updates.
+If the user explicitly selects `--relay`, route
+to the Relay skill instead of imitating its graph in this conversation. Reject
+conflicting interactive `--plan`, `--approve-tests`, `--start-ticket`, or `--review`
+modes rather than silently dropping them. Fetch ticket criteria into the spec
+before an unattended run; workers do not own remote ticket transitions.
 
 ---
 
@@ -101,8 +72,8 @@ requires an associated ticket; reject it if none is available.
 
 - **Small, clear change:** Proceed through the applicable implementation and verification phases without a separate plan document or approval round.
 - **Substantial or ambiguous change:** Resolve material uncertainty, maintain a concise conversational plan, then implement. Save a plan or generate a spec only when requested or useful for handoff. Ask questions only when their answers could change implementation, acceptance criteria, or risk.
-- **Ordinary unattended execution:** Follow **Native Goals and Session Continuity** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`. Use native `/goal` for continuation in the current isolated feature session. Run the same implementation and verification phases; do not require Ralph's task plan, generated briefings, commits, or a fresh session per task.
-- **Enforced limits or coordinated recovery:** Select Ralph when required for external iteration/time bounds, dependency waves, rollback, or durable executor records. Honor an explicit Ralph request and its gates. Do not turn an interactive request into unattended execution without authorization.
+- **Ordinary unattended execution:** Follow **Native Goals and Session Continuity** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`. Use native `/goal` for continuation in the current isolated feature session. Run the same implementation and verification phases; do not require Relay's task plan or controller state, or a fresh session per task.
+- **Enforced limits or coordinated recovery:** Select Relay for external iteration/time bounds, dependent workers, isolated candidates, or durable recovery. Honor an explicit executor request and its gates. Do not turn an interactive request into unattended execution without authorization.
 
 Reassess after inspection. If a material scope or behavior decision emerges, explain it and resolve that decision before dependent work. Reuse decisions and authorization already supplied.
 
@@ -137,7 +108,7 @@ Also read the corresponding plan in `.claude/plans/` if available, for example `
   - Edge cases
   - Acceptance criteria
   - Testing requirements
-  - Test mode (`standard`, `approved-contract`, or `ralph-contract`) and any explicit legacy contract policy
+  - Test mode (`standard`, `approved-contract`, or `relay-contract`)
   - Notes/Warnings
 
 **Validate dependencies:**
@@ -200,7 +171,7 @@ For changes without testable behavior, use direct inspection or appropriate targ
 4. Record the approved cases/assertions, criteria, baseline commit or diff, and the user's approval reference. Approval protects those behavioral expectations, not entire files. Add cases in existing files and correct fixtures/helpers under the shared integrity policy.
 5. If an approved expectation needs changing, prepare a concrete correction with its rationale, preserved/replacement coverage, and validation evidence, then obtain explicit human approval before treating the changed expectation as accepted. Independent review cannot substitute for that approval.
 
-If the spec selects `approved-contract`, use the approval flow above. Treat legacy `ralph-contract` as autonomous behavioral testing with independent integrity review, not human approval or a file freeze. Honor a user's explicit stricter policy when it applies. A task without testable behavior uses direct validation and reports the evidence. Never label agent-authored tests as human-approved.
+If the spec selects `approved-contract`, use the approval flow above. Treat `relay-contract` as autonomous behavioral testing with independent integrity review, not human approval or a file freeze. Honor a user's explicit stricter policy when it applies. A task without testable behavior uses direct validation and reports the evidence. Never label agent-authored tests as human-approved.
 
 ### Phase 4: Implementation
 
@@ -359,7 +330,7 @@ findings, and the next action so shipping can resume the same history.
 - **Document deviations** - If you must deviate from spec, explain why
 - **Verify behavior** - Run checks appropriate to the change and all project-required gates
 - **Keep it atomic** - This should be a single, mergeable PR
-- **Commit when requested** - Interactive testing or acceptance-test approval does not require separate commits; Ralph commits completed work
+- **Commit when requested** - Interactive testing or acceptance-test approval does not require separate commits; Relay owns candidate commits
 - **Continue related work** - Native goals and compaction do not impose a fresh session, spec, or commit after each task
 
 ## Example Usage

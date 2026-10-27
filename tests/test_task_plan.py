@@ -168,7 +168,7 @@ def test_stop_validator_uses_the_same_graph_contract(tmp_path: Path) -> None:
 def test_next_and_completion_stats_respect_worker_assignments(tmp_path: Path) -> None:
     path = plan(tmp_path / "plan.md", [task(1), task(2, [1]), task(3, status="done")])
     (tmp_path / ".claude").mkdir()
-    assignment = tmp_path / ".claude/ralph-assigned-tasks"
+    assignment = tmp_path / ".claude/assigned-tasks"
     assignment.write_text("3")
     environment = {**os.environ, "CLAUDE_PROJECT_DIR": str(tmp_path)}
     stats = subprocess.run(

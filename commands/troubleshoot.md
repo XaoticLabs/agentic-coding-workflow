@@ -1,4 +1,5 @@
 ---
+description: Diagnose local or deployed infrastructure using configured project targets.
 disable-model-invocation: true
 allowed-tools:
   - Read
