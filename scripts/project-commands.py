@@ -70,6 +70,9 @@ def project_readiness(
         languages.append("elixir")
 
     configured_file = (project / ".claude/project-commands.json").is_file()
+    check_actions = ["lint", "test"]
+    if "verify" in commands:
+        check_actions.append("verify")
     checks = {
         action: {
             "status": "unconfigured"
@@ -79,7 +82,7 @@ def project_readiness(
             else "disabled",
             "command": commands.get(action),
         }
-        for action in ("lint", "test")
+        for action in check_actions
     }
     if not configured_file and languages == ["elixir"]:
         status = "legacy_elixir"

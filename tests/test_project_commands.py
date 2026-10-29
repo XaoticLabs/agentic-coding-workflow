@@ -91,6 +91,10 @@ def test_readiness_reports_mixed_projects_and_does_not_execute_commands(
     [
         ({"lint": None, "test": ""}, "disabled", 0),
         ({"lint": None, "test": "true"}, "configured", 0),
+        ({"lint": None, "test": None, "verify": "true"}, "configured", 0),
+        ({"lint": None, "test": "", "verify": None}, "disabled", 0),
+        ({"lint": None, "test": "", "verify": ""}, "disabled", 0),
+        ({"test": "true", "verify": "true"}, "unconfigured", 1),
         ({"test": "true"}, "unconfigured", 1),
         ({}, "unconfigured", 1),
     ],
@@ -104,6 +108,13 @@ def test_readiness_distinguishes_missing_and_disabled_checks(
     report = json.loads(result.stdout)
     assert report["status"] == status
     assert report["verification"] == "not_run"
+    if "verify" in commands:
+        assert report["checks"]["verify"] == {
+            "status": "configured" if commands["verify"] else "disabled",
+            "command": commands["verify"],
+        }
+    else:
+        assert "verify" not in report["checks"]
 
 
 def test_readiness_handles_invalid_configuration_as_json(project: Path) -> None:
@@ -173,13 +184,28 @@ def test_generator_preserves_unknown_and_selected_go_node_commands(
     )
 
 
-@pytest.mark.parametrize("action", ["test", "lint"])
+@pytest.mark.parametrize("action", ["test", "lint", "verify"])
 def test_verification_gate_does_not_hide_pipeline_failure(
     project: Path, action: str
 ) -> None:
     configure(project, {"test": "true", "lint": "true", action: "false | cat"})
     result = shell(project, 'run_verification_gate "$2" "$2/verification"')
     assert result.returncode != 0
+
+
+@pytest.mark.parametrize(
+    "verify", [None, "", "printf '%s' 'product checked' > 'product result'"]
+)
+def test_product_gate_runs_without_lint_or_test_and_preserves_optional_disables(
+    project: Path, verify: str | None
+) -> None:
+    configure(project, {"lint": None, "test": None, "verify": verify})
+    result = shell(project, 'run_verification_gate "$2" "$2/verification"')
+    assert result.returncode == 0, result.stderr
+    if verify:
+        assert (project / "product result").read_text() == "product checked"
+    else:
+        assert not (project / "product result").exists()
 
 
 def shell(
@@ -344,7 +370,7 @@ def test_generator_preserves_overrides_and_disabled_actions_on_refresh(
 ) -> None:
     (project / "mix.exs").touch()
     command = "custom-test --label 'two  spaces' | cat"
-    configure(project, {"test": command, "lint": None})
+    configure(project, {"test": command, "lint": None, "verify": "make verify-user-paths"})
 
     for _ in range(2):
         result = generate(project)
@@ -353,10 +379,12 @@ def test_generator_preserves_overrides_and_disabled_actions_on_refresh(
     commands = json.loads((project / ".claude/project-commands.json").read_text())
     assert commands["test"] == command
     assert commands["lint"] is None
+    assert commands["verify"] == "make verify-user-paths"
     assert commands["build"] == "mix compile"
     guide = (project / ".claude/AGENTS.md").read_text()
     assert f"| Test    | `{command}` |" in guide
     assert "| Lint    | `N/A` |" in guide
+    assert "| Verify  | `make verify-user-paths` |" in guide
 
 
 def test_generator_leaves_invalid_config_and_existing_guide_intact(

@@ -73,6 +73,9 @@ git status --porcelain
 
 Read the project's verification requirements and configured commands using **Project Context: Test and Lint Command Detection** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`. Reuse verification evidence only for the current commit and relevant working inputs; otherwise run the required configured checks. Resolve failing required checks before publishing. Report unavailable or unconfigured required checks explicitly and follow project policy for proceeding; do not replace them with a preferred toolchain or claim they passed.
 
+Include a configured product `verify` command and relevant runbook journeys in
+those checks. A lint/test pass alone does not cover an unrun product gate.
+
 ### Phase 2: Find Context for PR Description
 
 **Auto-detect spec/plan/Relay state:**

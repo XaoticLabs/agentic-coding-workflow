@@ -62,4 +62,5 @@ evals/results/
 # Claude runtime artifacts — keep shared rules and project commands
 .claude/*
 !.claude/rules/
+!.claude/skills/
 !.claude/project-commands.json

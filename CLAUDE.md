@@ -120,10 +120,13 @@ Always inspect recent `git log` before committing and follow the repository's hi
 ## Testing & Validation
 
 - For this repository, run `make setup` once and after dependency changes, then
-  `make check` before completion. `make lint` and `make test` are the shared local,
-  Stop-hook, and CI tasks. `pyproject.toml` and `uv.lock` declare the development
+  `make check` before completion. `make lint`, `make test`, and `make verify` are
+  the shared local, Stop-hook, and CI tasks. `pyproject.toml` and `uv.lock` declare the development
   environment; `.python-version` selects Python 3.11. Do not repair or depend on
   globally installed Python tools. See README for prerequisites and lock updates.
+- `make verify` exercises public hook/CLI delivery behavior and preserves source-bound
+  evidence under `.claude/proofs/delivery/`. Reuse `.claude/skills/verify-agentic-coding-workflow/SKILL.md`.
+  Native Claude sessions and external integrations need separate runtime evidence.
 - Use `skills/skill-forge/scripts/validate-skill.py` for structural diagnostics, `claude plugin validate .` for native schema checks, and native `claude plugin eval .` plus deterministic tests for behavioral evidence. Structural diagnostics are not quality scores.
 - During optimization, filter native evals with `--tag tuning`. Freeze the candidate and success criteria before using `--tag holdout` for a final comparison. Holdout feedback used for another edit becomes tuning evidence and requires fresh final cases. Record results or `NOT_RUN` limitations in `evals/benchmarks/`.
 - Optional failure logging and notification hooks fail open. Policy gates intentionally block unmet or unverifiable requirements; test failure and timeout behavior as well as successful checks.

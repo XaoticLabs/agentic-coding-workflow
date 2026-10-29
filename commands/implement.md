@@ -157,7 +157,7 @@ that distinguish working behavior from the reported failure. For repeatable
 setup/services, use the project's environment or the explicit runner in
 `references/execution-environments.md`. Verification never installs implicitly.
 
-Resolve test and lint commands using **Project Context: Test and Lint Command Detection** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`, including `.claude/project-commands.json` overrides and explicit disables. Honor project-required checks.
+Resolve test, lint, and optional product `verify` commands using **Project Context: Test and Lint Command Detection** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`, including `.claude/project-commands.json` overrides and explicit disables. Honor project-required checks. Reuse an existing project-local verification runbook to select relevant user journeys; use `${CLAUDE_PLUGIN_ROOT}/skills/verify-project/SKILL.md` when runtime exercise or a requested reusable runbook is needed.
 
 **Standard mode:** Identify existing tests that demonstrate the outcome. Add behavioral or regression tests when they provide useful coverage, using the project's framework and conventions. For a bug fix, confirm a regression test fails for the reported behavior before the fix when practical. Ordinary TDD may write tests first without freezing them. No test-approval prompt or separate test commit is required. Follow **Test and Verification Integrity** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`: explain and independently review test corrections or changes that could weaken coverage; never weaken assertions to hide an implementation defect.
 
@@ -225,7 +225,7 @@ If the green implementation has obvious duplication or awkwardness, clean it up 
 
 ### Phase 5: Verification
 
-Run the test, lint, and other checks selected in Phase 3. Use focused checks when appropriate and run broader regression checks when shared behavior or project policy calls for them. Configured required checks must pass. Explicitly report checks that are disabled, unavailable, or not run.
+Run the test, lint, configured `verify`, and other checks selected in Phase 3. Use focused checks when appropriate and run broader regression checks when shared behavior or project policy calls for them. Configured required checks must pass. Explicitly report checks that are disabled, unavailable, or not run.
 
 Use `${CLAUDE_PLUGIN_ROOT}/references/project-readiness.md` for Go, Python,
 TypeScript, and mixed-project command selection. When relevant, exercise the

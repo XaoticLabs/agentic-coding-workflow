@@ -97,12 +97,9 @@ For each branch in the recommended order:
 1. **Merge:** `git merge --no-edit <branch>`
 2. **If clean merge:**
    - With `--skip-tests`, defer this intermediate gate to the final suite and report the skip.
-   - Detect and run the project's test suite:
-     - `mix.exs` present -> `mix test`
-     - `pyproject.toml` present -> `pytest` or `python -m pytest`
-     - `package.json` with test script -> `npm test`
-     - `Makefile` with test target -> `make test`
-     - If no test runner detected, skip test gate and warn
+   - Resolve and run the project's test command using **Project Context: Test
+     and Lint Command Detection** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`.
+     Missing required configuration is incomplete; resolve it before continuing.
    - If tests pass: report success, continue to next branch
    - If tests fail: use AskUserQuestion with options:
      - "Launch Claude to fix the test failures"
@@ -127,10 +124,15 @@ Report progress after each merge: "Merged 2/4 branches. Next: <branch-name>"
 
 After all branches are merged, verify the full feature is implemented.
 
-Run the full configured test suite and report its outcome even when
-`--skip-tests` deferred intermediate gates. With `--skip-verify`, report the
+Run the full configured lint/test/verify gate using `run_verification_gate` from
+`${CLAUDE_PLUGIN_ROOT}/scripts/lib/parallel-primitives.sh`, retaining its logs
+under `.claude/proofs/`. Report its outcome even when
+`--skip-tests` deferred intermediate gates. Resolve failed or unavailable
+required checks before claiming completion. With `--skip-verify`, report the
 compliance review as skipped and proceed to cleanup without claiming spec
 compliance. Otherwise continue with the spec/plan review below.
+`--skip-verify` skips only the compliance review; configured product checks
+remain required. Reuse the project's runbook for runtime acceptance criteria.
 
 **Find the spec/plan:**
 - Check `.claude/specs/` for files matching the current branch name/slug
@@ -141,7 +143,7 @@ compliance. Otherwise continue with the spec/plan review below.
 **Run verification using the review-implementation approach:**
 
 Spawn a subagent (Agent tool) with this task:
-> Review the current state of the codebase on this branch against the spec/plan at `<path>`. For each acceptance criterion, verify whether it is implemented. Report PASS/FAIL/PARTIAL for each criterion. Also run the full test suite and report results. Output a structured compliance summary.
+> Review the current state of the codebase on this branch against the spec/plan at `<path>`. For each acceptance criterion, verify whether it is implemented. Report PASS/FAIL/PARTIAL for each criterion. Reuse the final gate's results only for the same checked source; exercise relevant uncovered runtime criteria using the project's runbook. Output a structured compliance summary with evidence and remaining gaps.
 
 Display the compliance summary. If any criteria are FAIL or PARTIAL:
 - List the gaps clearly
@@ -200,6 +202,6 @@ Report the path to the user.
 ## Error Handling
 
 - If `git merge` fails for a non-conflict reason (e.g., branch doesn't exist), skip that branch and warn
-- If test detection fails, skip test gates but warn clearly
+- If a required check is unconfigured or unavailable, report incomplete verification and resolve it before claiming completion
 - If the rollback file is missing when needed, use `git reflog` to find the pre-merge state
 - All script failures should be caught and reported, never silently swallowed

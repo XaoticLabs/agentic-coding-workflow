@@ -2,7 +2,7 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := check
 UV ?= uv
 
-.PHONY: setup check-environment lint test check
+.PHONY: setup check-environment lint test verify check
 
 setup:
 	@for tool in bash git jq $(UV); do \
@@ -22,4 +22,7 @@ lint: check-environment
 test: check-environment
 	$(UV) run --frozen --no-sync --offline python -m pytest -q
 
-check: lint test
+verify: check-environment
+	$(UV) run --frozen --no-sync --offline python tests/smoke_delivery.py
+
+check: lint test verify

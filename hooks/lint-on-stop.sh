@@ -1,5 +1,5 @@
 #!/bin/bash
-# Stop hook: Run linting, type checking, and tests - block Claude if code issues found
+# Stop hook: Run project lint, test, and configured product verification checks
 # Runs project-owned commands for any configured stack, with a legacy Elixir path
 #
 # Smart behavior:
@@ -35,6 +35,7 @@ case "$readiness_status" in
 esac
 PROJECT_LINT_COMMAND=$(printf '%s' "$readiness" | jq -r '.checks.lint.command // ""')
 PROJECT_TEST_COMMAND=$(printf '%s' "$readiness" | jq -r '.checks.test.command // ""')
+PROJECT_VERIFY_COMMAND=$(printf '%s' "$readiness" | jq -r '.checks.verify.command // ""')
 
 session_id=$(echo "$input" | jq -r '.session_id // "unknown"')
 verification_blocked() {
@@ -151,7 +152,7 @@ if [ "$has_code_errors" = true ]; then
 fi
 
 if [ "$has_infra_warnings" = true ]; then
-  message="Tests could not run fully (${infra_warnings%%, }). Verification is incomplete; re-run when infrastructure is available."
+  message="Project checks could not run fully (${infra_warnings%%, }). Verification is incomplete; re-run when infrastructure is available."
   jq -n --arg message "$message" '{decision: "block", reason: $message, systemMessage: $message}'
   exit 0
 fi

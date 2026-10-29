@@ -238,11 +238,12 @@ def test_failed_checks_repair_within_budget_and_retain_failure_evidence(
 @pytest.mark.parametrize(
     "command", ["false | true", "exit 1", "printf changed >> check.py"]
 )
+@pytest.mark.parametrize("action", ["lint", "verify"])
 def test_check_failures_and_source_mutation_block_integration(
-    project: Path, command: str
+    project: Path, command: str, action: str
 ) -> None:
     (project / ".claude/project-commands.json").write_text(
-        json.dumps({"lint": command, "test": "true"})
+        json.dumps({"lint": "true", "test": "true", action: command})
     )
     result = execute(project, "--max-attempts=1")
     assert result.returncode != 0

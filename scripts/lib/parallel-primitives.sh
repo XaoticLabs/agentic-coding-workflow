@@ -246,10 +246,10 @@ run_test_gate() {
   fi
 }
 
-# Verify the final candidate with both configured checks before evaluation.
+# Verify the final candidate with lint, test, and optional product checks.
 # Args: <project-dir> <log-prefix>
 run_verification_gate() {
-  local project_dir="$1" log_prefix="$2" lint_cmd passed=true
+  local project_dir="$1" log_prefix="$2" lint_cmd verify_cmd config_status passed=true
   if ! run_test_gate "$project_dir" "${log_prefix}-test.log"; then passed=false; fi
   if lint_cmd=$(detect_lint_command "$project_dir"); then
     if [ -n "$lint_cmd" ] && ! (cd "$project_dir" && bash -o pipefail -c "$lint_cmd") > "${log_prefix}-lint.log" 2>&1; then
@@ -257,6 +257,15 @@ run_verification_gate() {
     fi
   else
     passed=false
+  fi
+  if verify_cmd=$(python3 "$_PROJECT_COMMANDS_SCRIPT" get "$project_dir" verify 2> "${log_prefix}-verify.log"); then
+    if [ -n "$verify_cmd" ] && ! (cd "$project_dir" && bash -o pipefail -c "$verify_cmd") > "${log_prefix}-verify.log" 2>&1; then
+      passed=false
+    fi
+  else
+    config_status=$?
+    # Missing verify is optional; unreadable/invalid configuration is a failure.
+    [ "$config_status" -eq 1 ] || passed=false
   fi
   [ "$passed" = true ]
 }

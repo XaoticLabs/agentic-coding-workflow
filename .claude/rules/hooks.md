@@ -39,6 +39,7 @@ paths:
 - Optional Stop hooks may skip `stop_hook_active`. Required verification must check correction turns again; reuse a success only when HEAD and the source fingerprint still match.
 - Bound correction attempts per session. After three failed attempts, record `blocked` and stop with an explicit user-visible failure using `continue: false`; never turn exhaustion into acceptance. A new user turn may start a fresh attempt.
 - Verification uses check-only formatter flags and must never run fixes. Check committed code as well as worktree edits; bind results to the HEAD revision and worktree fingerprint, and invalidate them if either changes. Keep formatting in an explicit action.
+- Configured `verify` is a required product check in Stop and final delivery gates, alongside lint/test. Omission adds no requirement; include configured verify when deciding whether all checks are disabled.
 
 ## Testing
 - Test hooks manually with: `echo '{"tool_name":"Bash","tool_input":{"command":"test"}}' | python hook.py`

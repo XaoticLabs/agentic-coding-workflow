@@ -654,8 +654,47 @@ def test_stop_runs_project_checks_across_languages_and_preserves_pipe_failures(
         assert result.stdout == ""
 
 
-@pytest.mark.parametrize("failed_action", [None, "lint", "test"])
-def test_plugin_repository_stop_runs_both_required_checks(
+@pytest.mark.parametrize(
+    "verify, status",
+    [
+        (None, "disabled"),
+        ("", "disabled"),
+        ("printf 'product checked\\n'", "passed"),
+        ("printf 'product failed\\n'; false | cat", "failed"),
+        ("printf 'connection refused\\n'; exit 1", "incomplete"),
+        ("workflow-product-command-not-installed", "failed"),
+        ("printf changed >> source.txt", "changed"),
+    ],
+)
+def test_stop_product_check_owns_success_failure_and_availability(
+    project: Path, verify: str | None, status: str
+) -> None:
+    (project / "source.txt").write_text("original\n")
+    git(project, "add", ".")
+    git(project, "commit", "--quiet", "-m", "Baseline")
+    (project / ".claude").mkdir()
+    (project / ".claude/project-commands.json").write_text(
+        json.dumps({"lint": None, "test": None, "verify": verify})
+    )
+    result = invoke(project, "lint-on-stop.sh", {"session_id": "product-check"})
+    assert result.returncode == 0, result.stderr
+    record = json.loads(
+        next((project / ".claude/verification").glob("*.json")).read_text()
+    )
+    assert record["status"] == status
+    assert (record["checked"] == record["after"]) == (status != "changed")
+    if status in ("passed", "disabled"):
+        assert result.stdout == ""
+    else:
+        assert json.loads(result.stdout)["decision"] == "block"
+        expected = (
+            "Verification is incomplete" if status == "incomplete" else "project verify"
+        )
+        assert expected in result.stdout
+
+
+@pytest.mark.parametrize("failed_action", [None, "lint", "test", "verify"])
+def test_plugin_repository_stop_runs_all_required_checks(
     project: Path, failed_action: str | None
 ) -> None:
     # Use the plugin's actual contract so missing/ignored repository configuration
@@ -690,6 +729,7 @@ sys.exit(int(sys.argv[1] == os.environ["TEST_FAILED_ACTION"]))
     assert [json.loads(line) for line in calls.read_text().splitlines()] == [
         ["lint"],
         ["test"],
+        ["verify"],
     ]
     record = json.loads(
         next((project / ".claude/verification").glob("*.json")).read_text()

@@ -54,7 +54,7 @@ session. Avoid two workers writing to the same resumed transcript.
 For an explicitly requested new goal session:
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-session.sh" implementer --worktree auth-update --goal "The agreed auth criteria hold, and configured tests and lint pass with final results shown."
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-session.sh" implementer --worktree auth-update --goal "The agreed auth criteria hold, and configured lint/test/verify checks pass with final results shown."
 ```
 
 `--goal` is a helper option, not a Claude CLI flag. The helper passes a positional

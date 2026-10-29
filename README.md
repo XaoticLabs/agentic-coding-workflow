@@ -46,9 +46,12 @@ and mixed projects; optional Python profiles live in [profiles/python](profiles/
 }
 ```
 
-These example commands must exist in your project. `verify` is an optional
-runtime gate in Relay. `quick_check` is an optional advisory edit hook; it never
-replaces final verification. Formatting is explicit; verification runs check-only
+These example commands must exist in your project. Configured `verify` is a
+required product gate in ordinary Stop checks, Relay, and shared final delivery
+checks. Omission adds no check; null/empty explicitly disables it under project
+policy. Run the same product task in required CI and keep each check in one
+task to avoid duplication with aggregate tests. `quick_check` is an optional
+advisory edit hook; it never replaces final verification. Formatting is explicit; verification runs check-only
 commands. `scripts/configure-project.sh` can refresh an operations guide while
 preserving configured overrides; it does not invent Go/Python/Node CI policy.
 
@@ -81,7 +84,7 @@ of agent-authored tests or separate RED/GREEN commits.
 For ordinary unattended continuation, set a native goal in that session:
 
 ```text
-/goal The agreed pagination criteria hold, configured tests and lint pass, and the final verification evidence is shown.
+/goal The agreed pagination criteria hold, configured lint/test/verify checks pass, and the final verification evidence is shown.
 ```
 
 Native goals judge surfaced evidence; they do not execute independent tests or
@@ -191,7 +194,7 @@ All lifecycle registrations live in [hooks/hooks.json](hooks/hooks.json).
 | `PostToolUse` for edits | Only the project's explicit advisory `quick_check` |
 | `Notification` | Native desktop alert when input is needed |
 | `StopFailure` | API-error log and best-effort alert; cannot recover the failed turn |
-| `Stop` | Task-graph validation and final project lint/test checks; a separate response-finished notification |
+| `Stop` | Task-graph validation and final project lint/test/verify checks; a separate response-finished notification |
 
 Notifications support macOS `osascript` and Linux `notify-send` when available;
 set `WORKFLOW_NOTIFY=false` to disable them. They do not send external messages.
@@ -210,6 +213,19 @@ path and retains source-bound evidence. When requested, it creates and proves a
 reusable project-local verification runbook. The `runtime-verifier` agent is
 available for independent exercises; `evaluator` performs read-only code review.
 See [runtime evidence](references/verification-evidence.md).
+
+To adopt product verification in a consuming project:
+
+1. Ask `/agentic-coding-workflow:verify-project` to exercise the important user
+   journey and save a project-local runbook. Run it once before treating it as
+   usable. Select relevant persistence, permissions, mobile layouts, and
+   loading/error states for web apps; drive the public entrypoint and inspect
+   effects for APIs or CLIs.
+2. Turn the short, repeatable journey into a project-owned check-only task and
+   configure it as `verify`. Keep setup separate, isolate temporary data, retain
+   logs/artifacts under `.claude/proofs/`, and fail on unavailable requirements.
+3. Run that same task in required CI. Use the runbook for broader journeys
+   selected for each change and report exactly which criteria were exercised.
 
 Tool grants and prompt instructions are not an OS sandbox. Review tool lists
 are restricted; implementation and runtime verification use shell tools. For
@@ -259,11 +275,22 @@ The uv cache stays in the ignored `.cache/uv` directory so repository-scoped
 agent sandboxes can write it.
 
 `make check` runs `make lint` (Ruff and hook registration validation) and
-`make test` (the deterministic pytest suite). These checks do not install
+`make test` (the deterministic pytest suite), plus `make verify` (a local
+exercise of public hook/CLI entrypoints). These checks do not install
 dependencies or fix files; a missing or stale environment fails with setup
 instructions. CI runs the same setup and checks. The tracked
 `.claude/project-commands.json` selects these tasks for local agents and the Stop
-hook, so this repository reports `configured` readiness and verifies both checks.
+hook, so this repository reports `configured` readiness and verifies all three
+checks. CI retains the delivery exercise's evidence as a workflow artifact.
+
+`make verify` uses a disposable Git project to prove product-gate failure,
+correction, cached success, and invalidation after a source change through the
+registered Stop command and shared final delivery gate. It retains commands,
+raw outputs/exits, source records, and cleanup results under
+`.claude/proofs/delivery/run-*/`. The proved project-local runbook is
+[verify-agentic-coding-workflow](.claude/skills/verify-agentic-coding-workflow/SKILL.md).
+This local exercise uses no model calls; native session behavior remains a
+separate check.
 
 For focused tests and configuration inspection:
 
@@ -281,6 +308,16 @@ With Claude Code installed, also validate the native plugin:
 ```bash
 claude plugin validate .
 ```
+
+For a native session test, load this checkout with
+`claude --plugin-dir /absolute/path/to/agentic-coding-workflow` from a disposable
+Git project. Configure passing lint/test commands and a `verify` command that
+fails against a tracked fixture. Ask Claude to finish a small change and confirm
+Stop reports the product failure. Correct the fixture and confirm completion;
+change it again and confirm the earlier success cannot be reused. Retain the
+transcript and `.claude/verification/` records. This interactive procedure has
+not been executed as part of the local hook/CLI proof. After editing the plugin,
+use `/reload-plugins` or restart the development session before testing.
 
 Validate skill entrypoints with
 `python3 skills/skill-forge/scripts/validate-skill.py skills/relay --json`.

@@ -30,10 +30,12 @@ Save the project's actual CI/task commands in `.claude/project-commands.json`.
 The core keys remain `build`, `test`, `lint`, `format`, and `run`. Optional
 `install` is used only by explicit environment setup. `health`, `logs`,
 `deploy_status`, and `flag_status` support [lifecycle observations](lifecycle-observation.md).
-`verify` adds a project-owned runtime gate to Relay. `quick_check` opts into a
-short advisory check after edits; it never populates final verification evidence.
+`verify` adds an optional project-owned product gate to Stop, Relay, and the
+shared delivery gate used for final integration checks. Once configured, it must
+pass along with lint/test. `quick_check` opts into a short advisory check after
+edits; it never populates final verification evidence.
 Initialization retains its five core arguments and preserves extra keys. The Stop
-hook runs configured **lint and test** commands; include required check-only
+hook runs configured **lint, test, and verify** commands; include required check-only
 formatting, typing, and other static checks in the project's lint task.
 Required build/integration checks must also be run for changes that need them
 and before a merge when project policy requires them.
@@ -58,6 +60,15 @@ cover every affected component. The configuration works even without a
 recognized language marker. Use the project's package manager and lockfile;
 check commands must not fix files, change dependencies, or install tools.
 
+For product verification, reuse a tested project-local runbook and existing
+browser/HTTP/CLI harness. Select a short journey with observable outcomes and
+isolated data; retain commands, exits, logs, and artifacts in `.claude/proofs/`.
+Return nonzero on failed or unavailable required checks. Configure its task as
+`verify` and run that same task in required CI. Keep it separate from aggregate
+`test` tasks that already run it, to avoid duplicate execution. The
+[`verify-project` skill](../skills/verify-project/SKILL.md) can exercise the journey
+and save a runbook with launch, readiness, drive, evidence, and cleanup steps.
+
 ## Inspect configuration without running checks
 
 From the consuming project, with `CLAUDE_PLUGIN_ROOT` set to the plugin checkout:
@@ -74,14 +85,17 @@ not established that tools, dependencies, services, or product flows work.
 
 | Status | Meaning | Exit |
 | --- | --- | --- |
-| `configured` | Each lint/test action is configured or explicitly disabled; at least one command is selected | 0 |
-| `disabled` | Both actions were explicitly disabled; no checks will run | 0 |
+| `configured` | Each lint/test action is configured or explicitly disabled; at least one lint/test/verify command is selected | 0 |
+| `disabled` | Lint/test and any configured verify action are explicitly disabled; no checks will run | 0 |
 | `unconfigured` | A recognized project or explicit config has missing lint/test actions | 1 |
 | `invalid` | Project/configuration could not be read or validated | 2 |
 | `legacy_elixir` | Elixir-only project without config uses the existing format/test runner | 0 |
 | `not_applicable` | No supported root marker or command configuration was found | 0 |
 
-An omitted action is unknown; `null` or `""` is an explicit disable. Do not
+An omitted lint/test action is unknown; an omitted optional `verify` adds no
+check and is absent from the report's `checks`. A configured `verify` appears in
+`checks` and counts toward `configured` even when lint/test are disabled.
+`null` or `""` is an explicit disable. Do not
 disable an unknown check to silence an incomplete result. Existing project
 policy decides whether a disable is appropriate.
 
@@ -100,9 +114,10 @@ runs no formatting fixes, and binds outcomes to the revision/working inputs.
 Configuration overrides also apply to Elixir; its legacy runner is retained
 only for an Elixir-only project without a command file.
 
-Missing checks produce `incomplete` and an explicit block instead of success.
-Configured independent checks still run. Both actions explicitly disabled
-produce a `disabled` record, never `passed`. Invalid configuration blocks.
+Missing lint/test checks produce `incomplete` and an explicit block instead of
+success. Configured independent checks, including `verify`, still run. All
+selected actions explicitly disabled produce a `disabled` record, never
+`passed`. Invalid configuration blocks.
 Correction attempts retain the existing three-attempt bound; exhaustion records
 `blocked` and hands off to the user. Missing services remain incomplete.
 

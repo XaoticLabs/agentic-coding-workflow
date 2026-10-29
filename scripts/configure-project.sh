@@ -20,6 +20,7 @@ detect_project() {
   local build_cmd=""
   local test_cmd=""
   local lint_cmd=""
+  local verify_cmd=""
   local format_cmd=""
   local run_cmd=""
 
@@ -104,7 +105,7 @@ detect_project() {
   # Omitted actions remain unknown rather than silently disabled.
   # init validated the complete configuration above; get may now return 1.
   local action command status
-  for action in build test lint format run; do
+  for action in build test lint format run verify; do
     if command=$(python3 "$COMMANDS_SCRIPT" get "$PROJECT_DIR" "$action"); then
       :
     else
@@ -116,6 +117,7 @@ detect_project() {
       build) build_cmd="$command" ;;
       test) test_cmd="$command" ;;
       lint) lint_cmd="$command" ;;
+      verify) verify_cmd="$command" ;;
       format) format_cmd="$command" ;;
       run) run_cmd="$command" ;;
     esac
@@ -142,15 +144,17 @@ detect_project() {
 | Build   | \`${build_cmd:-N/A}\` |
 | Test    | \`${test_cmd:-N/A}\` |
 | Lint    | \`${lint_cmd:-N/A}\` |
+| Verify  | \`${verify_cmd:-N/A}\` |
 | Format  | \`${format_cmd:-N/A}\` |
 | Run     | \`${run_cmd:-N/A}\` |
 
 ## Workflow Rules
 
 1. Select test/lint commands from existing CI/task configuration; missing commands are unconfigured, not passing.
-2. Run configured checks before accepting work: test \`${test_cmd:-N/A}\`, lint \`${lint_cmd:-N/A}\`.
+2. Run configured checks before accepting work: test \`${test_cmd:-N/A}\`, lint \`${lint_cmd:-N/A}\`, product verify \`${verify_cmd:-N/A}\`. An omitted verify command adds no check.
 3. Formatting is separate and explicit: \`${format_cmd:-N/A}\`; verification must not apply fixes.
 4. Honor required project checks and report unavailable or explicitly disabled actions. N/A is not evidence of success.
+5. Reuse the project's tested verification runbook for relevant user journeys; retain observable results under \`.claude/proofs/\` and run the same required product task in CI.
 
 ## Git Conventions
 

@@ -40,10 +40,20 @@ feature map of the actual requested paths and their observable success criteria.
 Run one complete journey from those saved instructions before calling the
 runbook usable. A generated but unexecuted runbook remains a draft.
 
-Where the project wants a command-based gate, put its approved check-only
-procedure in `.claude/project-commands.json` as `verify`. Relay runs it alongside
-lint/test. The ordinary Stop hook uses the project's lint/test configuration;
-include required runtime checks there if they must gate ordinary sessions too.
+Where the project wants a command-based gate, put its tested check-only
+procedure in `.claude/project-commands.json` as `verify`. Configured `verify`
+runs alongside lint/test in ordinary Stop checks, Relay, and the shared delivery
+gate. Reuse the same task in required CI. An omitted `verify` adds no check;
+null/empty explicitly disables it under project policy. Keep each required check
+in one task so aggregate tests and `verify` do not run it twice.
+
+Keep the automatic gate bounded and reproducible. For a web flow, select relevant
+browser interactions and observable persistence/permission effects, responsive
+layouts, and loading/error states. For APIs and CLIs, drive the public entrypoint
+and inspect its effects. Reuse the runbook for broader change-specific journeys;
+passing the small gate establishes only its exercised criteria. Keep temporary
+data and output outside source inputs, retain evidence under `.claude/proofs/`,
+and return a nonzero exit when a required criterion fails or is unavailable.
 
 Browser tooling, external credentials, network targets, and containment must be
 available in the selected environment. Report missing capabilities directly;

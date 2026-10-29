@@ -179,15 +179,18 @@ TEST_CONFIG_STATUS=0
 TEST_CMD=$(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/project-commands.py" get "$REPO_ROOT" test --required) || TEST_CONFIG_STATUS=$?
 LINT_CONFIG_STATUS=0
 LINT_CMD=$(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/project-commands.py" get "$REPO_ROOT" lint --required) || LINT_CONFIG_STATUS=$?
-if [ "$TEST_CONFIG_STATUS" -gt 1 ] || [ "$LINT_CONFIG_STATUS" -gt 1 ]; then
+VERIFY_CONFIG_STATUS=0
+VERIFY_CMD=$(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/project-commands.py" get "$REPO_ROOT" verify) || VERIFY_CONFIG_STATUS=$?
+if [ "$TEST_CONFIG_STATUS" -gt 1 ] || [ "$LINT_CONFIG_STATUS" -gt 1 ] || [ "$VERIFY_CONFIG_STATUS" -gt 1 ]; then
   exit 1
 fi
 ```
 
 The JSON object accepts core `build`, `test`, `lint`, `format`, and `run` keys,
 plus explicit `install` and read-only `health`, `logs`, `deploy_status`, and
-`flag_status` actions. Values are shell strings or null; extra actions are not
-added to Stop checks. Status `0` means use the configured command, including null or
+`flag_status` actions, optional product `verify`, and advisory `quick_check`.
+Stop, Relay, and the shared final delivery gate run configured lint/test/verify.
+Other actions are not final checks. Status `0` means use the configured command, including null or
 empty explicit disables. With `--required`, missing actions in Go, Python,
 TypeScript/JavaScript, mixed projects, or an explicit command file return `2`:
 select existing CI/task commands and report incomplete verification. Status `1`
@@ -195,6 +198,9 @@ permits legacy framework detection for projects without this configuration
 contract, such as Elixir-only roots without a command file. Other errors stop
 verification. Execute selected strings with Bash pipe failure handling and
 preserve their quoting/operators; never hide failures behind a passing pipeline.
+Read optional `verify` without `--required`: exit `1` means no product command
+was selected, with no framework fallback. A nonempty configured command is a
+required gate; its failure or unavailability leaves verification incomplete.
 
 Generate initial configuration with `scripts/configure-project.sh`. Existing values are preserved on refresh. Move any custom commands from `.claude/AGENTS.md` into the JSON file; Markdown is no longer parsed for commands.
 
@@ -212,12 +218,21 @@ Go, Python, and TypeScript/JavaScript have no automatic verification-toolchain
 fallback: inspect CI, task runners, manifests, and tool configuration, then save
 the actual commands. The generator leaves unknown actions missing, including in
 mixed roots, while preserving explicit overrides/disables. Stop and Relay
-verification block on missing checks. Both Stop actions explicitly disabled
-produce `disabled`, never `passed`. Stop runs configured `lint` and `test`;
+verification block on missing lint/test checks. All selected actions explicitly
+disabled produce `disabled`, never `passed`. Stop runs configured `lint`, `test`, and `verify`;
 include required check-only formatting and typing in the lint task. Keep
 mechanical rules in tools' configuration. See [Project readiness](project-readiness.md)
 for the read-only JSON report and environment contract. The optional Python
 profile remains a project choice.
+
+Reuse a tested project-local verification runbook for relevant product journeys.
+Use `verify-project` to exercise and save one when requested. A web journey may
+need persistence, permissions, mobile layout, and loading/error-state checks;
+an API or CLI journey drives its public entrypoint and inspects effects. Select
+checks from the actual acceptance criteria and retain source-bound evidence.
+Run the same required product task in CI, with short automatic checks and broader
+change-specific journeys as needed. Avoid running the same check through both
+an aggregate test task and `verify`.
 
 ## Input: Spec/Plan Loading
 

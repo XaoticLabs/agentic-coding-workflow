@@ -325,7 +325,10 @@ For each acceptance criterion: read relevant code, mark as PASS/FAIL/PARTIAL wit
 
 ### 5. Run Verification
 
-Detect project type and run the project's test and lint commands.
+Resolve and run the project's configured test, lint, and optional product
+`verify` commands using **Project Context: Test and Lint Command Detection** in
+`${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`. Reuse the project-local
+runbook for relevant runtime criteria and retain observable results.
 
 Record commands, outcomes, and verification scope. If checks fail or cannot run, report failures or verification limitations and continue useful inspection; unavailable infrastructure does not establish a code defect. Use the pr-reviewer skill's evidence and confidence requirements for findings.
 
