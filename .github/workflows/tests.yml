@@ -21,10 +21,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-      - run: python -m pip install pytest
-      - run: python -m pytest -q
-      - run: bash scripts/validate-hooks.sh
+          python-version-file: .python-version
+      # Reads tool.uv.required-version from pyproject.toml.
+      - uses: astral-sh/setup-uv@v6
+      - run: make setup
+      - run: make check
 
   container-smoke:
     if: github.event_name == 'workflow_dispatch' && inputs.container_smoke
@@ -34,7 +35,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version-file: .python-version
       - name: Build the smoke environment
         run: docker build --tag workflow-smoke --file tests/fixtures/environment/Containerfile tests/fixtures/environment
       - name: Prove setup, service isolation, failures, and cleanup

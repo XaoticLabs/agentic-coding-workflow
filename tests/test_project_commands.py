@@ -37,6 +37,15 @@ def readiness(project: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
+def test_plugin_repository_has_explicit_verification_commands() -> None:
+    result = readiness(PLUGIN_ROOT)
+    assert result.returncode == 0, result.stderr
+    report = json.loads(result.stdout)
+    assert report["status"] == "configured"
+    assert report["languages"] == ["python"]
+    assert all(check["status"] == "configured" for check in report["checks"].values())
+
+
 @pytest.mark.parametrize(
     "marker",
     [

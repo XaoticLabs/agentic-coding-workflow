@@ -13,7 +13,9 @@ Install [Claude Code](https://code.claude.com/docs/en/setup), then run:
 /plugin install agentic-coding-workflow@agentic-coding-marketplace
 ```
 
-For development, validate with `claude plugin validate .` and launch
+For development, run `make setup` and `make check`; see
+[validation and maintenance](#validation-and-maintenance) for prerequisites.
+Then validate with `claude plugin validate .` and launch
 `claude --plugin-dir "$PWD"`. Reload changes with `/reload-plugins` or restart.
 The scripts use Python 3.11+, Git, Bash, and—in existing shell helpers—jq.
 tmux is needed only for explicitly selected terminal/session workflows.
@@ -239,9 +241,44 @@ activated by installing this plugin.
 
 ## Validation and maintenance
 
+For repository development, install Git, Bash, Make, jq, and
+[uv 0.11.26](https://docs.astral.sh/uv/getting-started/installation/#installing-a-specific-version).
+Python 3.11 is selected by `.python-version`; uv downloads it if necessary.
+From a fresh checkout, run:
+
 ```bash
-python3 -m pytest -q
-bash scripts/validate-hooks.sh
+make setup
+make check
+```
+
+`make setup` creates `.venv` and installs the development dependencies from
+`uv.lock`, including pytest's transitive dependencies such as Pygments. It fails
+if the lockfile is stale. Rerun it after dependency changes or switching branches.
+No environment activation or global pytest installation is needed.
+The uv cache stays in the ignored `.cache/uv` directory so repository-scoped
+agent sandboxes can write it.
+
+`make check` runs `make lint` (Ruff and hook registration validation) and
+`make test` (the deterministic pytest suite). These checks do not install
+dependencies or fix files; a missing or stale environment fails with setup
+instructions. CI runs the same setup and checks. The tracked
+`.claude/project-commands.json` selects these tasks for local agents and the Stop
+hook, so this repository reports `configured` readiness and verifies both checks.
+
+For focused tests and configuration inspection:
+
+```bash
+uv run --frozen --no-sync --offline python -m pytest -q tests/test_project_commands.py
+python3 scripts/project-commands.py readiness .
+```
+
+To change dependencies, edit `pyproject.toml`, run `uv lock`, then run
+`make setup` and `make check`. Commit the manifest and lockfile together.
+The uv version is pinned in `pyproject.toml`, which CI reads as well.
+
+With Claude Code installed, also validate the native plugin:
+
+```bash
 claude plugin validate .
 ```
 

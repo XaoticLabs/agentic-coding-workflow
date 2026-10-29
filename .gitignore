@@ -17,7 +17,9 @@ venv.bak/
 
 # uv
 .uv/
-uv.lock
+
+# Ruff
+.ruff_cache/
 
 # Environment variables
 .env
@@ -57,6 +59,7 @@ logs/
 # Raw native eval reports (cases, fixtures, graders, and benchmarks remain tracked)
 evals/results/
 
-# Claude runtime artifacts — ignore everything except checked-in rules
+# Claude runtime artifacts — keep shared rules and project commands
 .claude/*
 !.claude/rules/
+!.claude/project-commands.json

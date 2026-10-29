@@ -142,7 +142,7 @@ def is_env_file_access(tool_name: str, tool_input: dict) -> tuple[bool, str]:
         command = tool_input.get('command', '')
         for pattern in ENV_FILE_PATTERNS:
             if re.search(pattern, command):
-                return True, f"Bash command attempting to access .env file"
+                return True, "Bash command attempting to access .env file"
 
     return False, ""
 

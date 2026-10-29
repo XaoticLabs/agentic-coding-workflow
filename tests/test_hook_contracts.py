@@ -654,6 +654,55 @@ def test_stop_runs_project_checks_across_languages_and_preserves_pipe_failures(
         assert result.stdout == ""
 
 
+@pytest.mark.parametrize("failed_action", [None, "lint", "test"])
+def test_plugin_repository_stop_runs_both_required_checks(
+    project: Path, failed_action: str | None
+) -> None:
+    # Use the plugin's actual contract so missing/ignored repository configuration
+    # cannot silently leave its own Stop hook on the not_applicable path.
+    (project / "pyproject.toml").write_bytes((ROOT / "pyproject.toml").read_bytes())
+    (project / ".claude").mkdir()
+    (project / ".claude/project-commands.json").write_bytes(
+        (ROOT / ".claude/project-commands.json").read_bytes()
+    )
+    git(project, "add", ".")
+    git(project, "commit", "--quiet", "-m", "Plugin development contract")
+    make = project.parent / "bin/make"
+    calls = project.parent / "make-calls.jsonl"
+    executable(
+        make,
+        """import json, os, sys
+with open(os.environ["TEST_CALLS"], "a") as stream:
+    stream.write(json.dumps(sys.argv[1:]) + "\\n")
+print("project " + sys.argv[1])
+sys.exit(int(sys.argv[1] == os.environ["TEST_FAILED_ACTION"]))
+""",
+    )
+    result = invoke(
+        project,
+        "lint-on-stop.sh",
+        {"session_id": "plugin-development"},
+        PATH=f"{make.parent}{os.pathsep}{os.environ['PATH']}",
+        TEST_CALLS=str(calls),
+        TEST_FAILED_ACTION=failed_action or "",
+    )
+    assert result.returncode == 0, result.stderr
+    assert [json.loads(line) for line in calls.read_text().splitlines()] == [
+        ["lint"],
+        ["test"],
+    ]
+    record = json.loads(
+        next((project / ".claude/verification").glob("*.json")).read_text()
+    )
+    assert record["checked"] == record["after"]
+    assert record["status"] == ("failed" if failed_action else "passed")
+    if failed_action:
+        assert json.loads(result.stdout)["decision"] == "block"
+        assert f"project {failed_action}" in json.loads(result.stdout)["reason"]
+    else:
+        assert result.stdout == ""
+
+
 @pytest.mark.parametrize("marker", ["go.mod", "package.json", "pyproject.toml"])
 def test_missing_checks_cannot_be_recorded_as_verified(
     project: Path, marker: str
