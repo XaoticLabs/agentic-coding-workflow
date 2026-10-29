@@ -11,6 +11,8 @@ effort: medium
 # Harness audit
 
 Inspect the current workflow and recommend evidence-backed simplifications.
+Use the `improve-workflow` skill when the user wants to save, execute, or resume
+one of these comparisons. This audit remains diagnostic.
 `$ARGUMENTS`: optional `--focus <component>` or `--model <selected-model>`.
 Do not change configuration, disable gates, launch model evaluations, or remove
 worktrees as an audit side effect.

@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "id": null,
+  "idea": null,
+  "created_at": null,
+  "updated_at": null,
+  "stage": "prepare",
+  "next_action": "Define the hypothesis, protections, cases, and decision criteria; capture baseline trials before candidate edits.",
+  "starting_source": null,
+  "baseline": {"source": null, "accepted_experiment": null},
+  "candidate": {"source": null},
+  "plan": {
+    "hypothesis": null,
+    "success_criteria": [],
+    "protections": [],
+    "cases": [],
+    "controls": {
+      "task_source": null,
+      "case_revision": null,
+      "environment": null,
+      "models_and_settings": null,
+      "cache_condition": null
+    },
+    "trials": null,
+    "authorized_budget_usd": null
+  },
+  "evidence": [],
+  "decisions": []
+}

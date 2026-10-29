@@ -19,6 +19,7 @@ does not establish that they represent unseen real-world tasks.
 | Tuning | `native-goal-workflow`, `spawn-native-goal`, `spawn-native-worktree`, `resume-feature-session` | Workflow selection, native isolation, goals, and session continuity |
 | Tuning | `ticket-cli-api-routing`, `delivery-follow-up` | CLI/API ticket identity, explicit fallback, and bounded PR feedback handling |
 | Tuning | `runtime-proof-regression`, `unavailable-runtime-proof` | Actual failing/fixed execution and honest missing-runtime handling |
+| Tuning | `improvement-prepare`, `improvement-resume` | Saved comparison preparation, preserved requirements, and resuming a failed candidate without false acceptance |
 | Holdout | `skill-forge-repair-skill` | Repair evidence handling and missing-fact behavior while preserving invocation policy |
 | Holdout | `skill-forge-explicit-deploy` | Draft a manually invoked deployment workflow without executing it |
 
@@ -40,7 +41,7 @@ claude plugin eval . --tag tuning --allow-tools Write Edit --no-publish
 claude plugin eval . --tag holdout --allow-tools Write Edit --no-publish
 ```
 
-The original cases need drafting/read tools. The two runtime cases additionally
+The original cases need drafting/read tools. Runtime and improvement cases also
 need reviewed scaffolds and Bash. Neither command invokes deployment infrastructure. See
 [Skill Forge's eval reference](../skills/skill-forge/references/plugin-evals.md)
 for native tools, graders, baseline interpretation, and cost limits, and the
@@ -77,6 +78,11 @@ environment with one rule/skill changed, retaining all attempts. Keep alternativ
 plugin revisions in separate checkouts and use the same native runner, rather
 than introducing another evaluation engine. Judge outcomes blind to the arm
 when feasible; inspect failures and human correction effort as well as score.
+
+The [improvement playbook](../skills/improve-workflow/SKILL.md) saves this
+comparison's criteria, source references, evidence, decisions, and next action.
+Its preparation/resume cases need `--shell` for their disposable Git scaffolds
+and local verification. They do not launch nested model evaluations.
 
 ## Retaining benchmark evidence
 

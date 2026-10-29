@@ -1,5 +1,10 @@
 # Batch investigation and comparison
 
+For a reusable **Prepare → Compare → Decide** playbook with saved baseline,
+criteria, evidence, and next action, use
+[improve-workflow](../skills/improve-workflow/SKILL.md). It uses this runner for
+command measurements and native plugin evals for agent behavior.
+
 For uncertain debugging, performance work, or design choices, build a repeatable
 comparison before asking the user to steer every attempt. Define outcomes,
 constraints, plausible alternatives, and an observable check for each. Let

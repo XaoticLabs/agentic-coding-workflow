@@ -104,6 +104,30 @@ repair budget is three completed review rounds per logical change, including
 local and remote feedback. See [review policy](references/review-policy.md) and
 [ticket-to-PR follow-up](references/delivery-follow-up.md).
 
+## Improve the workflow progressively
+
+Use **Prepare → Compare → Decide** when changing agent instructions, skills,
+or verification policy:
+
+```text
+/agentic-coding-workflow:improve-workflow "Reduce repeated context loaded by prime"
+/agentic-coding-workflow:improve-workflow resume prime-context
+/agentic-coding-workflow:improve-workflow status
+```
+
+Or say **“Use the improvement playbook for: <idea>.”** An idea starts preparation;
+candidate edits and paid evaluations follow the requested scope and budget.
+The [playbook](skills/improve-workflow/SKILL.md) reuses existing runners and
+project verification. It saves criteria, source identities, evidence, decisions,
+and the next action under `.claude/improvements/<id>/`. Use the ID returned by
+preparation to resume. No model access is needed to prepare a comparison.
+
+Capture baseline trials before candidate edits. Keep an improvement only when
+its agreed checks and comparison support it; missing evidence stays `NOT_RUN`.
+Kept candidates become the next discoverable baseline, while prior attempts
+and decisions remain in their notebooks. Add confirmed misses to the case
+library as you learn. Ordinary product edits keep their normal verification.
+
 ## Relay: the specialized supervisor
 
 ```text
@@ -242,7 +266,7 @@ Use namespaced commands: `/agentic-coding-workflow:<name>`.
 | Bounded or manually parallel work | `relay`, `spawn`, `parallel`, `reunify`, `dashboard`, `git-worktree` |
 | Investigation | `debug-bug`, `troubleshoot`, `query`, `analyze` |
 | Understanding and upkeep | `explain`, `visualize`, `techdebt`, `update-rules`, `harness-audit` |
-| Reusable capabilities | `verify-project`, `devex-review`, `test-audit`, `skill-forge`, `pr-reviewer` |
+| Reusable capabilities | `verify-project`, `devex-review`, `test-audit`, `improve-workflow`, `skill-forge`, `pr-reviewer` |
 
 The tmux, Neovim RPC, database-analysis, and language-specific integrations remain
 optional. Nothing in the default recipe requires adopting them. Choose
