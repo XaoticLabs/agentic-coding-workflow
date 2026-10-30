@@ -20,11 +20,12 @@ WORKTREE_NAME=""
 SESSION_NAME=""
 RESUME=""
 GOAL=""
+HOST="${WORKFLOW_HOST:-claude}"
 CONTEXT_FILE=""
 PROMPT=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --name|--worktree|--context|--resume|--goal)
+    --name|--worktree|--context|--resume|--goal|--host)
       [ "$#" -ge 2 ] && [ -n "$2" ] && [[ "$2" != -* ]] || error "$1 requires a value."
       case "$1" in
         --name) SESSION_NAME="$2" ;;
@@ -32,6 +33,7 @@ while [ "$#" -gt 0 ]; do
         --context) CONTEXT_FILE="$2" ;;
         --resume) RESUME="$2" ;;
         --goal) GOAL="$2" ;;
+        --host) HOST="$2" ;;
       esac
       shift 2 ;;
     --)
@@ -53,7 +55,8 @@ if [ -n "$GOAL" ]; then
   [[ "$GOAL" =~ [^[:space:]] ]] || error 'The goal condition must not be blank.'
   PROMPT="$GOAL"
 fi
-command -v claude >/dev/null 2>&1 || error 'Claude Code is not installed.'
+case "$HOST" in claude|pi|autolith) ;; *) error "Unknown host: $HOST" ;; esac
+command -v "$HOST" >/dev/null 2>&1 || error "Requested host is not installed: $HOST"
 
 if [ -n "$CONTEXT_FILE" ]; then
   [ -f "$CONTEXT_FILE" ] && [ -r "$CONTEXT_FILE" ] || error "Context file is not readable: $CONTEXT_FILE"
@@ -64,6 +67,18 @@ ${PROMPT}"
 fi
 if [ -n "$GOAL" ]; then
   [ "${#PROMPT}" -le 4000 ] || error 'The goal condition, including context instructions, exceeds 4000 characters.'
+fi
+if [ "$HOST" != claude ]; then
+  HOST_ARGS=(python3 "$PLUGIN_ROOT/scripts/host-runner.py" session --host "$HOST")
+  [ -z "$ROLE" ] || HOST_ARGS+=(--role "$ROLE")
+  [ -z "$RESUME" ] || HOST_ARGS+=(--resume "$RESUME")
+  [ -z "$SESSION_NAME" ] || HOST_ARGS+=(--name "$SESSION_NAME")
+  [ -z "$WORKTREE_NAME" ] || HOST_ARGS+=(--worktree "$WORKTREE_NAME")
+  if [ -n "$GOAL" ]; then HOST_ARGS+=(--goal "$PROMPT");
+  elif [ -n "$PROMPT" ]; then HOST_ARGS+=(--prompt "$PROMPT"); fi
+  exec "${HOST_ARGS[@]}"
+fi
+if [ -n "$GOAL" ]; then
   PROMPT="/goal $PROMPT"
 fi
 # Ordinary sessions must not inherit a caller's Relay worker contract. Keep

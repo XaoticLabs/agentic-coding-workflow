@@ -1,0 +1,10 @@
+{
+  "pi": "1.4.0",
+  "autolith": "0.67.11",
+  "autolith_sha256": {
+    "x86_64-linux": "d32f44ff68d1fee0897effeebbed4d6775a85fa837657dc9bca5c6d91f91465b",
+    "aarch64-linux": "ca9db319874da908218b10503d4068a4bd2a60cc6f9b696891ffd93bcf2bd1c0",
+    "arm64-darwin": "a6322a0bfa4e15cf568c2294fe0ac0ddddd722c5c87f50970e80aa47e0e4613a",
+    "x86_64-darwin": "3745e44a0a6ae6945fb6a6d569324552409711ee767a6828a04ba244a5ffe0e9"
+  }
+}

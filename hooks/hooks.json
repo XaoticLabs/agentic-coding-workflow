@@ -15,7 +15,7 @@
     ],
     "Notification": [
       {
-        "matcher": "permission_prompt|idle_prompt|elicitation_dialog",
+        "matcher": "permission_prompt|idle_prompt|elicitation_dialog|elicitation_url_dialog",
         "hooks": [
           {
             "type": "command",
@@ -64,7 +64,7 @@
     ],
     "StopFailure": [
       {
-        "description": "Logs API failures (rate limits, auth errors) and sends toast notifications for visibility",
+        "description": "Logs API failures without notifying during automatic recovery",
         "hooks": [
           {
             "type": "command",
@@ -76,7 +76,7 @@
     ],
     "Stop": [
       {
-        "description": "Validates task graphs and project checks; notification means the response finished",
+        "description": "Validates task graphs and project checks without emitting premature completion alerts",
         "hooks": [
           {
             "type": "command",
@@ -89,11 +89,6 @@
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/lint-on-stop.sh\"",
             "timeout": 600,
             "onFailure": "block"
-          },
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/workflow-events.py\"",
-            "timeout": 5
           }
         ]
       }

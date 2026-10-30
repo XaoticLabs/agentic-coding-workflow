@@ -1,0 +1,138 @@
+---
+name: prime
+description: "Load relevant project and optional ticket context before work."
+metadata:
+  workflow-source: "commands/prime.md"
+---
+
+
+# Prime Project Context
+
+Prime project context before starting work on a ticket or feature. The deterministic context below was gathered automatically — focus on analysis, synthesis, and ticket details.
+
+## Variables
+
+ticket_reference: $ARGUMENTS (optional Jira/Linear key or URL; supports `--tracker jira|linear` and `--deep`)
+
+## Pre-Gathered Context
+
+The following was injected at invocation time.
+
+!`bash ${CLAUDE_PLUGIN_ROOT}/scripts/prime-context.sh 2>/dev/null || echo "⚠️ Context script failed — gather manually using the instructions below."`
+
+---
+
+## Instructions
+
+Parse the arguments to extract:
+- `ticket_reference`: A ticket key such as `AI-3364`, or a Jira/Linear ticket URL
+- `tracker`: Optional `--tracker jira|linear`; remove it before interpreting the reference
+- `deep_mode`: Whether "--deep" flag is present
+
+### Quick Mode (default)
+
+The pre-gathered context above already contains git state, tech stack, directory structure, README, and CLAUDE.md. Your remaining work:
+
+1. **Analyze the pre-gathered context** — identify the project's purpose, architecture patterns, and current state from the injected data above. Don't re-read files that were already injected.
+
+2. **Ticket Details** (if a ticket reference is provided)
+   - Follow **Ticket Context and Lifecycle** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`. Fetch through `scripts/tickets.py get` in the target project using the selected tracker, CLI, and API configuration. Do not call MCP connectors.
+   - Extract: title, description, acceptance criteria, status, assignee
+   - Note any linked issues or parent tickets
+   - Carry the returned provider, scope, native ID, and canonical URL into the saved context. Preserve limitations such as truncated comments; fetch relevant missing context through the same configured account when needed. This read does not transition the ticket.
+
+3. **Synthesize** — connect the dots between project structure, recent git activity, and ticket requirements to form an actionable starting point.
+
+### Deep Mode (--deep flag)
+
+Everything from Quick Mode, plus these additional investigations:
+
+4. **Architecture Analysis**
+   - Read any ARCHITECTURE.md, ADRs, or design docs found in the key files list above
+   - Read contents of docs/ folder if present
+
+5. **Code Patterns** (sample key files to infer conventions)
+   - For Elixir/Phoenix:
+     - Sample a context module (lib/*/contexts/*.ex or lib/*/*.ex)
+     - Sample a schema (lib/*/schemas/*.ex)
+     - Sample a controller or live view
+     - Sample a test file
+   - For Node.js/TypeScript:
+     - Sample a route/controller, a model/schema, a test file
+   - For Python:
+     - Sample a main module, a test file, config patterns
+   - Note: module naming, error handling patterns, test organization
+
+6. **Recent Activity**
+   - Last 20 commits with files changed (`git log --oneline --stat -20`)
+   - List active/recent branches (`git branch -a --sort=-committerdate | head -15`)
+
+7. **Configuration**
+   - CI/CD setup (read workflow files found in directory tree)
+   - Linting/formatting config
+
+8. **Dependencies**
+   - Key dependencies from the detected stack's config with brief purpose annotations
+   - Note any internal/private dependencies
+
+### Elixir/Phoenix Specific Highlights
+
+When working with Elixir/Phoenix projects, specifically highlight:
+- Phoenix contexts and their boundaries
+- Ecto schemas and their relationships
+- LiveView vs traditional controller patterns
+- Supervision tree structure (if applicable)
+- Background job processing (Oban, etc.)
+- API patterns (REST, GraphQL, gRPC)
+
+### Output
+
+1. **Write to project directory**:
+   - Save structured summary to `.claude/prime-context/context.md`
+   - Ensure `.claude/prime-context/` directory exists first
+
+2. **Display concise summary** in conversation:
+   ```
+   ## Project: {project_name}
+   **Tech Stack:** {detected technologies}
+   **Branch:** {current_branch}
+   **Recent Changes:** {summary of last few commits}
+
+   {If ticket provided:}
+   ## Ticket: {ticket_id} - {ticket_title}
+   **Status:** {status}
+   {Brief description/acceptance criteria}
+
+   {If deep mode:}
+   ## Architecture Highlights
+   {Key patterns and conventions discovered}
+
+   ## Ready Status
+   Ready to work on [{ticket_title or "this project"}] on branch [{branch}]
+
+   ## Suggested First Steps
+   1. {step based on ticket/context}
+   2. {step based on ticket/context}
+   ```
+
+3. **Keep ticket visible**: If ticket_id provided, reference it as an anchor throughout the session
+
+### Performance Guidelines
+
+- The pre-gathered context eliminates most tool calls for Quick Mode — avoid redundant reads
+- Use parallel file reads for Deep Mode investigations
+- Don't dump raw file contents — summarize and extract key insights
+- For large projects, sample representative files rather than reading everything
+
+## Example Invocations
+
+- `/agentic-coding-workflow:prime` — Quick context, no ticket
+- `/agentic-coding-workflow:prime AI-3364 --tracker jira` — Quick context with a Jira ticket
+- `/agentic-coding-workflow:prime --deep` — Deep context analysis, no ticket
+- `/agentic-coding-workflow:prime https://linear.app/acme/issue/AI-3364/title --deep` — Deep context with a Linear ticket
+
+## Error Handling
+
+- If the pre-gathered context script failed (see warning above), fall back to manual gathering using Read/Bash tools
+- If the resolver reports ambiguity, select the provider/site once and retain it. For missing connections, authentication failures, or missing tickets, report the specific error and continue useful project inspection. Label ticket context unavailable; do not invent acceptance criteria or claim the ticket was read. See the tracker setup reference before requesting pasted content.
+- If README.md doesn't exist, note that and continue with other context gathering

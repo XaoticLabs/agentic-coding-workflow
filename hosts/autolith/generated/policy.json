@@ -1,0 +1,45 @@
+{
+  "evaluator": {
+    "max_turns": 25,
+    "spawns": [],
+    "tools": [
+      "resource.read",
+      "search.*"
+    ]
+  },
+  "implementer": {
+    "max_turns": 40,
+    "spawns": [
+      "evaluator",
+      "runtime-verifier",
+      "test-writer"
+    ],
+    "tools": [
+      "resource.read",
+      "search.*",
+      "resource.edit",
+      "shell.run",
+      "skill.load"
+    ]
+  },
+  "runtime-verifier": {
+    "max_turns": 25,
+    "spawns": [],
+    "tools": [
+      "resource.read",
+      "search.*",
+      "shell.run"
+    ]
+  },
+  "test-writer": {
+    "max_turns": 30,
+    "spawns": [],
+    "tools": [
+      "resource.read",
+      "search.*",
+      "resource.edit",
+      "shell.run",
+      "skill.load"
+    ]
+  }
+}

@@ -42,8 +42,13 @@ def test_plugin_repository_has_explicit_verification_commands() -> None:
     assert result.returncode == 0, result.stderr
     report = json.loads(result.stdout)
     assert report["status"] == "configured"
-    assert report["languages"] == ["python"]
+    # The Pi package manifest adds JavaScript/TypeScript detection. It must
+    # not replace the project's explicit Python-owned verification commands.
+    assert report["languages"] == ["python", "javascript/typescript"]
     assert all(check["status"] == "configured" for check in report["checks"].values())
+    assert report["checks"]["lint"]["command"] == "make lint"
+    assert report["checks"]["test"]["command"] == "make test"
+    assert report["checks"]["verify"]["command"] == "make verify"
 
 
 @pytest.mark.parametrize(

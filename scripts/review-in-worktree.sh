@@ -73,6 +73,14 @@ fi
 # restrict Bash to them. The no-edit instruction is workflow policy, not a sandbox.
 # Worktree setup is already done — skip that section of the skill.
 workflow_model_args evaluator
+if [ "${WORKFLOW_HOST:-claude}" != claude ]; then
+  # The host runner supplies the evaluator's restricted native role and keeps
+  # the selected host throughout its child lifecycle. This launcher owns cleanup.
+  python3 "${PLUGIN_ROOT}/scripts/host-runner.py" prompt \
+    --host "$WORKFLOW_HOST" --role evaluator \
+    "You are in an isolated worktree. Review ${LANGUAGE} branch ${BRANCH}${PR_CONTEXT}. Read ${PLUGIN_ROOT}/skills/pr-reviewer/SKILL.md and ${PLUGIN_ROOT}/references/review-policy.md. Review mode: ${REVIEW_MODE}. Do not edit files."
+  exit $?
+fi
 claude "${WORKFLOW_MODEL_ARGS[@]}" \
   --allowedTools "Read" "Glob" "Grep" "Bash(git diff *)" "Bash(git log *)" "Bash(git show *)" "Bash(git status *)" "Bash(mix test *)" "Bash(mix format *)" "Bash(mix credo *)" "Bash(mix dialyzer *)" "Bash(uv run pytest *)" "Bash(uv run ruff *)" "Bash(uv run basedpyright *)" "Bash(npm test *)" "Bash(gh pr view *)" \
   --disallowedTools "Edit" "Write" "NotebookEdit" \

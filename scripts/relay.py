@@ -29,7 +29,7 @@ from workflow_execution import (
     write_json,
 )
 from workflow_models import model_arguments, observed_models, selection
-from workflow_notifications import notify
+from workflow_hosts import HOSTS, selected_host, worker_command
 
 ROOT = Path(__file__).resolve().parents[1]
 GUIDANCE = (
@@ -88,6 +88,7 @@ class Run:
     policy: dict
     limits: dict
     tasks: dict[str, TaskRecord]
+    host: str = "claude"
     worktree: str = ""
     branch: str = ""
     head: str = ""
@@ -142,6 +143,7 @@ def load_run(value: dict, tasks: list) -> Run:
         number: TaskRecord(**record) for number, record in value["tasks"].items()
     }
     run = Run(**value)
+    selected_host(run.host)
     if set(run.tasks) != {str(task.id) for task in tasks}:
         raise ValueError("Checkpoint tasks do not match the task graph")
     for number, record in run.tasks.items():
@@ -482,9 +484,12 @@ class Supervisor:
             "--timeout",
             str(self.budget()),
         ]
+        if self.run.host != "claude":
+            command.extend(["--host", self.run.host])
         env = {
             **os.environ,
             "WORKFLOW_EVALUATE_UI": "false",
+            "WORKFLOW_HOST": self.run.host,
         }
         result = self.process(
             [
@@ -624,8 +629,14 @@ class Supervisor:
                 json.dumps(output_schema),
                 *model_arguments("build"),
             ]
+            if self.run.host != "claude":
+                command = worker_command(
+                    self.run.host, "implementer", output_schema,
+                    max_turns=40, timeout=self.budget(), output=attempt / "worker.json",
+                )
             env = {
                 **os.environ,
+                "WORKFLOW_HOST": self.run.host,
                 "CLAUDE_PROJECT_DIR": str(path),
                 "RELAY_MODE": "1",
                 "RELAY_TASK_ID": str(task.id),
@@ -648,6 +659,7 @@ class Supervisor:
                     "attempt": record.attempts,
                     "process": result,
                     "model_selection": selection("build"),
+                    "host": self.run.host,
                 }
             )
             if result["outcome"] != "passed":
@@ -953,7 +965,6 @@ class Supervisor:
         finally:
             self.save()
             self.event("finish", status=self.run.status, reason=self.run.reason)
-            notify(f"Relay: {self.run.status}", self.run.reason)
 
 
 def parser() -> argparse.ArgumentParser:
@@ -974,6 +985,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--max-attempts", dest="attempts", type=int)
     result.add_argument("--time-budget", dest="node_seconds", type=float)
     result.add_argument("--run-budget", dest="run_seconds", type=float)
+    result.add_argument("--host", choices=HOSTS)
     result.add_argument(
         "--triage-config",
         type=Path,
@@ -986,6 +998,7 @@ def main(argv: list[str] | None = None) -> int:
     cli = parser()
     args = cli.parse_args(argv)
     try:
+        host = selected_host(args.host)
         project = args.project.resolve(strict=True)
         if Path(git(project, "rev-parse", "--show-toplevel")) != project:
             raise ValueError("Relay must run at the Git checkout root")
@@ -1035,6 +1048,7 @@ def main(argv: list[str] | None = None) -> int:
                     or run.spec != str(directory)
                     or run.plan_sha256 != hash_text(text)
                     or run.status == "completed"
+                    or run.host != host
                 ):
                     raise ValueError(
                         "Run cannot resume: completed, incompatible, or changed plan/project"
@@ -1123,6 +1137,7 @@ def main(argv: list[str] | None = None) -> int:
                         for task in tasks
                     },
                     head=source["revision"],
+                    host=host,
                 )
                 write_json(active, {"run": run_id})
             triage = read_object(args.triage_config) if args.triage_config else None

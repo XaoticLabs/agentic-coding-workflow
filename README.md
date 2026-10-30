@@ -216,15 +216,17 @@ All lifecycle registrations live in [hooks/hooks.json](hooks/hooks.json).
 | `SessionStart` | Cheap checkout/branch/check-configuration report; no tests run |
 | `PostToolUseFailure` | Local failure evidence and heuristic category; no automatic retry |
 | `PostToolUse` for edits | Only the project's explicit advisory `quick_check` |
-| `Notification` | Native desktop alert when input is needed |
-| `StopFailure` | API-error log and best-effort alert; cannot recover the failed turn |
-| `Stop` | Task-graph validation and final project lint/test/verify checks; a separate response-finished notification |
+| `Notification` | Desktop alert only when fully idle or actually waiting for permission/a question |
+| `StopFailure` | API-error log without desktop alerts during automatic recovery |
+| `Stop` | Task-graph validation and final project lint/test/verify checks; no desktop alert |
 
 Notifications support macOS `osascript` and Linux `notify-send` when available;
 set `WORKFLOW_NOTIFY=false` to disable them. They do not send external messages.
-Hooks for one event run concurrently, so a response-finished notification is not
-a verification-completed signal. Relay sends its terminal status after its own
-gates finish. Optional observations fail open; required Stop gates intentionally
+Native idle notifications wait for background work; permission and question
+notifications come from actual blocked input dialogs. Intermediate turns, failed
+checks, API retries, and individual Relay invocations stay quiet. The owning
+primary session emits readiness notifications. Automated checks capture alerts
+in fixtures or disable desktop delivery. Optional observations fail open; required Stop gates intentionally
 block unverifiable requirements and have failure/timeout blocking configured.
 
 Final checks are tied to HEAD and a source fingerprint, including ignored
@@ -280,6 +282,39 @@ No provider integration, schedule, company rollout, or remote notification is
 activated by installing this plugin.
 
 ## Validation and maintenance
+
+Claude, Pi, and Autolith share the workflow definitions in `commands/`,
+`skills/`, and `agents/`, with hook registration in `hooks/hooks.json`.
+After editing a definition or its supporting resources, run:
+
+```bash
+make sync-hosts
+```
+
+This regenerates both host bundles and their catalog. `make check` detects
+stale generated files. Edit the canonical files; files listed in
+`hosts/generated-files.json` are derived. Hook adapters invoke the original
+scripts, so hook policy and project checks have one implementation.
+
+Optional host installation and native verification are separate from Claude setup:
+
+```bash
+make install-hosts
+make check-hosts
+```
+
+The installer uses the versions and release checksums in `hosts/versions.json`
+and installs under `~/.local`; add `~/.local/bin` to `PATH`. It requires Node 22.19+,
+npm, curl, and jq. First-use Autolith image construction can take several minutes.
+Native verification uses isolated fixture projects without paid model calls.
+
+For Pi, install this checkout with `pi install /absolute/path/to/agentic-coding-workflow`
+or try it with `pi -e /absolute/path/to/agentic-coding-workflow`.
+For Autolith, run
+`autolith --site-config-root /absolute/path/to/agentic-coding-workflow/hosts/autolith`.
+Select the execution host with `WORKFLOW_HOST=pi` or `WORKFLOW_HOST=autolith`;
+the default remains Claude. See [host parity](host-parity.md) for command names,
+role/session launchers, host adaptations, and the native verification boundary.
 
 For repository development, install Git, Bash, Make, jq, and
 [uv 0.11.26](https://docs.astral.sh/uv/getting-started/installation/#installing-a-specific-version).

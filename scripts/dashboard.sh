@@ -61,7 +61,7 @@ get_worktree_status() {
     local pane_info=$(tmux list-panes -a -F '#{pane_current_path} #{pane_current_command}' 2>/dev/null | grep "$wt_path" | head -1)
     if [ -n "$pane_info" ]; then
       local cmd=$(echo "$pane_info" | awk '{print $2}')
-      if [[ "$cmd" == *"claude"* || "$cmd" == *"node"* ]]; then
+      if [[ "$cmd" == *"claude"* || "$cmd" == *"node"* || "$cmd" == pi || "$cmd" == *"autolith"* || "$cmd" == *"sbcl"* ]]; then
         claude_status="running"
       else
         claude_status="shell idle"

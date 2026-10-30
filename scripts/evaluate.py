@@ -15,6 +15,7 @@ import tempfile
 from typing import NotRequired, TypedDict, cast
 
 from workflow_models import model_arguments, observed_models, selection
+from workflow_hosts import HOSTS, selected_host, worker_command
 
 ROOT = Path(__file__).resolve().parents[1]
 DIMENSIONS = (
@@ -80,6 +81,7 @@ class EvaluationArguments(argparse.Namespace):
         self.log: Path | None = None
         self.timeout: float = 600
         self.skip: str | None = None
+        self.host: str | None = None
 
 
 SCHEMA: Schema = {
@@ -413,13 +415,23 @@ CLAUDE_EVALUATOR = [
 ]
 
 
-def run_evaluator_cli(prompt: str, log: Path, budget: float) -> Evaluation:
+def run_evaluator_cli(
+    prompt: str, log: Path, budget: float, host: str | None = None
+) -> Evaluation:
+    host = selected_host(host)
+    command = (
+        [*CLAUDE_EVALUATOR, *model_arguments("evaluator")]
+        if host == "claude"
+        else worker_command(
+            host, "evaluator", SCHEMA, max_turns=25, timeout=budget, output=log
+        )
+    )
     with (
         log.open("w") as output,
         Path(str(log) + ".stderr.log").open("w") as errors,
     ):
         process = subprocess.Popen(
-            [*CLAUDE_EVALUATOR, *model_arguments("evaluator")],
+            command,
             stdin=subprocess.PIPE,
             stdout=output,
             stderr=errors,
@@ -479,7 +491,7 @@ def evaluate(args: EvaluationArguments, prompt: str) -> dict[str, object]:
         + "\n".join(evidence)
     )
     prompt += "\nReturn the structured verdict. The controller writes reports; you have read-only tools."
-    verdict = run_evaluator_cli(prompt, args.log, args.timeout)
+    verdict = run_evaluator_cli(prompt, args.log, args.timeout, args.host)
     if snapshot() != before or (ui is not None and ui_fingerprint(ui) != ui_hash):
         raise ValueError("candidate changed during evaluation")
     result: dict[str, object] = {
@@ -509,6 +521,7 @@ def parse_arguments() -> EvaluationArguments:
     _ = parser.add_argument("--log", type=Path)
     _ = parser.add_argument("--timeout", type=float, default=600)
     _ = parser.add_argument("--skip")
+    _ = parser.add_argument("--host", choices=HOSTS)
     return parser.parse_args(namespace=EvaluationArguments())
 
 

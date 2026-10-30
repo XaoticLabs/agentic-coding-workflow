@@ -24,10 +24,19 @@ references/     → Shared plugin workflow references (not commands)
 hooks/          → Pre/Post execution hooks (hooks.json + scripts)
 agents/         → Reusable agent role definitions
 scripts/        → Standalone utility scripts
+hosts/          → Pi and Autolith adapters and generated resources
 .claude-plugin/ → Plugin manifest (plugin.json, marketplace.json)
 ```
 
 Component-specific conventions are in `.claude/rules/` — see `commands.md`, `skills.md`, `hooks.md`, `agents.md` for detailed rules on each component type.
+
+Claude's `commands/`, `skills/`, `agents/`, and `hooks/hooks.json` remain the
+canonical workflow definitions. After changing them or bundled resources, run
+`make sync-hosts` to update Pi and Autolith. Do not hand-edit files listed in
+`hosts/generated-files.json`. `make check` rejects stale generated output;
+`make check-hosts` additionally requires the pinned optional hosts and exercises
+their native adapters. Keep Node and Lisp outside the default Claude setup.
+See `host-parity.md` for host invocation and verification details.
 
 ## Subagents vs Primary Instances — When to Use Which
 

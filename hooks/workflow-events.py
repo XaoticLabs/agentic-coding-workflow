@@ -107,20 +107,28 @@ def main() -> int:
         if not isinstance(data, dict):
             return 0
         event = sys.argv[1] if len(sys.argv) == 2 else data.get("hook_event_name")
-        if event == "Stop":
-            if data.get("stop_hook_active") is not True:
-                notify(
-                    "Claude: response finished",
-                    str(
-                        data.get("last_assistant_message")
-                        or "Response finished; verification may still be running"
-                    ),
-                )
-        elif event == "Notification":
-            notify(
-                "Claude: attention needed",
-                str(data.get("message") or "Input requested"),
+        if event == "Notification":
+            kind = data.get("notification_type")
+            host = {"claude": "Claude", "pi": "Pi", "autolith": "Autolith"}.get(
+                os.environ.get("WORKFLOW_HOST", "claude"), "Agent"
             )
+            # Native idle/input boundaries know whether the agent is actually
+            # waiting for the user. Stop runs before other gates/continuations
+            # resolve and must never emit a desktop notification.
+            if kind == "idle_prompt":
+                notify(
+                    f"{host}: ready for you",
+                    str(data.get("message") or "Ready for your next request"),
+                )
+            elif kind in {
+                "permission_prompt",
+                "elicitation_dialog",
+                "elicitation_url_dialog",
+            }:
+                notify(
+                    f"{host}: input needed",
+                    str(data.get("message") or "Input requested"),
+                )
         elif event == "PostToolUseFailure":
             failure(Path(project_directory(data)), data)
         elif event == "PostToolUse":

@@ -33,6 +33,31 @@ jobs:
           include-hidden-files: true
           path: .claude/proofs/delivery/
 
+  host-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: make setup
+      - name: Install pinned Pi and checksum-verified Autolith
+        run: |
+          bash scripts/install-hosts.sh --prefix "$RUNNER_TEMP/workflow-hosts"
+          echo "$RUNNER_TEMP/workflow-hosts/bin" >> "$GITHUB_PATH"
+      - run: make check-hosts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-host-verification-evidence
+          include-hidden-files: true
+          path: .claude/proofs/hosts/
+
   container-smoke:
     if: github.event_name == 'workflow_dispatch' && inputs.container_smoke
     runs-on: ubuntu-latest

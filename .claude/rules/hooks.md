@@ -21,8 +21,9 @@ paths:
 - For Stop hooks: output `{"decision": "block", "reason": "..."}` JSON to continue work on an unmet requirement. Plain stdout is not model feedback. Use `systemMessage` for a user-facing notice; Stop `additionalContext` also continues the conversation.
 - For PostToolUse/PostToolUseFailure feedback, use `{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"..."}}` with the matching event name. PostToolUse only runs for successful calls; register PostToolUseFailure to observe failures and interruptions.
 - StopFailure replaces Stop after API errors. Output and exit code cannot resume, pause, or retry the turn. Log `error`, optional `error_details`, and optional `last_assistant_message` (which is the API error text for this event).
-- At Stop, use `last_assistant_message` for notifications. The transcript may not yet contain the final response; never infer pending approvals from stale transcript tool calls.
-- Matching hooks run concurrently. A response-finished notification is not verified completion. Relay owns its terminal status after its gates.
+- Stop is a per-response gate and must not emit desktop notifications: other checks, native goals, or background work may continue. Use native Notification idle/input events, or a host's verified final idle boundary, for desktop delivery.
+- Notify only when no work remains or the agent has actually paused for user permission/a question. API errors, retries, verification blocks, and Relay iteration/terminal results are evidence, not desktop events. The owning primary session reports readiness; workers stay quiet.
+- Matching hooks run concurrently. Never infer user-input prompts from response text or stale transcript tool calls. Keep native tests quiet by disabling desktop delivery or using isolated notification recorders.
 - Failure observations and project-owned `quick_check` feedback are advisory. Never use them to populate the final verification cache, approve tools, or relax acceptance. Model-backed observations require an explicit endpoint opt-in and never run from a default hook.
 - Optional notifications and failure logging fail open on invalid input. Policy gates must return an intentional block when they cannot verify a requirement; use `onFailure: "block"` for eligible events so crashes and timeouts cannot bypass enforcement.
 

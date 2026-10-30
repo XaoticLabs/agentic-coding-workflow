@@ -16,7 +16,7 @@ workflow_model_args() {
 # tmux servers do not reliably inherit the launching shell's environment.
 write_workflow_model_environment() {
   local key
-  for key in WORKFLOW_MODEL WORKFLOW_BUILD_MODEL WORKFLOW_EVALUATOR_MODEL WORKFLOW_MERGE_MODEL ANTHROPIC_MODEL; do
+  for key in WORKFLOW_MODEL WORKFLOW_BUILD_MODEL WORKFLOW_EVALUATOR_MODEL WORKFLOW_MERGE_MODEL ANTHROPIC_MODEL WORKFLOW_HOST; do
     if [[ -v "$key" ]]; then
       printf 'export %s=%q\n' "$key" "${!key}"
     else
@@ -29,10 +29,10 @@ write_workflow_model_environment() {
 workflow_model_environment_args() {
   local key
   WORKFLOW_ENV_ARGS=(env)
-  for key in WORKFLOW_MODEL WORKFLOW_BUILD_MODEL WORKFLOW_EVALUATOR_MODEL WORKFLOW_MERGE_MODEL ANTHROPIC_MODEL; do
+  for key in WORKFLOW_MODEL WORKFLOW_BUILD_MODEL WORKFLOW_EVALUATOR_MODEL WORKFLOW_MERGE_MODEL ANTHROPIC_MODEL WORKFLOW_HOST; do
     [[ -v "$key" ]] || WORKFLOW_ENV_ARGS+=(-u "$key")
   done
-  for key in WORKFLOW_MODEL WORKFLOW_BUILD_MODEL WORKFLOW_EVALUATOR_MODEL WORKFLOW_MERGE_MODEL ANTHROPIC_MODEL; do
+  for key in WORKFLOW_MODEL WORKFLOW_BUILD_MODEL WORKFLOW_EVALUATOR_MODEL WORKFLOW_MERGE_MODEL ANTHROPIC_MODEL WORKFLOW_HOST; do
     [[ ! -v "$key" ]] || WORKFLOW_ENV_ARGS+=("$key=${!key}")
   done
 }
@@ -47,6 +47,45 @@ run_claude_pipeline() {
   local prompt="$1" log="$2" trace="$3" budget="$4" processor="$5"
   shift 5
   local -a invocation=(claude "$@") statuses
+  if [ "${WORKFLOW_HOST:-claude}" != claude ]; then
+    local host_role=implementer
+    if [[ " $* " == *" --restricted "* ]]; then host_role=evaluator; fi
+    invocation=(python3 "${_WORKFLOW_ROOT}/scripts/host-runner.py" prompt
+      --host "$WORKFLOW_HOST" --role "$host_role" --mode stream-json)
+    local selected_host_model selected_host_argument
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --model)
+          [ "$#" -ge 2 ] || return 2
+          selected_host_model="$2"; shift 2 ;;
+        --max-turns)
+          [ "$#" -ge 2 ] || return 2
+          invocation+=(--max-turns "$2"); shift 2 ;;
+        --tools|--disallowedTools|--settings|--agent|--permission-mode|--mcp-config|--strict-mcp-config)
+          echo "Unsupported capability or permission flag for $WORKFLOW_HOST pipeline: $1. Use its explicit role runner." >&2
+          return 2 ;;
+        --allowedTools)
+          [ "$#" -ge 2 ] || return 2
+          shift 2 ;;
+        --output-format)
+          [ "$#" -ge 2 ] && [ "$2" = stream-json ] || return 2
+          shift 2 ;;
+        --plugin-dir)
+          [ "$#" -ge 2 ] && [ "$2" = "${_WORKFLOW_ROOT}" ] || return 2
+          shift 2 ;;
+        -p|--print|--verbose|--restricted) shift ;;
+        *)
+          selected_host_argument="$1"
+          echo "Unsupported $WORKFLOW_HOST pipeline argument: $selected_host_argument" >&2
+          return 2 ;;
+      esac
+    done
+    if [ -n "${selected_host_model:-}" ]; then
+      local selected_host_model_key=WORKFLOW_BUILD_MODEL
+      [ "$host_role" != evaluator ] || selected_host_model_key=WORKFLOW_EVALUATOR_MODEL
+      invocation=(env "WORKFLOW_MODEL=$selected_host_model" "$selected_host_model_key=$selected_host_model" "${invocation[@]}")
+    fi
+  fi
   if [ "$budget" != 0 ]; then
     if command -v timeout >/dev/null 2>&1; then
       invocation=(timeout --kill-after=5 "$budget" "${invocation[@]}")

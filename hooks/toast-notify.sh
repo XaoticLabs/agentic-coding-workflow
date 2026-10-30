@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
-# Compatibility entrypoint; lifecycle registration lives in hooks.json.
-exec python3 "$(dirname "$0")/workflow-events.py" Stop
+# Compatibility entrypoint for native idle/input notifications, never Stop.
+exec python3 "$(dirname "$0")/workflow-events.py" Notification

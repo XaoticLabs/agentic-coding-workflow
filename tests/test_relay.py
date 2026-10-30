@@ -182,6 +182,47 @@ def test_success_accepts_checked_source_without_touching_original_or_plan(
     assert reviewer["argv"][reviewer["argv"].index("--tools") + 1] == "Read,Glob,Grep"
 
 
+def test_explicit_claude_host_overrides_inherited_pi_for_workers_and_review(
+    project: Path,
+) -> None:
+    result = execute(project, "--host", "claude", WORKFLOW_HOST="pi")
+    assert result.returncode == 0, result.stdout + result.stderr
+    run, _ = state(project)
+    assert run["host"] == "claude"
+    assert any(call["review"] for call in calls(project))
+    assert any(not call["review"] for call in calls(project))
+
+
+@pytest.mark.parametrize(
+    "mode,options,status",
+    [("", [], "completed"), ("", ["--once"], "incomplete"), ("error", [], "blocked")],
+)
+def test_relay_results_leave_desktop_notifications_to_the_primary_session(
+    project: Path, mode: str, options: list[str], status: str
+):
+    if options:
+        plan(project, {1: [], 2: []})
+    sender = project.parent / "bin/osascript"
+    notification = project.parent / "unexpected-notification"
+    write_executable(
+        sender,
+        'import os\nfrom pathlib import Path\nPath(os.environ["TEST_NOTIFICATION"]).touch()\n',
+    )
+    result = execute(
+        project,
+        *options,
+        TEST_WORKER_MODE=mode,
+        WORKFLOW_NOTIFY="true",
+        WORKFLOW_HOST_WORKER="0",
+        RELAY_MODE="0",
+        TEST_NOTIFICATION=str(notification),
+    )
+    run, _ = state(project)
+    assert run["status"] == status
+    assert result.returncode == {"completed": 0, "incomplete": 2, "blocked": 1}[status]
+    assert not notification.exists()
+
+
 @pytest.mark.parametrize(
     "mode, reason",
     [

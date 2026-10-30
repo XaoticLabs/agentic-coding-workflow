@@ -1,0 +1,28 @@
+---
+name: data-analytics
+description: "Database querying and data analysis support. Use when: configuring database connections, setting up database MCP servers, troubleshooting database access, understanding how /query and /analyze commands work, connecting to Postgres, BigQuery, MySQL, SQLite, database CLI setup, MCP server configuration for databases, read-only database access, SQL query help, data visualization setup. Keywords: database, MCP, postgres, bigquery, mysql, sqlite, psql, bq, query, analyze, data, analytics, metrics, SQL, connection, setup, configure."
+metadata:
+  workflow-source: "skills/data-analytics/SKILL.md"
+---
+
+
+# Data Analytics Support
+
+This skill provides reference material for database connectivity and the `/agentic-coding-workflow:query` and `/agentic-coding-workflow:analyze` commands.
+
+## When to Load
+
+- User asks about setting up database connections for Claude
+- User has trouble with `/agentic-coding-workflow:query` or `/agentic-coding-workflow:analyze` not finding a database
+- User wants to configure a database MCP server
+
+## References
+
+- Read `references/database-mcp-setup.md` when configuring or troubleshooting database access. It covers pinned DBHub for PostgreSQL, MySQL, and SQLite, plus the official BigQuery CLI.
+- Copy `references/dbhub.toml` when setting up the read-only DBHub tools; it reads the connection string from `ANALYTICS_DATABASE_URL`.
+- Run `scripts/smoke-test-db-mcp.py` when verifying or upgrading the pinned DBHub integration. It tests MCP initialization, tool discovery, a SQLite query, and write rejection using a temporary database.
+
+## Related Commands
+
+- `/agentic-coding-workflow:query` — Natural language to SQL, runs queries, returns results
+- `/agentic-coding-workflow:analyze` — Takes data (CSV, JSON, query results) and produces insights + HTML visualizations

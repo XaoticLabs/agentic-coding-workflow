@@ -30,7 +30,9 @@ success() { echo -e "${GREEN}$1${NC}"; }
 
 # Check dependencies
 command -v tmux >/dev/null 2>&1 || error "tmux is not installed"
-command -v claude >/dev/null 2>&1 || error "claude is not installed"
+HOST="${WORKFLOW_HOST:-claude}"
+case "$HOST" in claude|pi|autolith) ;; *) error "Unknown host: $HOST" ;; esac
+command -v "$HOST" >/dev/null 2>&1 || error "$HOST is not installed"
 
 # Default values
 PROMPT=""
@@ -102,6 +104,9 @@ fi
 workflow_model_args build
 workflow_model_environment_args
 CLAUDE_ARGS=("${WORKFLOW_ENV_ARGS[@]}" claude "${WORKFLOW_MODEL_ARGS[@]}" -p "$PROMPT")
+if [ "$HOST" != claude ]; then
+  CLAUDE_ARGS=("${WORKFLOW_ENV_ARGS[@]}" python3 "${SCRIPT_DIR}/../../../scripts/host-runner.py" prompt --host "$HOST" -p "$PROMPT")
+fi
 printf -v CLAUDE_CMD '%q ' "${CLAUDE_ARGS[@]}"
 
 # Add context if provided

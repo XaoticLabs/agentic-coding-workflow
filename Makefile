@@ -2,7 +2,7 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := check
 UV ?= uv
 
-.PHONY: setup check-environment lint test verify check
+.PHONY: setup check-environment lint test verify check sync-hosts check-hosts install-hosts
 
 setup:
 	@for tool in bash git jq $(UV); do \
@@ -18,6 +18,18 @@ check-environment:
 lint: check-environment
 	$(UV) run --frozen --no-sync --offline python -m ruff check --no-fix .
 	$(UV) run --frozen --no-sync --offline bash scripts/validate-hooks.sh
+	$(UV) run --frozen --no-sync --offline python scripts/sync-hosts.py --check
+
+sync-hosts: check-environment
+	$(UV) run --frozen --no-sync --offline python scripts/sync-hosts.py
+
+check-hosts: check-environment
+	WORKFLOW_REQUIRE_PI=1 WORKFLOW_REQUIRE_AUTOLITH=1 $(UV) run --frozen --no-sync --offline python -m pytest -q tests/test_pi_host.py tests/test_autolith_host.py tests/test_host_runners.py
+	$(UV) run --frozen --no-sync --offline python tests/smoke_autolith.py
+	$(UV) run --frozen --no-sync --offline python tests/smoke_host_runners.py
+
+install-hosts:
+	bash scripts/install-hosts.sh
 
 test: check-environment
 	$(UV) run --frozen --no-sync --offline python -m pytest -q

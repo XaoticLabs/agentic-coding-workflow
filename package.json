@@ -1,0 +1,15 @@
+{
+  "name": "agentic-coding-workflow",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "keywords": ["pi-package"],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "pi": {
+    "extensions": ["./hosts/pi/index.ts"],
+    "skills": ["./hosts/pi/generated/skills"]
+  }
+}

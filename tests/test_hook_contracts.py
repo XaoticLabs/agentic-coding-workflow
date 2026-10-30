@@ -45,7 +45,12 @@ def invoke(
         ],
         cwd=project,
         input=json.dumps(payload),
-        env={**os.environ, "CLAUDE_PROJECT_DIR": str(project), **variables},
+        env={
+            **os.environ,
+            "WORKFLOW_NOTIFY": "false",
+            "CLAUDE_PROJECT_DIR": str(project),
+            **variables,
+        },
         capture_output=True,
         text=True,
         check=False,
@@ -54,12 +59,17 @@ def invoke(
 
 
 def invoke_event(
-    project: Path, event: str, payload: dict
+    project: Path, event: str, payload: dict, **variables: str
 ) -> list[subprocess.CompletedProcess[str]]:
     registrations = json.loads((ROOT / "hooks/hooks.json").read_text())["hooks"]
     results = []
     for group in registrations.get(event, []):
-        if not re.fullmatch(group.get("matcher", ".*"), payload["tool_name"]):
+        value = (
+            payload.get("notification_type", "")
+            if event == "Notification"
+            else payload.get("tool_name", "")
+        )
+        if not re.fullmatch(group.get("matcher", ".*"), value):
             continue
         for hook in group["hooks"]:
             if hook["type"] == "command":
@@ -68,8 +78,13 @@ def invoke_event(
                     subprocess.run(
                         shlex.split(command),
                         cwd=project,
-                        input=json.dumps(payload),
-                        env={**os.environ, "CLAUDE_PROJECT_DIR": str(project)},
+                        input=json.dumps({"hook_event_name": event, **payload}),
+                        env={
+                            **os.environ,
+                            "WORKFLOW_NOTIFY": "false",
+                            "CLAUDE_PROJECT_DIR": str(project),
+                            **variables,
+                        },
                         capture_output=True,
                         text=True,
                         check=False,
@@ -77,6 +92,98 @@ def invoke_event(
                     )
                 )
     return results
+
+
+@pytest.fixture
+def desktop(project: Path) -> tuple[dict, Path]:
+    sender = project.parent / "desktop-bin/osascript"
+    log = project.parent / "desktop-notifications.jsonl"
+    executable(
+        sender,
+        'import json, os, sys\nfrom pathlib import Path\nwith Path(os.environ["TEST_NOTIFICATION"]).open("a") as stream: stream.write(json.dumps(sys.argv[1:]) + "\\n")\n',
+    )
+    return {
+        "PATH": f"{sender.parent}{os.pathsep}{os.environ['PATH']}",
+        "TEST_NOTIFICATION": str(log),
+        "WORKFLOW_NOTIFY": "true",
+        "WORKFLOW_HOST": "claude",
+        "WORKFLOW_HOST_WORKER": "0",
+        "RELAY_MODE": "0",
+    }, log
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "permission_prompt",
+        "idle_prompt",
+        "elicitation_dialog",
+        "elicitation_url_dialog",
+    ],
+)
+def test_only_native_idle_or_user_input_events_notify(
+    project: Path, desktop, kind: str
+):
+    environment, log = desktop
+    results = invoke_event(
+        project,
+        "Notification",
+        {"notification_type": kind, "message": 'Current "request"'},
+        **environment,
+    )
+    assert len(results) == 1 and results[0].returncode == 0
+    alerts = [json.loads(line) for line in log.read_text().splitlines()]
+    assert len(alerts) == 1
+    assert alerts[0][-1] == 'Current "request"'
+    assert alerts[0][-2] == (
+        "Claude: ready for you" if kind == "idle_prompt" else "Claude: input needed"
+    )
+
+
+@pytest.mark.parametrize(
+    "event,payload",
+    [
+        ("Stop", {"stop_hook_active": False}),
+        ("Stop", {"stop_hook_active": True}),
+        ("Stop", {"background_tasks": [{"status": "running"}]}),
+        ("Stop", {"session_crons": [{"id": "continuation"}]}),
+        ("Notification", {"notification_type": "auth_success"}),
+        ("Notification", {"notification_type": "quota_auto_resume_started"}),
+        ("Notification", {}),
+    ],
+)
+def test_turn_stops_and_automatic_events_never_notify(
+    project: Path, desktop, event: str, payload: dict
+):
+    environment, log = desktop
+    result = invoke(
+        project,
+        "workflow-events.py",
+        {
+            "hook_event_name": event,
+            "last_assistant_message": "Intermediate response",
+            **payload,
+        },
+        **environment,
+    )
+    assert result.returncode == 0 and result.stdout == ""
+    assert not log.exists()
+
+
+@pytest.mark.parametrize("error", ["rate_limit", "overloaded", "authentication_failed"])
+def test_api_failure_logging_does_not_generate_desktop_alerts(
+    project: Path, desktop, error: str
+):
+    environment, log = desktop
+    for _ in range(2):
+        result = invoke(
+            project, "stop-failure-logger.sh", {"error": error}, **environment
+        )
+        assert result.returncode == 0
+    entries = (project / ".claude/logs/stop-failures.jsonl").read_text().splitlines()
+    assert len(entries) == 2
+    assert all(json.loads(line)["error"] == error for line in entries)
+    assert not log.exists()
 
 
 @pytest.mark.parametrize("invalid_graph", [False, True])
@@ -546,11 +653,15 @@ def test_toast_uses_current_message_and_passes_it_as_data(project: Path) -> None
         project,
         "toast-notify.sh",
         {
-            "last_assistant_message": 'Current "response"',
+            "notification_type": "idle_prompt",
+            "message": 'Current "response"',
             "transcript_path": "missing.jsonl",
         },
         PATH=f"{tool.parent}{os.pathsep}{os.environ['PATH']}",
         TEST_NOTIFICATION=str(output),
+        WORKFLOW_NOTIFY="true",
+        WORKFLOW_HOST_WORKER="0",
+        RELAY_MODE="0",
     )
     assert result.returncode == 0
     assert json.loads(output.read_text())[-1] == 'Current "response"'

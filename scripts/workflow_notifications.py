@@ -9,6 +9,11 @@ import subprocess
 def notify(title: str, message: str) -> None:
     if os.environ.get("WORKFLOW_NOTIFY", "true").lower() == "false":
         return
+    if (
+        os.environ.get("WORKFLOW_HOST_WORKER") == "1"
+        or os.environ.get("RELAY_MODE") == "1"
+    ):
+        return  # The owning primary session reports readiness, not its workers.
     title = title.replace("\0", "")[:80]
     message = " ".join(message.replace("\0", "").split())[:160]
     if shutil.which("osascript"):

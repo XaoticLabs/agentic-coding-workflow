@@ -1,0 +1,487 @@
+---
+name: write-spec
+description: "Turn an agreed task into behavioral requirements and optional Relay task inputs."
+metadata:
+  workflow-source: "commands/write-spec.md"
+---
+
+
+# Implementation Spec Generator
+
+Transforms a plan document or inline request into a detailed implementation specification with atomic, actionable tasks. Select this command when a detailed handoff is useful; a spec is optional for ordinary interactive implementation.
+
+## Input
+
+$ARGUMENTS - Either:
+- A path to a plan document (e.g., `.claude/plans/feature-name.md`)
+- A feature slug (e.g., `feature-name`) — will look in `.claude/plans/`
+- An inline quoted prompt (e.g., `"add rate limiting to the API"`) — treated as a lightweight plan
+
+Optional flags:
+- `--approve-tests` — generate a spec that selects explicit approval of acceptance-test expectations during interactive implementation
+- `--relay` — also generate topic specs and an implementation plan for Relay's autonomous behavioral-verification workflow
+
+Parse flags before locating the input. Reject `--approve-tests` combined with `--relay`: Relay iterations cannot pause for interactive test approval. Invoking this command authorizes generating its artifacts once material decisions are clear.
+
+## Instructions
+
+Follow **Proportional Workflow** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md`. Use the supplied plan and repository evidence to resolve context; ask only about uncertainty that could change implementation, acceptance criteria, or risk. Preserve the selected test mode explicitly in the spec.
+
+### Phase 1: Load and Parse Plan Document
+
+**Locate the document:**
+- If full path provided, read it directly
+- If slug provided, look for `.claude/plans/<slug>.md`
+- If an inline quoted prompt is provided (no file match), treat the string as a lightweight plan and proceed directly to Phase 2 (codebase analysis) using the prompt as context
+- If file not found, list available docs from `.claude/plans/` and ask user to select one
+
+**Extract key information:**
+- Problem statement and goals
+- Proposed solution and user journey
+- Architecture (data model, APIs, integrations)
+- Edge cases and decisions
+- Security considerations
+- Open questions
+- Goals and verification criteria from concise plans; optional architecture or risk sections may be absent
+
+### Phase 2: Codebase Analysis
+
+**Before writing any spec, understand the existing codebase:**
+
+1. **Identify relevant areas** based on the feature:
+   - Search for similar patterns already implemented
+   - Find the modules/directories this feature will touch
+   - Identify existing abstractions to leverage
+
+2. **Document technical constraints:**
+   - What frameworks/libraries are in use?
+   - What patterns does this codebase follow?
+   - Are there existing conventions for similar features?
+
+3. **Map dependencies:**
+   - What existing code will this feature depend on?
+   - What existing code might need modification?
+
+### Phase 3: Clarify Open Questions
+
+**If the plan has unresolved questions:**
+- Use AskUserQuestion to resolve any that are critical for implementation
+- Mark questions that can be deferred to implementation time
+- Document assumptions made for questions that can't be answered now
+
+### Phase 4: Reduce Ambiguity Pass
+
+**Before breaking into tasks, explicitly surface and resolve vague areas.**
+
+Scan the plan document and your Phase 2 analysis for ambiguity:
+
+1. **Identify vague language:**
+   - Look for words like "appropriate", "as needed", "various", "etc.", "should handle", "properly"
+   - Flag any requirement that two engineers could reasonably interpret differently
+   - Highlight any "TBD", "TODO", or handwave-y sections
+
+2. **Identify implicit assumptions:**
+   - What behavior is assumed but never stated?
+   - What error handling is expected but not specified?
+   - What performance characteristics are assumed?
+   - What user permissions/roles are assumed?
+
+3. **Identify missing specifics:**
+   - API contracts without defined error responses
+   - Data models without stated constraints (nullable? unique? max length?)
+   - Flows without defined timeout/retry behavior
+   - UI descriptions without defined empty/loading/error states
+
+4. **Resolve or document each ambiguity:**
+   - For critical ambiguities: Use AskUserQuestion to get a definitive answer
+   - For non-critical ambiguities: State a reasonable default and document the assumption
+   - For each resolved item, note the decision in the spec so implementers don't re-discover the same question
+
+**Output:** A list of ambiguities found and their resolutions, which gets included in the spec's "Technical Context" section.
+
+### Phase 5: Break Down into Atomic Tasks
+
+**Rules for atomic tasks:**
+- Each task should be completable in a single commit (ideally 1-4 hours of work)
+- Each task should be independently verifiable — use behavioral tests where appropriate and direct validation for work without testable behavior
+- Each task should have clear acceptance criteria written as behavioral contracts (what the system does, not how it's built)
+- Tasks should have minimal dependencies on other tasks
+- Tasks should be orderable (what must come before what)
+
+**Test mode:** Default to `standard`: specify behavioral and regression checks without requiring test approval or separate failing commits. Ordinary TDD can be used in standard mode. With `--approve-tests` or an equivalent explicit request, select `approved-contract`. With `--relay`, select `relay-contract`: autonomous behavioral verification with mandatory independent integrity review, optional RED/GREEN commits, and no mid-iteration approval. Acceptance criteria must be specific enough to verify without ambiguity. Apply **Test and Verification Integrity** in `${CLAUDE_PLUGIN_ROOT}/references/shared-patterns.md` to every mode.
+
+**Task categories to consider:**
+1. **Data/Schema tasks** - migrations, models, types
+2. **Core logic tasks** - business logic, services, domain code
+3. **API tasks** - endpoints, request/response handling
+4. **Integration tasks** - connecting to existing systems
+5. **UI tasks** - components, pages, user interactions (if applicable)
+6. **Testing tasks** - unit tests, integration tests, e2e tests
+7. **Infrastructure tasks** - config, deployment, monitoring
+
+### Phase 6: Write Detailed Specs
+
+For each atomic task, write a complete specification:
+
+```markdown
+### Task [N]: [Descriptive Name]
+
+**Summary:** One sentence describing what this task accomplishes.
+
+**Dependencies:** [List task numbers that must be completed first, or "None"]
+
+**Files to create/modify:**
+- `path/to/file.ex` - [brief description of changes]
+- `path/to/other_file.ex` - [brief description of changes]
+
+**Detailed specification:**
+
+[Detailed description of what to implement. Include:]
+- Specific functions/modules to create
+- Data structures and their fields
+- API contracts (inputs, outputs, errors)
+- Business logic rules
+- Error handling requirements
+
+**Edge cases to handle:**
+- [Edge case 1 from plan]
+- [Edge case 2]
+
+**Acceptance criteria:**
+- [ ] [Specific, verifiable criterion 1]
+- [ ] [Specific, verifiable criterion 2]
+
+> **Acceptance criteria quality rules** — every criterion must be:
+> - **Observable:** An evaluator can verify it by reading code or running a command
+> - **Binary:** It either passes or fails — no "somewhat meets" allowed
+> - **Scoped:** It references specific files, functions, or behaviors — not general qualities
+> - **Verifiable:** Name a behavioral assertion or direct validation method; behavioral criteria must map to meaningful assertions
+>
+> Bad: "Authentication should work properly"
+> Good: "POST /api/login with valid credentials returns 200 with JSON body containing `token` (string) and `expires_at` (ISO 8601 timestamp)"
+>
+> Bad: "Tests should cover the feature"
+> Good: "test/auth/login_test.exs includes tests for: valid login, invalid password (401), missing email (422)"
+>
+> Bad: "The cache should be fast"
+> Good: "Calling `UserCache.get(id)` after `UserCache.put(user)` returns `{:ok, user}` without hitting the database"
+
+**Verification:**
+- Existing checks to run: [relevant tests, lint, or direct validation]
+- Behavioral or regression tests to add: [scenario and expected result, if needed]
+
+**Acceptance tests (include approval metadata only for approved-contract mode):**
+- Test file: `[path/to/test_file]`
+- Tests to write before implementing:
+  - `[test name]` — asserts [criterion from above]
+  - `[test name]` — asserts [criterion from above]
+- Preserve behavioral expectations and acceptance criteria, not entire files. Record case/assertion, criterion, baseline, and human approval reference when approval is selected. Explain and independently review corrections or changes that could weaken coverage; a changed human-approved expectation needs renewed human approval.
+
+**Direct validation** (if any):
+- [Items without testable behavior and the inspection or targeted validation that verifies them]
+
+**Notes/Warnings:**
+- [Any gotchas, performance considerations, or things to watch out for]
+```
+
+### Phase 7: Generate Implementation Spec Document
+
+**Create the output directory:**
+```bash
+mkdir -p .claude/specs
+```
+
+Review the document for useful task-specific content.
+
+**Derive the slug** from the input plan filename. If the plan file has a ticket ID prefix (e.g., `AI-1234-auth-feature.md`), preserve it in the spec slug. The slug should match the plan's slug exactly so all artifacts share the same naming convention.
+
+**Write the document** to `.claude/specs/<slug>-spec.md`:
+
+```markdown
+# Implementation Spec: [Feature Name]
+
+> Generated from: `.claude/plans/<slug>.md` (or inline prompt)
+> Generated on: [date]
+
+**Test mode:** [standard | approved-contract | relay-contract — choose the selected mode]
+
+## Overview
+
+[1-2 paragraph summary of what we're building and why]
+
+## Technical Context
+
+### Relevant Codebase Areas
+- `path/to/module/` - [what it does, why it's relevant]
+- `path/to/other/` - [what it does, why it's relevant]
+
+### Existing Patterns to Follow
+- [Pattern 1]: [where it's used, why we should follow it]
+- [Pattern 2]: [where it's used, why we should follow it]
+
+### Key Dependencies
+- [Existing module/service 1]: [how we'll use it]
+- [Existing module/service 2]: [how we'll use it]
+
+### Ambiguity Resolutions
+| Area | Ambiguity | Resolution | Source |
+|------|-----------|------------|--------|
+| [area] | [what was unclear] | [decision made] | [user input / assumed default] |
+| ... | ... | ... | ... |
+
+## Implementation Tasks
+
+### Summary
+
+| Task | Name | Dependencies | Estimated Complexity |
+|------|------|--------------|---------------------|
+| 1 | [Name] | None | Low/Medium/High |
+| 2 | [Name] | 1 | Low/Medium/High |
+| ... | ... | ... | ... |
+
+### Critical Path
+[Visual or textual representation of task dependencies - what can be parallelized, what must be sequential]
+
+---
+
+### Task 1: [Name]
+[Full task spec as defined above]
+
+---
+
+### Task 2: [Name]
+[Full task spec as defined above]
+
+---
+
+[... more tasks ...]
+
+## Testing Strategy
+
+Selected mode: [standard | approved-contract | relay-contract]. Describe the relevant behavioral, regression, integration, or direct checks. Standard mode permits ordinary TDD without approval or separate failing commits. Approved-contract mode protects explicitly approved behavioral expectations. Relay requires independent verification-integrity review without an interactive prompt. All modes permit additions and justified corrections under the shared integrity policy; changing a human-approved expectation requires human approval.
+
+### Verification per Task
+| Task | Evidence | Direct Validation | Approved Acceptance Tests (only when selected) |
+|------|----------|-------------------|------------------------------------|
+| [Task] | [test scenarios or existing checks] | [inspection/commands if needed] | [test file and cases, or omit column] |
+
+### Integration Testing
+- [Cross-task integration tests — written after individual tasks pass]
+
+### Manual Testing Checklist
+- [ ] [Manual test scenario 1]
+- [ ] [Manual test scenario 2]
+
+## Rollout Considerations
+
+### Feature Flags
+- [Any feature flags needed? What behavior behind each?]
+
+### Migration Strategy
+- [Any data migrations? How to handle existing data?]
+
+### Rollback Plan
+- [How to roll back if something goes wrong]
+
+## Open Items
+
+- [ ] [Any remaining questions or decisions]
+- [ ] [Things to verify during implementation]
+
+---
+
+*Tasks can be picked up independently, respecting dependencies, using the selected test mode and the verification criteria above.*
+```
+
+### Phase 8: Relay-Compatible Output (conditional)
+
+**Only run this phase if `--relay` flag is present in `$ARGUMENTS`.**
+
+After generating the monolithic spec (Phase 7), create a Relay-compatible directory structure:
+
+**Create the spec directory:**
+```bash
+mkdir -p .claude/specs/<slug>
+```
+
+**Register task-graph validation.** Write this JSON to `.claude/expected-output.json`
+so the Stop hook validates the same task graph used by the scheduler:
+
+```json
+{
+    "source": "write-spec-relay",
+    "rules": [
+        {
+            "type": "task_index_format",
+            "path": ".claude/specs/<slug>/IMPLEMENTATION_PLAN.md",
+            "min_tasks": 1
+        }
+    ]
+}
+```
+
+Replace `<slug>` with the actual slug. This checks task structure and dependencies;
+review topic specifications for meaningful acceptance criteria without heading gates.
+
+**Split into topic files:**
+
+Read the monolithic spec's Implementation Tasks section. For each task, create a separate spec file:
+
+- File naming: `.claude/specs/<slug>/NN-<topic-slug>.md` (e.g., `01-database-schema.md`, `02-auth-middleware.md`)
+- Each file contains ONLY:
+  - Behavioral outcomes (WHAT to build)
+  - Acceptance criteria
+  - Edge cases
+  - Testing requirements
+- Each file should have a cohesive scope and independently checkable outcomes; split it when dependencies or verification require separate work
+- Do NOT include implementation details (HOW) — that's for the implementer to decide
+
+**Topic file format:**
+```markdown
+# <Topic Name>
+
+## Behavioral Outcomes
+
+- <What the system should do>
+- <Observable behavior from user/API perspective>
+
+## Acceptance Criteria
+
+- [ ] <Specific, verifiable criterion — must be directly encodable as a test assertion>
+- [ ] <Specific, verifiable criterion>
+
+## Behavioral Tests
+
+Test file: `<path/to/test_file>`
+
+| Test Name | Asserts |
+|-----------|---------|
+| `<descriptive_test_name>` | <which acceptance criterion this encodes> |
+| `<descriptive_test_name>` | <which acceptance criterion this encodes> |
+
+Non-testable items: <list any config/wiring/deletion items that skip RED, or "none">
+
+Prefer test-first development for behavior changes and regression fixes when practical. Separate failing commits are optional. These are agent-authored tests unless explicit human approval is recorded. Preserve acceptance criteria; additions in existing files and justified corrections are allowed under the shared test and verification integrity policy.
+
+## Edge Cases
+
+- <Edge case and expected behavior — include as contract test if behavioral>
+```
+
+**Generate IMPLEMENTATION_PLAN.md:**
+
+Write `.claude/specs/<slug>/IMPLEMENTATION_PLAN.md`:
+
+Use the structured `## Task Index` schema below, validated by `scripts/task-plan.py`. Keep task details and acceptance criteria under `## Tasks`.
+
+````markdown
+# Implementation Plan: <Feature Name>
+
+## Status: IN_PROGRESS
+
+## Task Index
+
+```json
+{"tasks": [
+  {"id": 1, "name": "Foundation", "status": "pending", "priority": "HIGH", "deps": [], "spec": "01-topic.md", "files": ["src/model.py"]},
+  {"id": 2, "name": "Feature", "status": "pending", "priority": "HIGH", "deps": [1], "spec": "02-topic.md", "files": ["src/feature.py"]}
+]}
+```
+
+## Tasks
+
+### Task 1: Foundation
+- <Concrete deliverable and testable acceptance criteria>
+
+### Task 2: Feature
+- <Concrete deliverable and testable acceptance criteria>
+
+## Learnings
+
+(Record durable observations explicitly after inspecting run evidence; workers do not edit this plan)
+````
+
+Validate the index and dependency graph before finishing:
+`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/task-plan.py" validate .claude/specs/<slug>/IMPLEMENTATION_PLAN.md`.
+
+**Prioritization rules for tasks:**
+1. Dependencies first — if B depends on A, A gets higher priority
+2. Foundation before features — data models, types, configs before business logic
+3. Within a tier — smaller tasks first (faster iteration, earlier feedback)
+
+**Both formats coexist:** The monolithic `.claude/specs/<slug>-spec.md` (for interactive `/agentic-coding-workflow:implement`) and the directory `.claude/specs/<slug>/` (for `/agentic-coding-workflow:relay`) are generated together. No conflict.
+
+**Report:** After generating, show the directory structure and task summary:
+```
+Relay-compatible specs generated:
+
+  .claude/specs/<slug>/
+    01-topic-a.md
+    02-topic-b.md
+    03-topic-c.md
+    IMPLEMENTATION_PLAN.md
+
+  Tasks: N total (X HIGH, Y MEDIUM, Z LOW priority)
+  Ready for: /agentic-coding-workflow:relay <slug>
+```
+
+## Quality Checklist
+
+Before finalizing the spec, verify:
+
+- [ ] Every task has clear acceptance criteria and an appropriate verification method
+- [ ] Every task specifies which files to modify
+- [ ] The selected test mode is explicit; standard mode does not imply test approval or separate failing commits
+- [ ] For selected contract modes, each task with testable behavior names its behavioral test cases; human approval metadata is recorded only when explicitly approved
+- [ ] Each acceptance criterion maps to behavioral tests or direct validation, with approval provenance when that mode applies
+- [ ] Items without testable behavior name their alternative validation
+- [ ] Dependencies between tasks are explicit
+- [ ] Edge cases from the plan are assigned to specific tasks
+- [ ] Security considerations are addressed in relevant tasks
+- [ ] The critical path is identified
+- [ ] Tasks are small enough for single PRs
+- [ ] Existing codebase patterns are referenced
+
+## Important Constraints
+
+- **Be specific** - vague specs lead to implementation confusion
+- **Reference actual code** - don't write specs in a vacuum, point to real files and patterns
+- **Keep tasks atomic** - resist the urge to bundle related work
+- **Make dependencies explicit** - no hidden assumptions about task ordering
+- **Include the "why"** - link back to plan decisions where relevant
+- **Don't over-specify** - leave room for implementation judgment on minor details
+
+## Error Handling
+
+- If the input document is missing or ambiguous, show available plans and ask only for the missing selection or material decision
+- If requested test modes conflict, explain the conflict before generating artifacts; do not silently discard an approval requirement
+- If a material requirement remains unresolved, identify it as a blocker and label any requested draft accordingly
+- If artifact creation or task-graph validation fails, preserve completed output, report the failure, and do not describe the spec as ready for execution
+
+## Example Usage
+
+```
+/agentic-coding-workflow:write-spec batch-conversation-analysis
+```
+
+This would:
+1. Look for `.claude/plans/batch-conversation-analysis.md`
+2. Analyze relevant parts of the codebase
+3. Surface and resolve ambiguous requirements
+4. Break the feature into the atomic tasks needed for the agreed scope
+5. Write detailed specs for each task
+6. Output to `.claude/specs/batch-conversation-analysis-spec.md`
+
+```
+/agentic-coding-workflow:write-spec .claude/plans/batch-analysis.md
+```
+
+This would read the plan doc directly and generate a spec from it.
+
+```
+/agentic-coding-workflow:write-spec "add rate limiting to the API"
+```
+
+This would treat the inline prompt as a lightweight plan, analyze the codebase, and generate a spec.
+
+Add `--approve-tests` to select approval of acceptance-test expectations during implementation, or `--relay` to generate autonomous topic specs with Relay's contract policy. These modes are mutually exclusive.

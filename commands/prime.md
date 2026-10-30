@@ -21,7 +21,7 @@ ticket_reference: $ARGUMENTS (optional Jira/Linear key or URL; supports `--track
 
 ## Pre-Gathered Context
 
-The following was injected at invocation time — do NOT re-gather this data with tool calls:
+The following was injected at invocation time.
 
 !`bash ${CLAUDE_PLUGIN_ROOT}/scripts/prime-context.sh 2>/dev/null || echo "⚠️ Context script failed — gather manually using the instructions below."`
 

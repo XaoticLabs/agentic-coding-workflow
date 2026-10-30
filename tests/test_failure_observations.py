@@ -246,6 +246,9 @@ def test_early_check_is_opt_in_advisory_and_cannot_mark_final_verification(
 
 
 def test_linux_notification_passes_content_as_arguments(monkeypatch) -> None:
+    monkeypatch.setenv("WORKFLOW_NOTIFY", "true")
+    monkeypatch.delenv("WORKFLOW_HOST_WORKER", raising=False)
+    monkeypatch.delenv("RELAY_MODE", raising=False)
     recorded = []
     monkeypatch.setattr(
         notifications.shutil,
@@ -260,3 +263,24 @@ def test_linux_notification_passes_content_as_arguments(monkeypatch) -> None:
     notifications.notify("Input needed", 'literal "$(do-not-execute)"')
     assert recorded[0][0][-1] == 'literal "$(do-not-execute)"'
     assert recorded[0][1].get("shell") is None
+
+
+@pytest.mark.parametrize(
+    "variable,value",
+    [("WORKFLOW_NOTIFY", "false"), ("WORKFLOW_HOST_WORKER", "1"), ("RELAY_MODE", "1")],
+)
+def test_workers_and_disabled_notifications_never_reach_desktop(
+    monkeypatch, variable: str, value: str
+):
+    monkeypatch.setenv("WORKFLOW_NOTIFY", "true")
+    monkeypatch.delenv("WORKFLOW_HOST_WORKER", raising=False)
+    monkeypatch.delenv("RELAY_MODE", raising=False)
+    monkeypatch.setenv(variable, value)
+    monkeypatch.setattr(
+        notifications.subprocess,
+        "run",
+        lambda *_args, **_kwargs: pytest.fail("No desktop alert is appropriate"),
+    )
+    notifications.notify(
+        "Intermediate worker result", "Still waiting on the primary session"
+    )

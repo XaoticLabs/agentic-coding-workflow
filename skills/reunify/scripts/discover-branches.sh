@@ -38,7 +38,7 @@ for wt_dir in "$WORKTREE_BASE"/*/; do
     claude_active="no"
     if command -v tmux &>/dev/null && [ -n "${TMUX:-}" ]; then
       pane_info=$(tmux list-panes -a -F '#{pane_current_path} #{pane_current_command}' 2>/dev/null | grep "$wt_dir" | head -1 || true)
-      if echo "$pane_info" | grep -q "claude\|node"; then
+      if echo "$pane_info" | grep -Eq ' (claude|node|pi|autolith|sbcl)( |$)'; then
         claude_active="yes"
       fi
     fi
