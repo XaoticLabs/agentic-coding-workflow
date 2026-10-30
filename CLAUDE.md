@@ -32,10 +32,11 @@ Component-specific conventions are in `.claude/rules/` — see `commands.md`, `s
 
 Claude's `commands/`, `skills/`, `agents/`, and `hooks/hooks.json` remain the
 canonical workflow definitions. After changing them or bundled resources, run
-`make sync-hosts` to update Pi and Autolith. Do not hand-edit files listed in
-`hosts/generated-files.json`. `make check` rejects stale generated output;
-`make check-hosts` additionally requires the pinned optional hosts and exercises
-their native adapters. Keep Node and Lisp outside the default Claude setup.
+`maak sync-hosts` to update Pi and Autolith. Do not hand-edit files listed in
+`hosts/generated-files.json`. `maak check` rejects stale generated output;
+`maak check-hosts` additionally requires the pinned optional hosts and exercises
+their native adapters. Guile 3.0 and Maak are repository development
+prerequisites; keep Node and Common Lisp optional for the native hosts.
 See `host-parity.md` for host invocation and verification details.
 
 ## Subagents vs Primary Instances — When to Use Which
@@ -132,12 +133,12 @@ Always inspect recent `git log` before committing and follow the repository's hi
 
 ## Testing & Validation
 
-- For this repository, run `make setup` once and after dependency changes, then
-  `make check` before completion. `make lint`, `make test`, and `make verify` are
+- For this repository, run `maak setup` once and after dependency changes, then
+  `maak check` before completion. `maak lint`, `maak test`, and `maak verify` are
   the shared local, Stop-hook, and CI tasks. `pyproject.toml` and `uv.lock` declare the development
   environment; `.python-version` selects Python 3.11. Do not repair or depend on
   globally installed Python tools. See README for prerequisites and lock updates.
-- `make verify` exercises public hook/CLI delivery behavior and preserves source-bound
+- `maak verify` exercises public hook/CLI delivery behavior and preserves source-bound
   evidence under `.claude/proofs/delivery/`. Reuse `.claude/skills/verify-agentic-coding-workflow/SKILL.md`.
   Native Claude sessions and external integrations need separate runtime evidence.
 - Use `skills/skill-forge/scripts/validate-skill.py` for structural diagnostics, `claude plugin validate .` for native schema checks, and native `claude plugin eval .` plus deterministic tests for behavioral evidence. Structural diagnostics are not quality scores.

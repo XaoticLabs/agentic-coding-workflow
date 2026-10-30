@@ -10,7 +10,7 @@ recipes to the consuming project rather than requiring this entire set.
 | Ordinary change | Requested behavior works, configured checks run, no unselected approval or review loop appears. | `evals/runtime-proof-regression/` and project regression fixtures. |
 | Explicit optional mode | The selected procedure loads at the right time and its requirement is honored. | `implement --approve-tests` must wait for approval of expectations; `review --learn` uses the teaching path. Use fixture data, without publishing. |
 | Resume | Related work retains decisions and acceptance criteria, rechecks current source, and continues from the saved next action. | `evals/resume-feature-session/` and `evals/improvement-resume/`. |
-| Required check fails | A genuine product failure blocks completion; missing infrastructure remains incomplete. | `evals/unavailable-runtime-proof/` and `make verify` for this plugin. |
+| Required check fails | A genuine product failure blocks completion; missing infrastructure remains incomplete. | `evals/unavailable-runtime-proof/` and `maak verify` for this plugin. |
 | Unchanged correction turn | Successful Stop verification can be reused without another product-check invocation for the same recorded inputs. | This plugin's local delivery verification runbook and `tests/smoke_delivery.py`. |
 | Source changes after success | Previous success is invalidated; a new regression reruns and fails the required check. | The same delivery verification journey. |
 

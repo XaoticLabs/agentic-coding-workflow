@@ -46,9 +46,9 @@ def test_plugin_repository_has_explicit_verification_commands() -> None:
     # not replace the project's explicit Python-owned verification commands.
     assert report["languages"] == ["python", "javascript/typescript"]
     assert all(check["status"] == "configured" for check in report["checks"].values())
-    assert report["checks"]["lint"]["command"] == "make lint"
-    assert report["checks"]["test"]["command"] == "make test"
-    assert report["checks"]["verify"]["command"] == "make verify"
+    assert report["checks"]["lint"]["command"] == "maak lint"
+    assert report["checks"]["test"]["command"] == "maak test"
+    assert report["checks"]["verify"]["command"] == "maak verify"
 
 
 @pytest.mark.parametrize(

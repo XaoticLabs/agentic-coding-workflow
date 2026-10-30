@@ -8,9 +8,9 @@ allowed-tools:
 
 # Verify plugin delivery behavior
 
-From this repository's root (`${CLAUDE_PROJECT_DIR}`), run `make verify` in the
+From this repository's root (`${CLAUDE_PROJECT_DIR}`), run `maak verify` in the
 locked development environment. If setup is missing, report verification as
-unavailable; `make setup` is the separate environment preparation task.
+unavailable; `maak setup` is the separate environment preparation task.
 
 The command launches the registered Stop check and public command-reader CLI in
 a disposable Git project with isolated fixture data. It needs Git, Bash, jq,

@@ -7,13 +7,13 @@ providing verification, tickets, worktree ownership, and Relay supervision.
 Edit `commands/`, `skills/`, `agents/`, or their bundled resources, then run:
 
 ```bash
-make sync-hosts
+maak sync-hosts
 ```
 
 The synchronizer parses YAML frontmatter, builds `hosts/catalog.json`, generates
 both hosts' resources, preserves text and binary supporting files, and removes
 obsolete generated files recorded in `hosts/generated-files.json`. It does not
-change Claude's definitions. `make check` rejects generated drift; it never
+change Claude's definitions. `maak check` rejects generated drift; it never
 regenerates files as a side effect. Do not hand-edit manifest-listed output.
 
 Hook adapters read `hooks/hooks.json` at runtime and invoke its actual scripts.
@@ -33,7 +33,7 @@ The API baselines are Pi `1.4.0` (`@earendil-works/pi-coding-agent`) and Autolit
 Install the optional hosts explicitly:
 
 ```bash
-make install-hosts
+maak install-hosts
 ```
 
 This installs under `~/.local`; add `~/.local/bin` to `PATH`. The installer
@@ -42,7 +42,7 @@ Autolith release and installs Pi without npm lifecycle scripts. Use
 `bash scripts/install-hosts.sh --prefix /absolute/prefix` for another location.
 Autolith builds its packaged Lisp images on first use.
 
-Claude marketplace installation and `make setup` do not install either host.
+Claude marketplace installation and `maak setup` do not install either host.
 The generator's YAML parser is a locked development dependency; installed host
 adapters and the shared Python bridge do not require it. Default Claude checks
 do not require Node, Pi, or Autolith.
@@ -192,17 +192,17 @@ and terminal layouts are not byte-identical across hosts.
 ## Verification
 
 ```bash
-make setup
-make sync-hosts
-make check
-make check-hosts
+maak setup
+maak sync-hosts
+maak check
+maak check-hosts
 ```
 
-`make check` runs the normal Claude-repository checks, generator drift detection,
+`maak check` runs the normal Claude-repository checks, generator drift detection,
 cross-host deterministic contracts, and local product verification. Native tests
 report a skip when the relevant optional host is unavailable.
 
-`make check-hosts` requires both installed hosts. It exercises actual native
+`maak check-hosts` requires both installed hosts. It exercises actual native
 loaders, generated invocation policy, shared dangerous-command checks,
 completion failure/repair/exhaustion, source-change invalidation, restricted
 workers, and native result transports. Transport exercises use a local fixture

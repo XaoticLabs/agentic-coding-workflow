@@ -5,7 +5,7 @@ and the user-invocable native skills under `generated/skills/`. Host-provided
 packages stay peer dependencies; Claude installation requires no Node runtime.
 
 After editing canonical commands, skills, agents, or hook registration, run
-`make sync-hosts` from the repository root. Generated files are disposable;
+`maak sync-hosts` from the repository root. Generated files are disposable;
 edit `commands/`, `skills/`, `agents/`, and `hooks/hooks.json`.
 
 Load this checkout with `pi -e /absolute/path/to/agentic-coding-workflow`, or

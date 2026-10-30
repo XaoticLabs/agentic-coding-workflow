@@ -1,6 +1,6 @@
 {
-  "install": "make setup",
-  "lint": "make lint",
-  "test": "make test",
-  "verify": "make verify"
+  "install": "maak setup",
+  "lint": "maak lint",
+  "test": "maak test",
+  "verify": "maak verify"
 }

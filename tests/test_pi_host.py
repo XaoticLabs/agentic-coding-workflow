@@ -175,7 +175,7 @@ def test_installed_pi_loads_adapter_and_enforces_policy(
             pytest.fail(
                 "Pi native checks are required but the installed module was not found"
             )
-        pytest.skip("Pi is not installed; run make check-hosts in the host environment")
+        pytest.skip("Pi is not installed; run maak check-hosts in the host environment")
     node = supported_node()
     project = tmp_path / "project with spaces"
     project.mkdir()

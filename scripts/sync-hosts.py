@@ -104,7 +104,7 @@ def main() -> int:
         return 2
     if args.check and differences:
         print(
-            "Generated host resources are stale; run make sync-hosts:\n"
+            "Generated host resources are stale; run maak sync-hosts:\n"
             + "\n".join(differences),
             file=sys.stderr,
         )

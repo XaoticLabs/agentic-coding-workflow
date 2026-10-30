@@ -77,7 +77,7 @@ def captured(
 def catalog(root: Path = ROOT) -> dict:
     data = json.loads((root / "hosts/catalog.json").read_text())
     if not isinstance(data, dict) or data.get("schema_version") != 1:
-        raise ValueError("Invalid host catalog; run make sync-hosts")
+        raise ValueError("Invalid host catalog; run maak sync-hosts")
     return data
 
 

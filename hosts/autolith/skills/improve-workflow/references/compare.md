@@ -9,7 +9,7 @@ graders equivalent. Never replace the user's working checkout to run a trial.
 
 | Question | Execution and evidence |
 | --- | --- |
-| Does the change preserve deterministic behavior? | Project-required checks and the existing verification runbook; this plugin uses `make check`. |
+| Does the change preserve deterministic behavior? | Project-required checks and the existing verification runbook; this plugin uses `maak check`. |
 | How long do fixed commands take? | `scripts/run-experiments.py` with [the existing matrix format](../../../references/experiments.md). |
 | Does the agent still select and complete the workflow correctly? | `scripts/run-evals.py` with [the existing eval conventions](../../../evals/README.md). |
 | What happens in a real session, including hooks and review? | The saved task and verification recipe, actual session transcript, and final hook/check evidence. |

@@ -13,7 +13,7 @@ Install [Claude Code](https://code.claude.com/docs/en/setup), then run:
 /plugin install agentic-coding-workflow@agentic-coding-marketplace
 ```
 
-For development, run `make setup` and `make check`; see
+For development, run `maak setup` and `maak check`; see
 [validation and maintenance](#validation-and-maintenance) for prerequisites.
 Then validate with `claude plugin validate .` and launch
 `claude --plugin-dir "$PWD"`. Reload changes with `/reload-plugins` or restart.
@@ -38,11 +38,11 @@ and mixed projects; optional Python profiles live in [profiles/python](profiles/
 
 ```json
 {
-  "lint": "make lint",
-  "test": "make test",
-  "verify": "make verify-user-paths",
-  "quick_check": "make check-changed",
-  "format": "make format"
+  "lint": "maak lint",
+  "test": "maak test",
+  "verify": "maak verify-user-paths",
+  "quick_check": "maak check-changed",
+  "format": "maak format"
 }
 ```
 
@@ -288,10 +288,10 @@ Claude, Pi, and Autolith share the workflow definitions in `commands/`,
 After editing a definition or its supporting resources, run:
 
 ```bash
-make sync-hosts
+maak sync-hosts
 ```
 
-This regenerates both host bundles and their catalog. `make check` detects
+This regenerates both host bundles and their catalog. `maak check` detects
 stale generated files. Edit the canonical files; files listed in
 `hosts/generated-files.json` are derived. Hook adapters invoke the original
 scripts, so hook policy and project checks have one implementation.
@@ -299,8 +299,8 @@ scripts, so hook policy and project checks have one implementation.
 Optional host installation and native verification are separate from Claude setup:
 
 ```bash
-make install-hosts
-make check-hosts
+maak install-hosts
+maak check-hosts
 ```
 
 The installer uses the versions and release checksums in `hosts/versions.json`
@@ -316,25 +316,47 @@ Select the execution host with `WORKFLOW_HOST=pi` or `WORKFLOW_HOST=autolith`;
 the default remains Claude. See [host parity](host-parity.md) for command names,
 role/session launchers, host adaptations, and the native verification boundary.
 
-For repository development, install Git, Bash, Make, jq, and
+For repository development, install Git, Bash, Guile 3.0, curl, jq, tar,
+GNU getopt, and
 [uv 0.11.26](https://docs.astral.sh/uv/getting-started/installation/#installing-a-specific-version).
 Python 3.11 is selected by `.python-version`; uv downloads it if necessary.
-From a fresh checkout, run:
+On Debian/Ubuntu, Guile is provided by `guile-3.0`; GNU getopt is part of
+`util-linux`. On macOS, install `guile`, `gnu-getopt`, and `coreutils` with
+Homebrew and put `gnu-getopt`'s `bin` and `coreutils`'s `libexec/gnubin`
+directories on `PATH`.
+
+Install the pinned [Maak](https://codeberg.org/jjba23/maak) task runner, then
+prepare and check a fresh checkout:
 
 ```bash
-make setup
-make check
+bash scripts/install-maak.sh
+export PATH="$HOME/.local/bin:$PATH"
+maak setup
+maak check
 ```
 
-`make setup` creates `.venv` and installs the development dependencies from
+The installer verifies the source archive against `scripts/maak.lock.json` and
+installs Maak 0.14.0 into `~/.local`. Use `--prefix /absolute/path` to select
+another installation prefix, then add its `bin` directory to `PATH`. It preserves
+unmanaged executables. CI uses the same installer and pin. To update Maak,
+review an upstream release, update the version, commit, and archive SHA-256 in
+the lock file together, rerun the installer, and run `maak check`.
+
+`maak.scm` defines all repository tasks. `maak --list` lists them; running
+`maak` without a task runs `check`. `maak --dry-run check` prints the commands
+without running checks. Set `UV=/path/to/uv` to override the uv executable.
+Maak and Guile are development tools; installing this plugin does not require
+them in consuming projects.
+
+`maak setup` creates `.venv` and installs the development dependencies from
 `uv.lock`, including pytest's transitive dependencies such as Pygments. It fails
 if the lockfile is stale. Rerun it after dependency changes or switching branches.
 No environment activation or global pytest installation is needed.
 The uv cache stays in the ignored `.cache/uv` directory so repository-scoped
 agent sandboxes can write it.
 
-`make check` runs `make lint` (Ruff and hook registration validation) and
-`make test` (the deterministic pytest suite), plus `make verify` (a local
+`maak check` runs `maak lint` (Ruff and hook registration validation) and
+`maak test` (the deterministic pytest suite), plus `maak verify` (a local
 exercise of public hook/CLI entrypoints). These checks do not install
 dependencies or fix files; a missing or stale environment fails with setup
 instructions. CI runs the same setup and checks. The tracked
@@ -342,7 +364,7 @@ instructions. CI runs the same setup and checks. The tracked
 hook, so this repository reports `configured` readiness and verifies all three
 checks. CI retains the delivery exercise's evidence as a workflow artifact.
 
-`make verify` uses a disposable Git project to prove product-gate failure,
+`maak verify` uses a disposable Git project to prove product-gate failure,
 correction, cached success, and invalidation after a source change through the
 registered Stop command and shared final delivery gate. It retains commands,
 raw outputs/exits, source records, and cleanup results under
@@ -359,7 +381,7 @@ python3 scripts/project-commands.py readiness .
 ```
 
 To change dependencies, edit `pyproject.toml`, run `uv lock`, then run
-`make setup` and `make check`. Commit the manifest and lockfile together.
+`maak setup` and `maak check`. Commit the manifest and lockfile together.
 The uv version is pinned in `pyproject.toml`, which CI reads as well.
 
 With Claude Code installed, also validate the native plugin:

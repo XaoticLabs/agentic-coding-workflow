@@ -20,7 +20,7 @@ type Goal = { objective: string; status: "active" | "paused" | "complete" | "blo
 
 export default function workflowExtension(pi: ExtensionAPI) {
   const catalog = JSON.parse(readFileSync(resolve(ROOT, "hosts/catalog.json"), "utf8")) as Catalog;
-  if (catalog.schema_version !== 1) throw new Error("Unsupported workflow catalog. Run make sync-hosts.");
+  if (catalog.schema_version !== 1) throw new Error("Unsupported workflow catalog. Run maak sync-hosts.");
   const worker = process.env.WORKFLOW_HOST_WORKER === "1";
   let role = process.env.WORKFLOW_HOST_ROLE ?? "";
   let roleEntry = role ? catalog.agents[role] : undefined;

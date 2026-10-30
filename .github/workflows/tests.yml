@@ -24,8 +24,14 @@ jobs:
           python-version-file: .python-version
       # Reads tool.uv.required-version from pyproject.toml.
       - uses: astral-sh/setup-uv@v6
-      - run: make setup
-      - run: make check
+      - name: Install pinned Maak
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y guile-3.0
+          bash scripts/install-maak.sh --prefix "$RUNNER_TEMP/maak"
+          echo "$RUNNER_TEMP/maak/bin" >> "$GITHUB_PATH"
+      - run: maak setup
+      - run: maak check
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -45,12 +51,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - run: make setup
+      - name: Install pinned Maak
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y guile-3.0
+          bash scripts/install-maak.sh --prefix "$RUNNER_TEMP/maak"
+          echo "$RUNNER_TEMP/maak/bin" >> "$GITHUB_PATH"
+      - run: maak setup
       - name: Install pinned Pi and checksum-verified Autolith
         run: |
           bash scripts/install-hosts.sh --prefix "$RUNNER_TEMP/workflow-hosts"
           echo "$RUNNER_TEMP/workflow-hosts/bin" >> "$GITHUB_PATH"
-      - run: make check-hosts
+      - run: maak check-hosts
       - uses: actions/upload-artifact@v4
         if: always()
         with:

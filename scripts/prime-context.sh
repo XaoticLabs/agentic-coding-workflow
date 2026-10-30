@@ -84,6 +84,7 @@ detect_stack() {
     [ -f "docker-compose.yml" ] || [ -f "docker-compose.yaml" ] && echo "- **Docker Compose** present"
     [ -f "Dockerfile" ] && echo "- **Dockerfile** present"
     [ -f "Makefile" ] && echo "- **Makefile** present"
+    [ -f "maak.scm" ] && echo "- **Maak** task runner (maak.scm found)"
     [ -d ".github/workflows" ] && echo "- **GitHub Actions** CI/CD"
     [ -f ".gitlab-ci.yml" ] && echo "- **GitLab CI** pipeline"
     [ -f "terraform.tf" ] || [ -d "terraform" ] && echo "- **Terraform** infrastructure"

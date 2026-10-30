@@ -817,10 +817,10 @@ def test_plugin_repository_stop_runs_all_required_checks(
     )
     git(project, "add", ".")
     git(project, "commit", "--quiet", "-m", "Plugin development contract")
-    make = project.parent / "bin/make"
-    calls = project.parent / "make-calls.jsonl"
+    maak = project.parent / "bin/maak"
+    calls = project.parent / "maak-calls.jsonl"
     executable(
-        make,
+        maak,
         """import json, os, sys
 with open(os.environ["TEST_CALLS"], "a") as stream:
     stream.write(json.dumps(sys.argv[1:]) + "\\n")
@@ -832,7 +832,7 @@ sys.exit(int(sys.argv[1] == os.environ["TEST_FAILED_ACTION"]))
         project,
         "lint-on-stop.sh",
         {"session_id": "plugin-development"},
-        PATH=f"{make.parent}{os.pathsep}{os.environ['PATH']}",
+        PATH=f"{maak.parent}{os.pathsep}{os.environ['PATH']}",
         TEST_CALLS=str(calls),
         TEST_FAILED_ACTION=failed_action or "",
     )
